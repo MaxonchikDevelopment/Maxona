@@ -7,10 +7,16 @@ export const dynamic = "force-dynamic";
 const USER_ID = "user_maxon";
 
 export default async function TodayPage() {
-  const now = new Date();
-  const todayDate = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
+
+  const todayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: user.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [y, m, d] = todayStr.split("-").map(Number);
+  const todayDate = new Date(Date.UTC(y, m - 1, d));
 
   const sessions = await prisma.trainingSession.findMany({
     where: {

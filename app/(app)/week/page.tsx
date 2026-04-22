@@ -63,6 +63,12 @@ export default async function WeekPage() {
       {plan.focusSummary && (
         <p className="text-sm italic text-gray-600">{plan.focusSummary}</p>
       )}
+      {plan.changeExplanation && (
+        <div className="rounded border-l-2 border-blue-400 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          <span className="font-medium">What changed: </span>
+          {plan.changeExplanation}
+        </div>
+      )}
       {weekDays.map((dateStr, i) => {
         const daySessions = sessionsByDate[dateStr] ?? [];
         return (

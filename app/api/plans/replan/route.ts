@@ -4,7 +4,9 @@ import { generateWeeklyPlan } from "@/lib/planner/orchestrator";
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const plan = await generateWeeklyPlan(body.reason);
+    // Always provide a reason so the LLM knows this is a replan and writes changeExplanation
+    const reason: string = body.reason || "manual replan";
+    const plan = await generateWeeklyPlan(reason);
     return NextResponse.json(plan);
   } catch (error) {
     console.error("Replan failed:", error);

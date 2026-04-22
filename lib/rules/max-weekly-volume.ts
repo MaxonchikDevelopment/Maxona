@@ -1,6 +1,7 @@
 import type { Rule } from "@/lib/rules";
 
-const BASE_WEEKLY_MINUTES = 120;
+// Base for first week with no history: ~7 h suits marathon + HYROX training
+const BASE_WEEKLY_MINUTES = 420;
 const MAX_INCREASE_FACTOR = 1.1;
 
 export const maxWeeklyVolume: Rule = {
