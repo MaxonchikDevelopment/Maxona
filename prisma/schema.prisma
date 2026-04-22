@@ -130,15 +130,16 @@ model Goal {
 }
 
 model RecurringSession {
-  id            String           @id @default(cuid())
+  id            String              @id @default(cuid())
   userId        String
   dayOfWeek     DayOfWeek
   preferredSlot TimeSlot
+  planningType  SessionPlanningType @default(fixed)
   durationMin   Int
-  intensity     SessionIntensity @default(moderate)
+  intensity     SessionIntensity    @default(moderate)
   notes         String?
-  isActive      Boolean          @default(true)
-  createdAt     DateTime         @default(now())
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
 
   user User @relation(fields: [userId], references: [id])
 }
@@ -194,13 +195,15 @@ model TrainingSession {
 }
 
 model CheckIn {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  sessionId  String   @unique
+  sessionId  String    @unique
   occurredAt DateTime
   feelScore  Int
   notes      String?
-  createdAt  DateTime @default(now())
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   user    User            @relation(fields: [userId], references: [id])
   session TrainingSession @relation(fields: [sessionId], references: [id])

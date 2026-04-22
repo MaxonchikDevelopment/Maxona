@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { DayOfWeek, TimeSlot, SessionIntensity } from "@prisma/client";
+import type { DayOfWeek, TimeSlot, SessionIntensity, SessionPlanningType } from "@prisma/client";
 
 const USER_ID = "user_maxon";
 
@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { dayOfWeek, preferredSlot, durationMin, intensity, notes } = await request.json();
+  const { dayOfWeek, preferredSlot, durationMin, intensity, notes, planningType } = await request.json();
   if (!dayOfWeek || !preferredSlot || !durationMin) {
     return NextResponse.json({ error: "dayOfWeek, preferredSlot, durationMin required" }, { status: 400 });
   }
@@ -22,6 +22,7 @@ export async function POST(request: Request) {
       userId: USER_ID,
       dayOfWeek: dayOfWeek as DayOfWeek,
       preferredSlot: preferredSlot as TimeSlot,
+      planningType: (planningType ?? "fixed") as SessionPlanningType,
       durationMin: Number(durationMin),
       intensity: (intensity ?? "moderate") as SessionIntensity,
       notes: notes?.trim() || null,

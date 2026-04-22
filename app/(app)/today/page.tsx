@@ -38,7 +38,12 @@ export default async function TodayPage() {
     intensity: s.intensity,
     notes: s.notes,
     checkIn: s.checkIn
-      ? { id: s.checkIn.id, feelScore: s.checkIn.feelScore, notes: s.checkIn.notes }
+      ? {
+          id: s.checkIn.id,
+          feelScore: s.checkIn.feelScore,
+          notes: s.checkIn.notes,
+          resolvedAt: s.checkIn.resolvedAt?.toISOString() ?? null,
+        }
       : null,
   }));
 

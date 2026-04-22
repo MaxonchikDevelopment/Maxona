@@ -5,7 +5,7 @@ import { noConflictSchedule } from "@/lib/rules/no-conflict-schedule";
 import { noOutsideAvailability } from "@/lib/rules/no-outside-availability";
 import { minRestHardSessions } from "@/lib/rules/min-rest-hard-sessions";
 import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
-import type { PlanningContext, RecentCheckIn, FixedSession } from "@/lib/ai/adapter";
+import type { PlanningContext, RecentCheckIn, FixedSession, OptionalSlot, WeeklyReview } from "@/lib/ai/adapter";
 
 const USER_ID = "user_maxon";
 
@@ -16,7 +16,7 @@ const RULES = [
   maxWeeklyVolume,
 ];
 
-export async function generateWeeklyPlan(replanReason?: string) {
+export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: WeeklyReview) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
 
   const todayStr = localDateStr(user.timezone);
@@ -28,8 +28,6 @@ export async function generateWeeklyPlan(replanReason?: string) {
     orderBy: { createdAt: "desc" },
   });
 
-  // Always load done/skipped sessions from the current plan — used to freeze them
-  // and to extract current-week check-in signals regardless of replanReason.
   const currentWeekDoneSessions = activePlan
     ? await prisma.trainingSession.findMany({
         where: {
@@ -73,7 +71,7 @@ export async function generateWeeklyPlan(replanReason?: string) {
       }),
     ]);
 
-  // Previous-week check-ins (baseline load signal)
+  // Previous-week check-ins — include resolvedAt so Claude knows which are cleared
   const recentCheckIns: RecentCheckIn[] = rawPreviousSessions
     .filter((s) => s.checkIn != null)
     .map((s) => ({
@@ -82,9 +80,10 @@ export async function generateWeeklyPlan(replanReason?: string) {
       sessionIntensity: s.intensity,
       feelScore: s.checkIn!.feelScore,
       notes: s.checkIn!.notes,
+      resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
     }));
 
-  // Current-week check-ins — highest priority injury/fatigue signal
+  // Current-week check-ins — highest priority signal
   const thisWeekCheckIns: RecentCheckIn[] = currentWeekDoneSessions
     .filter((s) => s.checkIn != null)
     .map((s) => ({
@@ -93,24 +92,35 @@ export async function generateWeeklyPlan(replanReason?: string) {
       sessionIntensity: s.intensity,
       feelScore: s.checkIn!.feelScore,
       notes: s.checkIn!.notes,
+      resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
     }));
 
-  // Convert recurring sessions to concrete fixed sessions for this week
+  // Split recurring sessions into fixed (guaranteed) vs optional (planner may choose)
   const doneDateSet = new Set(currentWeekDoneSessions.map((s) => toDateStr(s.scheduledDate)));
   const DAY_OFFSET: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
-  const fixedSessions: FixedSession[] = recurringSessions
-    .map((rs) => {
-      const offset = DAY_OFFSET[rs.dayOfWeek] ?? 0;
-      const date = toDateStr(addDays(weekStart, offset));
-      return {
-        date,
-        preferredSlot: rs.preferredSlot,
-        durationMin: rs.durationMin,
-        intensity: rs.intensity,
-        notes: rs.notes,
-      };
-    })
-    .filter((fs) => fs.date >= todayStr && !doneDateSet.has(fs.date));
+
+  const fixedSessions: FixedSession[] = [];
+  const optionalSlots: OptionalSlot[] = [];
+
+  for (const rs of recurringSessions) {
+    const offset = DAY_OFFSET[rs.dayOfWeek] ?? 0;
+    const date = toDateStr(addDays(weekStart, offset));
+    if (date < todayStr || doneDateSet.has(date)) continue;
+
+    const entry = {
+      date,
+      preferredSlot: rs.preferredSlot,
+      durationMin: rs.durationMin,
+      intensity: rs.intensity,
+      notes: rs.notes,
+    };
+
+    if (rs.planningType === "preferred") {
+      optionalSlots.push(entry);
+    } else {
+      fixedSessions.push(entry);
+    }
+  }
 
   const ruleCtx: RuleContext = {
     availabilityWindows,
@@ -122,7 +132,6 @@ export async function generateWeeklyPlan(replanReason?: string) {
 
   const constraints = applyRules(RULES, ruleCtx);
 
-  // Reduce the max-weekly budget by volume already completed this week
   const doneMinutesThisWeek = currentWeekDoneSessions.reduce(
     (sum, s) => sum + s.durationMin,
     0
@@ -155,12 +164,13 @@ export async function generateWeeklyPlan(replanReason?: string) {
       status: s.status,
     })),
     fixedSessions,
+    optionalSlots,
+    weeklyReview,
     replanReason,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
 
-  // Exclude sessions for dates already done this week and strictly past dates
   const rawValid = filterSessions(planResult.sessions, adjustedConstraints);
   const validSessions = rawValid.filter((s) => {
     const dateStr = toDateStr(s.scheduledDate);
@@ -192,7 +202,6 @@ export async function generateWeeklyPlan(replanReason?: string) {
       },
     });
 
-    // Carry done/skipped sessions into the new plan; re-link their check-ins
     for (const s of currentWeekDoneSessions) {
       const carried = await tx.trainingSession.create({
         data: {
@@ -215,7 +224,6 @@ export async function generateWeeklyPlan(replanReason?: string) {
       }
     }
 
-    // Create new generated sessions
     if (validSessions.length > 0) {
       await tx.trainingSession.createMany({
         data: validSessions.map((s) => ({
@@ -235,7 +243,6 @@ export async function generateWeeklyPlan(replanReason?: string) {
   });
 }
 
-// Returns "YYYY-MM-DD" in the user's IANA timezone
 function localDateStr(tz: string): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
@@ -245,12 +252,11 @@ function localDateStr(tz: string): string {
   }).format(new Date());
 }
 
-// Returns UTC midnight of the Monday of the user's current local week
 function currentWeekStart(tz: string): Date {
   const todayStr = localDateStr(tz);
   const [y, m, d] = todayStr.split("-").map(Number);
   const todayUtc = new Date(Date.UTC(y, m - 1, d));
-  const dow = todayUtc.getUTCDay(); // 0 = Sunday
+  const dow = todayUtc.getUTCDay();
   const daysFromMonday = dow === 0 ? 6 : dow - 1;
   const monday = new Date(todayUtc);
   monday.setUTCDate(todayUtc.getUTCDate() - daysFromMonday);

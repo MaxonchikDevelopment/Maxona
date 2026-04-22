@@ -10,7 +10,15 @@ const MODALITIES = ["hyrox", "running", "cycling", "swimming"] as const;
 
 type AvailWindow = { id: string; dayOfWeek: string; timeStartMin: number; timeEndMin: number };
 type ScheduleEv = { id: string; startsAt: string; endsAt: string; kind: string; note: string | null };
-type RecSession = { id: string; dayOfWeek: string; preferredSlot: string; durationMin: number; intensity: string; notes: string | null };
+type RecSession = {
+  id: string;
+  dayOfWeek: string;
+  preferredSlot: string;
+  planningType: string;
+  durationMin: number;
+  intensity: string;
+  notes: string | null;
+};
 
 function minsToTime(m: number) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -24,6 +32,12 @@ type Constraints = {
   maxContinuousTrainingMinutes?: number;
   weeklyTrainingHoursTarget?: number;
   allowedModalities?: string[];
+  avoidFridayEvening?: boolean;
+  preferredLongRideDurationMin?: number;
+  preferredLongRunDurationMin?: number;
+  minMeaningfulCyclingDurationMin?: number;
+  maxHyroxPerWeek?: number;
+  preferredHyroxDays?: string[];
 };
 
 export function SettingsClient({
@@ -37,12 +51,29 @@ export function SettingsClient({
 }) {
   const qc = useQueryClient();
 
-  // --- Constraints ---
+  // --- Training Constraints ---
   const [maxMin, setMaxMin] = useState(String(initialConstraints.maxContinuousTrainingMinutes ?? 240));
   const [hoursTarget, setHoursTarget] = useState(String(initialConstraints.weeklyTrainingHoursTarget ?? ""));
   const [modalities, setModalities] = useState<string[]>(
     initialConstraints.allowedModalities ?? [...MODALITIES]
   );
+
+  // --- Athlete Preferences ---
+  const [avoidFriday, setAvoidFriday] = useState(initialConstraints.avoidFridayEvening ?? false);
+  const [longRideDuration, setLongRideDuration] = useState(
+    String(initialConstraints.preferredLongRideDurationMin ?? "")
+  );
+  const [longRunDuration, setLongRunDuration] = useState(
+    String(initialConstraints.preferredLongRunDurationMin ?? "")
+  );
+  const [minCyclingDuration, setMinCyclingDuration] = useState(
+    String(initialConstraints.minMeaningfulCyclingDurationMin ?? "")
+  );
+  const [maxHyrox, setMaxHyrox] = useState(String(initialConstraints.maxHyroxPerWeek ?? ""));
+  const [hyroxDays, setHyroxDays] = useState<string[]>(
+    initialConstraints.preferredHyroxDays ?? []
+  );
+
   const [constraintsSaved, setConstraintsSaved] = useState(false);
 
   const saveConstraints = useMutation({
@@ -54,6 +85,12 @@ export function SettingsClient({
           maxContinuousTrainingMinutes: Number(maxMin) || 240,
           weeklyTrainingHoursTarget: hoursTarget ? Number(hoursTarget) : undefined,
           allowedModalities: modalities,
+          avoidFridayEvening: avoidFriday,
+          preferredLongRideDurationMin: longRideDuration ? Number(longRideDuration) : undefined,
+          preferredLongRunDurationMin: longRunDuration ? Number(longRunDuration) : undefined,
+          minMeaningfulCyclingDurationMin: minCyclingDuration ? Number(minCyclingDuration) : undefined,
+          maxHyroxPerWeek: maxHyrox ? Number(maxHyrox) : undefined,
+          preferredHyroxDays: hyroxDays.length > 0 ? hyroxDays : undefined,
         }),
       }).then((r) => r.json()),
     onSuccess: () => {
@@ -65,6 +102,12 @@ export function SettingsClient({
   function toggleModality(m: string) {
     setModalities((prev) =>
       prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+    );
+  }
+
+  function toggleHyroxDay(d: string) {
+    setHyroxDays((prev) =>
+      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
     );
   }
 
@@ -130,13 +173,21 @@ export function SettingsClient({
   const [rsDuration, setRsDuration] = useState("75");
   const [rsIntensity, setRsIntensity] = useState<string>("hard");
   const [rsNotes, setRsNotes] = useState("HYROX group class");
+  const [rsPlanningType, setRsPlanningType] = useState<string>("fixed");
 
   const addRecSession = useMutation({
     mutationFn: () =>
       fetch("/api/recurring-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dayOfWeek: rsDay, preferredSlot: rsSlot, durationMin: Number(rsDuration), intensity: rsIntensity, notes: rsNotes || undefined }),
+        body: JSON.stringify({
+          dayOfWeek: rsDay,
+          preferredSlot: rsSlot,
+          durationMin: Number(rsDuration),
+          intensity: rsIntensity,
+          notes: rsNotes || undefined,
+          planningType: rsPlanningType,
+        }),
       }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring-sessions"] }),
   });
@@ -197,12 +248,89 @@ export function SettingsClient({
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Athlete Preferences */}
+      <section className="space-y-3">
+        <h2 className="font-semibold">Athlete Preferences</h2>
+        <p className="text-xs text-gray-500">Planner inputs — tell the AI how you train.</p>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={avoidFriday}
+              onChange={(e) => setAvoidFriday(e.target.checked)}
+            />
+            Avoid Friday evening training when possible
+          </label>
+
+          <label className="block text-sm">
+            Preferred long ride duration (min)
+            <input
+              type="number"
+              value={longRideDuration}
+              onChange={(e) => setLongRideDuration(e.target.value)}
+              placeholder="e.g. 120"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+
+          <label className="block text-sm">
+            Preferred long run duration (min)
+            <input
+              type="number"
+              value={longRunDuration}
+              onChange={(e) => setLongRunDuration(e.target.value)}
+              placeholder="e.g. 110"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+
+          <label className="block text-sm">
+            Min meaningful cycling duration (min)
+            <input
+              type="number"
+              value={minCyclingDuration}
+              onChange={(e) => setMinCyclingDuration(e.target.value)}
+              placeholder="e.g. 60"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+
+          <label className="block text-sm">
+            Max HYROX sessions per week
+            <input
+              type="number"
+              value={maxHyrox}
+              onChange={(e) => setMaxHyrox(e.target.value)}
+              placeholder="e.g. 2"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+
+          <div className="text-sm">
+            <p className="mb-1">Preferred HYROX days</p>
+            <div className="flex flex-wrap gap-2">
+              {DAYS.map((d) => (
+                <label key={d} className="flex items-center gap-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={hyroxDays.includes(d)}
+                    onChange={() => toggleHyroxDay(d)}
+                  />
+                  {d}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <button
           onClick={() => saveConstraints.mutate()}
           disabled={saveConstraints.isPending}
           className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
         >
-          {constraintsSaved ? "Saved" : saveConstraints.isPending ? "Saving..." : "Save constraints"}
+          {constraintsSaved ? "Saved" : saveConstraints.isPending ? "Saving..." : "Save preferences"}
         </button>
       </section>
 
@@ -301,8 +429,7 @@ export function SettingsClient({
 
       {/* Recurring Sessions */}
       <section className="space-y-3">
-        <h2 className="font-semibold">Fixed Weekly Sessions</h2>
-        <p className="text-xs text-gray-500">Sessions added here are locked into every generated plan.</p>
+        <h2 className="font-semibold">Recurring Sessions</h2>
         <div className="space-y-1">
           {recSessions.length === 0 && <p className="text-sm text-gray-400">None set.</p>}
           {recSessions.map((rs) => (
@@ -315,6 +442,12 @@ export function SettingsClient({
                 <span>{rs.durationMin} min</span>
                 <span className="mx-1 text-gray-400">·</span>
                 <span className="text-gray-500">{rs.intensity}</span>
+                <span className="ml-2 rounded px-1 text-xs font-medium" style={{
+                  background: rs.planningType === "fixed" ? "#f3f4f6" : "#eff6ff",
+                  color: rs.planningType === "fixed" ? "#374151" : "#2563eb",
+                }}>
+                  {rs.planningType === "fixed" ? "fixed" : "optional"}
+                </span>
                 {rs.notes && <p className="text-xs text-gray-500 mt-0.5">{rs.notes}</p>}
               </div>
               <button onClick={() => delRecSession.mutate(rs.id)} className="text-red-400 text-xs ml-2">
@@ -323,32 +456,42 @@ export function SettingsClient({
             </div>
           ))}
         </div>
-        <div className="flex gap-2 items-end flex-wrap">
-          <select value={rsDay} onChange={(e) => setRsDay(e.target.value)}
-            className="rounded border px-2 py-1.5 text-sm">
-            {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-          <select value={rsSlot} onChange={(e) => setRsSlot(e.target.value)}
-            className="rounded border px-2 py-1.5 text-sm">
-            {SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <input type="number" value={rsDuration} onChange={(e) => setRsDuration(e.target.value)}
-            placeholder="min" className="w-20 rounded border px-2 py-1.5 text-sm" />
-          <select value={rsIntensity} onChange={(e) => setRsIntensity(e.target.value)}
-            className="rounded border px-2 py-1.5 text-sm">
-            {INTENSITIES.map((i) => <option key={i} value={i}>{i}</option>)}
-          </select>
+        <div className="space-y-2">
+          <div className="flex gap-2 items-end flex-wrap">
+            <select value={rsDay} onChange={(e) => setRsDay(e.target.value)}
+              className="rounded border px-2 py-1.5 text-sm">
+              {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <select value={rsSlot} onChange={(e) => setRsSlot(e.target.value)}
+              className="rounded border px-2 py-1.5 text-sm">
+              {SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <input type="number" value={rsDuration} onChange={(e) => setRsDuration(e.target.value)}
+              placeholder="min" className="w-20 rounded border px-2 py-1.5 text-sm" />
+            <select value={rsIntensity} onChange={(e) => setRsIntensity(e.target.value)}
+              className="rounded border px-2 py-1.5 text-sm">
+              {INTENSITIES.map((i) => <option key={i} value={i}>{i}</option>)}
+            </select>
+            <select value={rsPlanningType} onChange={(e) => setRsPlanningType(e.target.value)}
+              className="rounded border px-2 py-1.5 text-sm">
+              <option value="fixed">fixed</option>
+              <option value="preferred">optional</option>
+            </select>
+          </div>
+          <input type="text" value={rsNotes} onChange={(e) => setRsNotes(e.target.value)}
+            placeholder='Notes, e.g. "HYROX group class"'
+            className="w-full rounded border px-3 py-1.5 text-sm" />
+          <p className="text-xs text-gray-400">
+            <strong>fixed</strong> = always in plan · <strong>optional</strong> = planner chooses if useful
+          </p>
+          <button
+            onClick={() => addRecSession.mutate()}
+            disabled={addRecSession.isPending}
+            className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          >
+            {addRecSession.isPending ? "Adding..." : "Add session"}
+          </button>
         </div>
-        <input type="text" value={rsNotes} onChange={(e) => setRsNotes(e.target.value)}
-          placeholder='Notes, e.g. "HYROX group class"'
-          className="w-full rounded border px-3 py-1.5 text-sm" />
-        <button
-          onClick={() => addRecSession.mutate()}
-          disabled={addRecSession.isPending}
-          className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-50"
-        >
-          {addRecSession.isPending ? "Adding..." : "Add session"}
-        </button>
       </section>
 
       {/* Logout */}

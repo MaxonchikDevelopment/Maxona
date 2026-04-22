@@ -14,6 +14,7 @@ export interface RecentCheckIn {
   sessionIntensity: SessionIntensity;
   feelScore: number;
   notes: string | null;
+  resolvedAt: string | null;
 }
 
 export interface CurrentWeekDoneSession {
@@ -30,6 +31,20 @@ export interface FixedSession {
   durationMin: number;
   intensity: string;
   notes: string | null;
+}
+
+export interface OptionalSlot {
+  date: string;
+  preferredSlot: string;
+  durationMin: number;
+  intensity: string;
+  notes: string | null;
+}
+
+export interface WeeklyReview {
+  recoveryScore?: number;
+  priorityNote?: string;
+  familyConstraints?: string;
 }
 
 export interface PlanningContext {
@@ -49,6 +64,8 @@ export interface PlanningContext {
   todayStr: string;
   currentWeekDoneSessions: CurrentWeekDoneSession[];
   fixedSessions: FixedSession[];
+  optionalSlots: OptionalSlot[];
+  weeklyReview?: WeeklyReview;
   replanReason?: string;
 }
 
