@@ -24,6 +24,14 @@ export interface CurrentWeekDoneSession {
   status: string;
 }
 
+export interface FixedSession {
+  date: string;
+  preferredSlot: string;
+  durationMin: number;
+  intensity: string;
+  notes: string | null;
+}
+
 export interface PlanningContext {
   user: {
     id: string;
@@ -40,6 +48,7 @@ export interface PlanningContext {
   weekStart: Date;
   todayStr: string;
   currentWeekDoneSessions: CurrentWeekDoneSession[];
+  fixedSessions: FixedSession[];
   replanReason?: string;
 }
 

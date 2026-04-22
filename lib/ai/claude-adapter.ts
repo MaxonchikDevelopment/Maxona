@@ -107,6 +107,13 @@ Only schedule sessions within listed windows. Each session must fit entirely ins
 - Minimum 48 h between "hard" sessions
 - Each single session must be shorter than maxContinuousTrainingMinutes
 
+## fixedSessions
+When the context includes a fixedSessions array, each entry is a recurring session the user has pre-registered (e.g. a weekly HYROX group class). You MUST include every fixedSession in the plan with planningType: "fixed", on its exact date and slot. Do not skip, move, or merge them.
+
+## User-defined constraints (from user.constraints)
+- weeklyTrainingHoursTarget: if present, use as the total minutes target for the week (multiply by 60). Overrides the default 4-6 session guideline.
+- allowedModalities: if present, use ONLY the listed modalities. Allowed values: "hyrox", "running", "cycling", "swimming". If absent, use all four.
+
 ## planningType values
 - generated: fully flexible (use for most sessions)
 - preferred: preserve if possible
@@ -243,8 +250,17 @@ function buildUserPrompt(context: PlanningContext): string {
     goals: context.goals.map((g) => ({
       title: g.title,
       description: g.description,
+      ...(g.discipline && { discipline: g.discipline }),
+      ...(g.targetDate && { targetDate: toDateStr(g.targetDate) }),
+      ...(g.priority != null && { priority: g.priority }),
       status: g.status,
     })),
+    ...(context.fixedSessions.length > 0 && {
+      fixedSessions: {
+        note: "These sessions are FIXED. Include each one exactly as specified with planningType: 'fixed'.",
+        sessions: context.fixedSessions,
+      },
+    }),
     availabilityByDay,
     scheduleEvents: context.scheduleEvents.map((e) => ({
       startsAt: e.startsAt,

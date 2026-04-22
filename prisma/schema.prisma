@@ -83,6 +83,7 @@ model User {
   trainingPlans       TrainingPlan[]
   trainingSessions    TrainingSession[]
   checkIns            CheckIn[]
+  recurringSessions   RecurringSession[]
 }
 
 model AvailabilityWindow {
@@ -116,6 +117,9 @@ model Goal {
   userId      String
   title       String
   description String?
+  discipline  String?
+  targetDate  DateTime?  @db.Date
+  priority    Int?
   status      GoalStatus @default(active)
   deletedAt   DateTime?
   createdAt   DateTime   @default(now())
@@ -123,6 +127,20 @@ model Goal {
 
   user              User               @relation(fields: [userId], references: [id])
   trainingPlanGoals TrainingPlanGoal[]
+}
+
+model RecurringSession {
+  id            String           @id @default(cuid())
+  userId        String
+  dayOfWeek     DayOfWeek
+  preferredSlot TimeSlot
+  durationMin   Int
+  intensity     SessionIntensity @default(moderate)
+  notes         String?
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 model TrainingPlan {

@@ -5,7 +5,7 @@ import { noConflictSchedule } from "@/lib/rules/no-conflict-schedule";
 import { noOutsideAvailability } from "@/lib/rules/no-outside-availability";
 import { minRestHardSessions } from "@/lib/rules/min-rest-hard-sessions";
 import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
-import type { PlanningContext, RecentCheckIn } from "@/lib/ai/adapter";
+import type { PlanningContext, RecentCheckIn, FixedSession } from "@/lib/ai/adapter";
 
 const USER_ID = "user_maxon";
 
@@ -40,7 +40,7 @@ export async function generateWeeklyPlan(replanReason?: string) {
       })
     : [];
 
-  const [goals, availabilityWindows, scheduleEvents, rawPreviousSessions] =
+  const [goals, availabilityWindows, scheduleEvents, rawPreviousSessions, recurringSessions] =
     await Promise.all([
       prisma.goal.findMany({
         where: { userId: USER_ID, status: "active", deletedAt: null },
@@ -68,6 +68,9 @@ export async function generateWeeklyPlan(replanReason?: string) {
         },
         include: { checkIn: true },
       }),
+      prisma.recurringSession.findMany({
+        where: { userId: USER_ID, isActive: true },
+      }),
     ]);
 
   // Previous-week check-ins (baseline load signal)
@@ -91,6 +94,23 @@ export async function generateWeeklyPlan(replanReason?: string) {
       feelScore: s.checkIn!.feelScore,
       notes: s.checkIn!.notes,
     }));
+
+  // Convert recurring sessions to concrete fixed sessions for this week
+  const doneDateSet = new Set(currentWeekDoneSessions.map((s) => toDateStr(s.scheduledDate)));
+  const DAY_OFFSET: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+  const fixedSessions: FixedSession[] = recurringSessions
+    .map((rs) => {
+      const offset = DAY_OFFSET[rs.dayOfWeek] ?? 0;
+      const date = toDateStr(addDays(weekStart, offset));
+      return {
+        date,
+        preferredSlot: rs.preferredSlot,
+        durationMin: rs.durationMin,
+        intensity: rs.intensity,
+        notes: rs.notes,
+      };
+    })
+    .filter((fs) => fs.date >= todayStr && !doneDateSet.has(fs.date));
 
   const ruleCtx: RuleContext = {
     availabilityWindows,
@@ -134,15 +154,13 @@ export async function generateWeeklyPlan(replanReason?: string) {
       notes: s.notes,
       status: s.status,
     })),
+    fixedSessions,
     replanReason,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
 
   // Exclude sessions for dates already done this week and strictly past dates
-  const doneDateSet = new Set(
-    currentWeekDoneSessions.map((s) => toDateStr(s.scheduledDate))
-  );
   const rawValid = filterSessions(planResult.sessions, adjustedConstraints);
   const validSessions = rawValid.filter((s) => {
     const dateStr = toDateStr(s.scheduledDate);

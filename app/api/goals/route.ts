@@ -12,7 +12,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { title, description } = await request.json();
+  const { title, description, discipline, targetDate, priority } = await request.json();
   if (!title?.trim()) {
     return NextResponse.json({ error: "Title required" }, { status: 400 });
   }
@@ -21,6 +21,9 @@ export async function POST(request: Request) {
       userId: USER_ID,
       title: title.trim(),
       description: description?.trim() || null,
+      discipline: discipline?.trim() || null,
+      targetDate: targetDate ? new Date(targetDate) : null,
+      priority: priority != null ? Number(priority) : null,
     },
   });
   return NextResponse.json(goal, { status: 201 });
