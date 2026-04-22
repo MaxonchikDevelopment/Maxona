@@ -13,11 +13,14 @@ Supabase (PostgreSQL), TanStack Query, Anthropic Claude API, deployed on Vercel.
 
 - Middleware password auth (env var + httpOnly cookie) — temporary, not production
 - Single seeded User in DB
-- Manual schedule constraints via ScheduleEvent
+- Manual schedule constraints via ScheduleEvent (CRUD UI + API implemented)
 - Goal creation and soft-delete; multiple active goals supported simultaneously
+- Goal fields: title, description, discipline, targetDate, priority
 - AI-generated weekly training plan (ClaudeAdapter only)
 - Manual check-in after sessions
 - Manual replan trigger (no cron)
+- Editable Settings: training constraints, availability windows, schedule blocks,
+  fixed recurring sessions — all have live CRUD UI
 - Mobile-first layout with bottom nav
 - Pages: Today view, Week view, Goals, Settings
 
@@ -32,6 +35,8 @@ Supabase (PostgreSQL), TanStack Query, Anthropic Claude API, deployed on Vercel.
 - Wife schedule sync (manual ScheduleEvent only)
 - Notifications / push
 - Per-session goal attribution
+- Editable check-ins after the fact
+- Weekly review / coach summary layer
 
 ## Architecture Decisions (Accepted — Do Not Revisit Without Explicit Request)
 
@@ -45,20 +50,26 @@ Supabase (PostgreSQL), TanStack Query, Anthropic Claude API, deployed on Vercel.
   with optional `validFrom / validUntil` for seasonal windows
 - **User.timezone** is IANA string (e.g. "Europe/Warsaw"); all datetimes stored UTC
 - **TrainingPlan is user-level**, not goal-owned. One active plan per user at a time.
-  Versioned via `revision: Int`, `parentPlanId: String?`, `replanReason: String?`
+  Versioned via `revision: Int`, `parentPlanId: String?`, `replanReason: String?`,
+  `changeExplanation: String?` (Claude is instructed to populate this on replan)
 - **TrainingPlanGoal** join model snapshots which goals were active at generation/replan time
 - **TrainingSession** scheduled by `scheduledDate: DateTime @db.Date` + `preferredSlot: TimeSlot`
   (not minute-precise); `planningType: fixed | preferred | generated`
+- **RecurringSession** model stores user-defined weekly fixed sessions (e.g. HYROX group class).
+  Orchestrator converts them to concrete dates each week and passes them to the planner as
+  `fixedSessions`; system prompt instructs Claude to include them with `planningType: fixed`
 - **Prisma enums** for all fixed value sets (no bare String for types/statuses)
 - **Soft delete on Goal** via `deletedAt: DateTime?`
-- **User.constraints** JSON includes `maxContinuousTrainingMinutes: number` (dog constraint: 240)
+- **User.constraints** JSON — current keys: `maxContinuousTrainingMinutes` (int),
+  `weeklyTrainingHoursTarget` (int, optional), `allowedModalities` (string[], optional)
 
 ## Domain Model Overview
 
     User
-      AvailabilityWindow    (recurring time slots by day-of-week)
-      ScheduleEvent         (one-off temporal blocks: manual, household, travel)
-      Goal                  (soft-deletable; multiple active allowed)
+      AvailabilityWindow    (recurring time slots by day-of-week; CRUD via UI)
+      ScheduleEvent         (one-off temporal blocks: manual, household, travel; CRUD via UI)
+      RecurringSession      (weekly fixed sessions, e.g. HYROX class; CRUD via UI)
+      Goal                  (soft-deletable; discipline, targetDate, priority fields)
       TrainingPlan          (user-level weekly plan; one active at a time)
         TrainingPlanGoal    (join: snapshot of active goals at generation time)
         TrainingSession     (scheduled by date + slot; fixed | preferred | generated)
@@ -68,9 +79,31 @@ Supabase (PostgreSQL), TanStack Query, Anthropic Claude API, deployed on Vercel.
 
 - Main output: one coherent plan covering the next 7 days
 - Morning UX: user sees the ready updated plan
-- Planner receives all active Goals as input and decides weekly training focus
+- Planner receives all active Goals (with discipline/targetDate/priority) and decides weekly focus
 - Focus explanation stored in `TrainingPlan.focusSummary` (brief, plan-level)
 - No per-goal deep diff or structured attribution in MVP-0
+
+### Planner inputs (assembled in orchestrator, sent to Claude)
+
+1. `thisWeekCheckIns` — current-week check-ins; system prompt tells Claude to treat these as
+   the highest-priority signal before scheduling anything
+2. `fixedSessions` — derived from RecurringSession rows; system prompt instructs Claude to
+   include them unchanged with `planningType: fixed`
+3. `currentWeekDoneSessions` — already-completed/skipped sessions; carried into the new plan
+   unchanged by orchestrator code (not Claude's decision)
+4. `availabilityWindows` — user-defined recurring time slots
+5. `scheduleEvents` — one-off blocks for the week
+6. `recentCheckIns` — previous-week check-ins (baseline load signal)
+7. `user.constraints` — `maxContinuousTrainingMinutes`, `weeklyTrainingHoursTarget`,
+   `allowedModalities`
+8. `goals` — active goals with discipline, targetDate, priority
+
+### Replan semantics
+
+- Done/skipped sessions are carried into the new plan unchanged — enforced in orchestrator code
+- The system prompt instructs Claude to avoid hard sessions for 2 days after an injury-flagged
+  check-in, and to reduce remaining volume when multiple low feel scores appear this week;
+  these are prompt-level guidelines, not enforced by the rules engine
 
 ## MVP-0 Rules Engine
 
@@ -91,6 +124,16 @@ Wednesday office behavior is represented via a seeded `AvailabilityWindow` row
 - Joint family time must not be consumed by training → respect household ScheduleEvents
 - Wednesday = office day → seeded AvailabilityWindow with reduced slots
 
+## Current Bottleneck (next session focus)
+
+Infrastructure and planning loop are solid. The next gap is **personalization and feedback quality**:
+
+- No editable check-ins — user cannot correct or annotate a past check-in
+- No weekly review / coach summary — no surface that reflects on past-week load or trend
+- Athlete profile is shallow — no resting HR, HRV, injury history, race calendar
+- Goals lack milestone structure — no sub-goals or progress markers
+- No way to mark a session as "not done because of X" with a structured reason
+
 ## Extensibility Points (Designed In, Not Implemented)
 
 - `AIAdapter` interface → add OpenAIAdapter later without touching orchestrator
@@ -98,6 +141,7 @@ Wednesday office behavior is represented via a seeded `AvailabilityWindow` row
 - `AvailabilityWindow.validFrom/validUntil` → seasonal schedule changes
 - `User.constraints` JSON → extend without migration for new soft constraints
 - `TrainingSession.planningType` → fixed sessions survive replans without changes
+- `RecurringSession.isActive` → soft-disable without deletion
 
 ## Working Rules
 
@@ -118,3 +162,7 @@ Wednesday office behavior is represented via a seeded `AvailabilityWindow` row
 - Do not generate code without explicit go-ahead
 - Keep answers short unless more detail is requested
 - When schema changes are needed: show diff first, confirm, then migrate
+- After a successful implementation pass: create a git commit
+- Do not assume a GitHub remote exists; never push blindly
+- If a push is needed and no remote is configured, report the exact setup commands
+  (`git remote add origin <url>` and `git push -u origin main`) instead of running them
