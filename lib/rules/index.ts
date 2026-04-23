@@ -91,6 +91,71 @@ export function toDateStr(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
+function modalityBucket(notes: string | null | undefined): string {
+  const raw = (notes ?? "").toLowerCase();
+  if (raw.startsWith("running")) return "running";
+  if (raw.startsWith("hyrox")) return "hyrox";
+  if (raw.startsWith("cycling")) return "cycling";
+  if (raw.startsWith("swimming")) return "swimming";
+  return "other";
+}
+
+/**
+ * Removes exact duplicates and enforces two-a-day rules deterministically.
+ * Called after filterSessions so the final saved plan is always clean.
+ */
+export function deduplicateSessions(
+  sessions: PlannedSession[],
+  opts: { injuryActive: boolean; recoveryOk: boolean }
+): PlannedSession[] {
+  // Step 1: drop exact slot+modality duplicates (same date, slot, modality bucket)
+  const seenSlotKey = new Set<string>();
+  const deduped: PlannedSession[] = [];
+  for (const s of sessions) {
+    const key = `${toDateStr(s.scheduledDate)}|${s.preferredSlot}|${modalityBucket(s.notes)}`;
+    if (!seenSlotKey.has(key)) {
+      seenSlotKey.add(key);
+      deduped.push(s);
+    }
+  }
+
+  // Step 2: group by date and enforce two-a-day policy
+  const byDate = new Map<string, PlannedSession[]>();
+  for (const s of deduped) {
+    const d = toDateStr(s.scheduledDate);
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d)!.push(s);
+  }
+
+  const result: PlannedSession[] = [];
+  for (const [, daySessions] of byDate) {
+    if (daySessions.length <= 1) {
+      result.push(...daySessions);
+      continue;
+    }
+
+    // Hard cap: max 2 sessions per day; take first two
+    const [a, b] = daySessions.slice(0, 2);
+
+    const slotsOk = a.preferredSlot !== b.preferredSlot;
+    const modalitiesOk = modalityBucket(a.notes) !== modalityBucket(b.notes);
+    const noDoubleRun =
+      !(modalityBucket(a.notes) === "running" && modalityBucket(b.notes) === "running");
+    const allowed =
+      !opts.injuryActive && opts.recoveryOk && slotsOk && modalitiesOk && noDoubleRun;
+
+    if (allowed) {
+      result.push(a, b);
+    } else {
+      // Keep fixed session if present; otherwise keep first
+      const keep = [a, b].find((s) => s.planningType === "fixed") ?? a;
+      result.push(keep);
+    }
+  }
+
+  return result.sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
+}
+
 export function eachDayOfWeek(weekStart: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);

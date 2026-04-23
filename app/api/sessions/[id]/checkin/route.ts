@@ -45,8 +45,8 @@ export async function POST(
     }),
   ]);
 
-  // Generate coach advice for bad check-ins (non-blocking)
-  if (feelScore <= 3) {
+  // Generate coach advice for bad (≤3) and good (≥5) check-ins (non-blocking)
+  if (feelScore <= 3 || feelScore >= 5) {
     const category = categorizeCheckIn(feelScore, notes?.trim() || null);
 
     // Gather recent sessions from active plan for context
@@ -139,15 +139,16 @@ export async function PATCH(
     const newFeelScore = typeof body.feelScore === "number" ? body.feelScore : existing.feelScore;
     const newNotes = "notes" in body ? (body.notes?.trim() || null) : existing.notes;
 
-    if (newFeelScore <= 3) {
-      // Auto-unresolve if previously resolved and caller didn't explicitly set resolved
-      if (existing.resolvedAt && body.resolved !== true) {
-        if (process.env.NODE_ENV !== "production") {
-          console.log(`[checkin] auto-unresolving ${existing.id} — feelScore=${newFeelScore} is still low`);
-        }
-        data.resolvedAt = null;
+    // Auto-unresolve only applies to low feel scores
+    if (newFeelScore <= 3 && existing.resolvedAt && body.resolved !== true) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[checkin] auto-unresolving ${existing.id} — feelScore=${newFeelScore} is still low`);
       }
+      data.resolvedAt = null;
+    }
 
+    if (newFeelScore !== 4) {
+      // Generate advice for both bad (≤3) and good (≥5) scores
       const category = categorizeCheckIn(newFeelScore, newNotes);
       const recentSessions = await prisma.trainingSession.findMany({
         where: {
@@ -181,11 +182,7 @@ export async function PATCH(
         recentContext,
       });
 
-      if (coachAdvice) {
-        data.coachAdvice = coachAdvice;
-      } else if (process.env.NODE_ENV !== "production") {
-        console.warn(`[checkin] PATCH advice failed for session ${id} (feelScore=${newFeelScore}, category=${category})`);
-      }
+      data.coachAdvice = coachAdvice ?? null;
     } else {
       data.coachAdvice = null;
     }

@@ -135,6 +135,7 @@ export function SessionCard({
   const isInjury = category === "injury";
   const coachAdvice = checkIn?.coachAdvice ?? null;
   const hint = !isResolved && !coachAdvice ? staticHint(category, checkIn?.feelScore ?? 4) : null;
+  const isPositiveAdvice = (checkIn?.feelScore ?? 0) >= 5;
 
   return (
     <div className="space-y-2 rounded border p-4">
@@ -191,11 +192,11 @@ export function SessionCard({
           {checkIn.notes && (
             <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
           )}
-          {/* Coach advice — shown for both injury and fatigue check-ins */}
+          {/* Coach advice — bad sessions: amber; good sessions: green */}
           {coachAdvice && !isResolved && (
-            <div className="rounded bg-amber-50 px-2 py-1.5">
-              <p className="text-xs font-medium text-amber-700 mb-0.5">Coach</p>
-              <p className="text-xs text-amber-800 whitespace-pre-line">{coachAdvice}</p>
+            <div className={`rounded px-2 py-1.5 ${isPositiveAdvice ? "bg-green-50" : "bg-amber-50"}`}>
+              <p className={`text-xs font-medium mb-0.5 ${isPositiveAdvice ? "text-green-700" : "text-amber-700"}`}>Coach</p>
+              <p className={`text-xs whitespace-pre-line ${isPositiveAdvice ? "text-green-800" : "text-amber-800"}`}>{coachAdvice}</p>
             </div>
           )}
           {/* Fallback static hint */}

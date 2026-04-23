@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ClaudeAdapter } from "@/lib/ai/claude-adapter";
-import { applyRules, filterSessions, toDateStr, type RuleContext } from "@/lib/rules";
+import { applyRules, filterSessions, deduplicateSessions, toDateStr, type RuleContext } from "@/lib/rules";
 import { noConflictSchedule } from "@/lib/rules/no-conflict-schedule";
 import { noOutsideAvailability } from "@/lib/rules/no-outside-availability";
 import { minRestHardSessions } from "@/lib/rules/min-rest-hard-sessions";
@@ -448,10 +448,15 @@ export async function generateWeeklyPlan(
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
 
   const rawValid = filterSessions(planResult.sessions, adjustedConstraints);
-  const validSessions = rawValid.filter((s) => {
+  const dateFiltered = rawValid.filter((s) => {
     const dateStr = toDateStr(s.scheduledDate);
     return dateStr >= todayStr && dateStr <= weekEndStr && !doneDateSet.has(dateStr);
   });
+  const activeThisWeekCIs = thisWeekCheckIns.filter((c) => !c.resolvedAt);
+  const injuryActive = activeThisWeekCIs.some((c) => c.category === "injury");
+  const recoveryOk =
+    activeThisWeekCIs.length === 0 || activeThisWeekCIs.every((c) => c.feelScore >= 5);
+  const validSessions = deduplicateSessions(dateFiltered, { injuryActive, recoveryOk });
 
   // Generate deterministic changeExplanation from the FINAL sessions (always matches what's displayed)
   const changeExplanation = replanReason
@@ -690,9 +695,17 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
 
-  const validSessions = filterSessions(planResult.sessions, constraints).filter(
+  const rawValidNext = filterSessions(planResult.sessions, constraints).filter(
     (s) => toDateStr(s.scheduledDate) >= toDateStr(nextWeekStart)
   );
+  const activeRecentCIs = recentCheckIns.filter((c) => !c.resolvedAt);
+  const injuryActiveNext = activeRecentCIs.some((c) => c.category === "injury");
+  const recoveryOkNext =
+    activeRecentCIs.length === 0 || activeRecentCIs.every((c) => c.feelScore >= 5);
+  const validSessions = deduplicateSessions(rawValidNext, {
+    injuryActive: injuryActiveNext,
+    recoveryOk: recoveryOkNext,
+  });
 
   // Archive any existing draft plans, then create the new draft
   await prisma.trainingPlan.updateMany({
