@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { SessionCard } from "@/components/session-card";
+import { ActiveIssues } from "@/components/active-issues";
+import { categorizeCheckIn } from "@/lib/checkin-utils";
 import type { SessionProp } from "@/components/session-card";
+import type { IssueItem } from "@/components/active-issues";
 
 export const dynamic = "force-dynamic";
 
@@ -18,15 +21,22 @@ export default async function TodayPage() {
   const [y, m, d] = todayStr.split("-").map(Number);
   const todayDate = new Date(Date.UTC(y, m - 1, d));
 
-  const sessions = await prisma.trainingSession.findMany({
-    where: {
-      userId: USER_ID,
-      scheduledDate: todayDate,
-      plan: { status: "active" },
-    },
-    include: { checkIn: true },
-    orderBy: { preferredSlot: "asc" },
-  });
+  const [sessions, injuryCheckIns] = await Promise.all([
+    prisma.trainingSession.findMany({
+      where: {
+        userId: USER_ID,
+        scheduledDate: todayDate,
+        plan: { status: "active" },
+      },
+      include: { checkIn: true },
+      orderBy: { preferredSlot: "asc" },
+    }),
+    prisma.checkIn.findMany({
+      where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
+      include: { session: true },
+      orderBy: { occurredAt: "desc" },
+    }),
+  ]);
 
   const props: SessionProp[] = sessions.map((s) => ({
     id: s.id,
@@ -48,9 +58,22 @@ export default async function TodayPage() {
       : null,
   }));
 
+  const activeIssues: IssueItem[] = injuryCheckIns
+    .filter((ci) => categorizeCheckIn(ci.feelScore, ci.notes) === "injury")
+    .map((ci) => ({
+      checkInId: ci.id,
+      sessionId: ci.sessionId,
+      sessionDate: ci.session.scheduledDate.toISOString().split("T")[0],
+      sessionIntensity: ci.session.intensity,
+      sessionNotes: ci.session.notes,
+      feelScore: ci.feelScore,
+      notes: ci.notes,
+    }));
+
   return (
-    <main className="p-4">
+    <main className="p-4 space-y-3">
       <h1 className="mb-4 text-xl font-bold">Today</h1>
+      <ActiveIssues initialIssues={activeIssues} />
       {props.length === 0 ? (
         <p className="text-gray-500">Rest day — nothing scheduled.</p>
       ) : (

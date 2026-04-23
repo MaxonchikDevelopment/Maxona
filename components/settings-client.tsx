@@ -38,6 +38,9 @@ type Constraints = {
   minMeaningfulCyclingDurationMin?: number;
   maxHyroxPerWeek?: number;
   preferredHyroxDays?: string[];
+  preferredEasyRunKm?: number;
+  preferredTempoRunKm?: number;
+  preferredLongRunKm?: number;
 };
 
 export function SettingsClient({
@@ -73,6 +76,9 @@ export function SettingsClient({
   const [hyroxDays, setHyroxDays] = useState<string[]>(
     initialConstraints.preferredHyroxDays ?? []
   );
+  const [easyRunKm, setEasyRunKm] = useState(String(initialConstraints.preferredEasyRunKm ?? ""));
+  const [tempoRunKm, setTempoRunKm] = useState(String(initialConstraints.preferredTempoRunKm ?? ""));
+  const [longRunKm, setLongRunKm] = useState(String(initialConstraints.preferredLongRunKm ?? ""));
 
   const [constraintsSaved, setConstraintsSaved] = useState(false);
 
@@ -91,6 +97,9 @@ export function SettingsClient({
           minMeaningfulCyclingDurationMin: minCyclingDuration ? Number(minCyclingDuration) : undefined,
           maxHyroxPerWeek: maxHyrox ? Number(maxHyrox) : undefined,
           preferredHyroxDays: hyroxDays.length > 0 ? hyroxDays : undefined,
+          preferredEasyRunKm: easyRunKm ? Number(easyRunKm) : undefined,
+          preferredTempoRunKm: tempoRunKm ? Number(tempoRunKm) : undefined,
+          preferredLongRunKm: longRunKm ? Number(longRunKm) : undefined,
         }),
       }).then((r) => r.json()),
     onSuccess: () => {
@@ -322,6 +331,43 @@ export function SettingsClient({
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="pt-1 space-y-2">
+            <p className="text-sm font-medium">Running distances (km)</p>
+            <p className="text-xs text-gray-400">
+              Planner defaults — use standard values like 5, 10, 15, 21.
+            </p>
+            <label className="block text-sm">
+              Easy / recovery run
+              <input
+                type="number"
+                value={easyRunKm}
+                onChange={(e) => setEasyRunKm(e.target.value)}
+                placeholder="e.g. 10"
+                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block text-sm">
+              Tempo / interval run
+              <input
+                type="number"
+                value={tempoRunKm}
+                onChange={(e) => setTempoRunKm(e.target.value)}
+                placeholder="e.g. 10"
+                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block text-sm">
+              Long run
+              <input
+                type="number"
+                value={longRunKm}
+                onChange={(e) => setLongRunKm(e.target.value)}
+                placeholder="e.g. 21"
+                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+              />
+            </label>
           </div>
         </div>
 

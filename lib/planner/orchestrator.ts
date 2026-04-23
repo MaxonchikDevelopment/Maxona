@@ -80,8 +80,10 @@ function buildChangeExplanation({
     const day = dayLabel(blocked.date);
     const type = (blocked.notes ?? "session").split(":")[0].trim();
     const ci = injurySignals[0];
-    const scoreStr = ci ? ` (feelScore ${ci.feelScore}/6)` : "";
-    bullets.push(`• ${day} ${type} cancelled → injury protection${scoreStr}`);
+    const scoreStr = ci ? ` · feel ${ci.feelScore}/6` : "";
+    bullets.push(
+      `• ${day} ${type} removed — injury rest window${scoreStr}; prevents aggravation`
+    );
   }
 
   // 2. Diff prev planned vs new sessions by date
@@ -103,23 +105,26 @@ function buildChangeExplanation({
     if (!newDates.has(date)) {
       const day = dayLabel(date);
       const type = (s.notes ?? s.intensity).split(":")[0].trim();
-      let reason = "rescheduled";
+      let reason: string;
       if (
         injuryWindow &&
         date > injuryWindow.injuryDate &&
         date <= injuryWindow.protectUntil
       ) {
-        reason = "injury protection window";
+        const ci = injurySignals[0];
+        reason = `injury window${ci ? ` (feel ${ci.feelScore}/6)` : ""}; hard work blocked`;
       } else if (injurySignals.length > 0) {
-        reason = `active injury (${injurySignals[0].feelScore}/6)`;
+        reason = `active injury (feel ${injurySignals[0].feelScore}/6); load reduced to protect recovery`;
       } else if (fatigueSignals.length > 0) {
-        reason = `fatigue signals (${fatigueSignals[0].feelScore}/6)`;
+        reason = `fatigue signal (feel ${fatigueSignals[0].feelScore}/6); volume cut to preserve quality`;
+      } else {
+        reason = "schedule conflict or availability change";
       }
-      bullets.push(`• Removed ${day} ${type} → ${reason}`);
+      bullets.push(`• ${day} ${type} removed — ${reason}`);
     }
   }
 
-  // Added sessions
+  // Added sessions — infer brief rationale from modality/intensity
   const addedByDate = new Map<string, PlannedSession>();
   for (const s of newSessions) {
     const d = toDateStr(s.scheduledDate);
@@ -128,34 +133,64 @@ function buildChangeExplanation({
   for (const [date, s] of addedByDate) {
     if (bullets.length >= 4) break;
     const day = dayLabel(date);
-    const type = (s.notes ?? s.intensity).split(":")[0].trim();
-    bullets.push(`• Added ${day} ${type}`);
+    const notesLower = (s.notes ?? "").toLowerCase();
+    const typeLabel = (s.notes ?? s.intensity).split(":")[0].trim();
+    let rationale: string;
+    if (notesLower.includes("long run")) {
+      rationale = "marathon base cornerstone; builds aerobic capacity";
+    } else if (notesLower.includes("tempo") || notesLower.includes("interval")) {
+      rationale = "race-pace stimulus; improves lactate threshold";
+    } else if (notesLower.includes("hyrox")) {
+      rationale = "HYROX-specific strength; dual-goal balance";
+    } else if (notesLower.includes("cycling") || notesLower.includes("swimming")) {
+      rationale =
+        injurySignals.length > 0 || fatigueSignals.length > 0
+          ? "low-impact alternative; active recovery while injury/fatigue settles"
+          : "cross-training; aerobic base without run stress";
+    } else if (s.intensity === "easy") {
+      rationale = "easy aerobic work; maintains frequency without adding load";
+    } else {
+      rationale = "fills available training slot; supports weekly volume target";
+    }
+    bullets.push(`• ${day} ${typeLabel} added — ${rationale}`);
   }
 
-  // 3. Catch-all signal summary if diff was empty
+  // 3. Signal summary when diff was minor
   if (bullets.length < 2) {
     if (injurySignals.length > 0 && safetyBlockedSessions.length === 0) {
       bullets.push(
-        `• Hard sessions blocked → active injury (feelScore ${injurySignals[0].feelScore}/6)`
+        `• Hard sessions blocked this week — active injury (feel ${injurySignals[0].feelScore}/6); protects long-term training availability`
       );
     } else if (fatigueSignals.length > 0) {
+      const count = fatigueSignals.length;
       bullets.push(
-        `• Load eased → fatigue this week (feelScore ${fatigueSignals[0].feelScore}/6)`
+        `• Load eased — ${count} fatigue signal${count > 1 ? "s" : ""} (feel ${fatigueSignals[0].feelScore}/6); quality sessions beat tired ones`
       );
     }
   }
 
-  // 4. Weekly review priority
+  // 4. Weekly review priority (with brief performance context)
   if (weeklyReview?.priorities?.length && bullets.length < 4) {
-    bullets.push(`• Focus: ${weeklyReview.priorities[0].toLowerCase()}`);
+    const p = weeklyReview.priorities[0];
+    const context = reviewPriorityRationale(p);
+    bullets.push(`• Focus: ${p.toLowerCase()}${context ? ` — ${context}` : ""}`);
   }
 
   // 5. Fallback
   if (bullets.length === 0) {
-    bullets.push(`• Plan updated → ${replanReason ?? "manual replan"}`);
+    bullets.push(`• Plan refreshed — ${replanReason ?? "manual replan"}; sessions adjusted to current week state`);
   }
 
   return bullets.slice(0, 4).join("\n");
+}
+
+function reviewPriorityRationale(priority: string): string {
+  if (priority.toLowerCase().includes("hyrox")) return "2+ sessions scheduled; specificity for race day";
+  if (priority.toLowerCase().includes("running volume")) return "3+ runs; long run locked in for marathon base";
+  if (priority.toLowerCase().includes("recovery")) return "volume cut ~15%; adaptation consolidation";
+  if (priority.toLowerCase().includes("marathon pace")) return "tempo/interval run added; race-pace neuromuscular training";
+  if (priority.toLowerCase().includes("long ride")) return "cycling session ≥ 90 min; aerobic base via low-impact modality";
+  return "";
 }
 
 function dayLabel(dateStr: string): string {
@@ -467,6 +502,198 @@ export async function generateWeeklyPlan(
     }
 
     return newPlan;
+  });
+}
+
+export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
+
+  const todayStr = localDateStr(user.timezone);
+  const thisWeekStart = currentWeekStart(user.timezone);
+  const nextWeekStart = addDays(thisWeekStart, 7);
+  const nextWeekEnd = addDays(nextWeekStart, 6);
+
+  const [
+    goals,
+    availabilityWindows,
+    scheduleEvents,
+    currentWeekSessions,
+    recurringSessions,
+  ] = await Promise.all([
+    prisma.goal.findMany({
+      where: { userId: USER_ID, status: "active", deletedAt: null },
+    }),
+    prisma.availabilityWindow.findMany({
+      where: {
+        userId: USER_ID,
+        AND: [
+          { OR: [{ validFrom: null }, { validFrom: { lte: nextWeekEnd } }] },
+          { OR: [{ validUntil: null }, { validUntil: { gte: nextWeekStart } }] },
+        ],
+      },
+    }),
+    prisma.scheduleEvent.findMany({
+      where: {
+        userId: USER_ID,
+        startsAt: { lt: addDays(nextWeekStart, 7) },
+        endsAt: { gte: nextWeekStart },
+      },
+    }),
+    prisma.trainingSession.findMany({
+      where: {
+        userId: USER_ID,
+        scheduledDate: { gte: thisWeekStart, lt: nextWeekStart },
+      },
+      include: { checkIn: true },
+    }),
+    prisma.recurringSession.findMany({
+      where: { userId: USER_ID, isActive: true },
+    }),
+  ]);
+
+  // Current week check-ins as the most recent signal going into next week
+  const recentCheckIns: RecentCheckIn[] = currentWeekSessions
+    .filter((s) => s.checkIn != null)
+    .map((s) => ({
+      sessionId: s.id,
+      sessionDate: toDateStr(s.scheduledDate),
+      sessionIntensity: s.intensity,
+      feelScore: s.checkIn!.feelScore,
+      notes: s.checkIn!.notes,
+      resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
+      category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
+    }));
+
+  // Parse family constraints if present
+  let parsedWeeklyReview = weeklyReview;
+  if (weeklyReview?.familyConstraints) {
+    const parsed = await parseFamilyConstraints(weeklyReview.familyConstraints, todayStr);
+    if (parsed.length > 0) {
+      parsedWeeklyReview = { ...weeklyReview, parsedConstraints: parsed };
+    }
+  }
+
+  // Build fixed / optional slots for next week
+  const DAY_OFFSET: Record<string, number> = {
+    mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6,
+  };
+
+  const allFixedSessions: FixedSession[] = [];
+  const allOptionalSlots: OptionalSlot[] = [];
+
+  for (const rs of recurringSessions) {
+    const offset = DAY_OFFSET[rs.dayOfWeek] ?? 0;
+    const date = toDateStr(addDays(nextWeekStart, offset));
+    const entry = {
+      date,
+      preferredSlot: rs.preferredSlot,
+      durationMin: rs.durationMin,
+      intensity: rs.intensity,
+      notes: rs.notes,
+    };
+    if (rs.planningType === "preferred") {
+      allOptionalSlots.push(entry);
+    } else {
+      allFixedSessions.push(entry);
+    }
+  }
+
+  // Injury window check — active injuries now affect next week's planning
+  const injuryWindow = getInjuryWindow(recentCheckIns);
+  let fixedSessions = allFixedSessions;
+  let optionalSlots = allOptionalSlots;
+  const safetyBlockedSessions: FixedSession[] = [];
+
+  if (injuryWindow) {
+    fixedSessions = [];
+    for (const fs of allFixedSessions) {
+      if (fs.date > injuryWindow.injuryDate && fs.date <= injuryWindow.protectUntil) {
+        safetyBlockedSessions.push(fs);
+      } else {
+        fixedSessions.push(fs);
+      }
+    }
+    optionalSlots = allOptionalSlots.filter(
+      (os) => !(os.date > injuryWindow.injuryDate && os.date <= injuryWindow.protectUntil)
+    );
+  }
+
+  const ruleCtx: RuleContext = {
+    availabilityWindows,
+    scheduleEvents,
+    previousSessions: currentWeekSessions,
+    weekStart: nextWeekStart,
+    constraints: user.constraints as Record<string, unknown>,
+  };
+  const constraints = applyRules(RULES, ruleCtx);
+
+  if (injuryWindow) {
+    let cursor = addDays(new Date(injuryWindow.injuryDate + "T00:00:00Z"), 1);
+    while (toDateStr(cursor) <= injuryWindow.protectUntil) {
+      constraints.blockedHardSessionDates.push(toDateStr(cursor));
+      cursor = addDays(cursor, 1);
+    }
+  }
+
+  const planningCtx: PlanningContext = {
+    user: {
+      id: user.id,
+      name: user.name,
+      timezone: user.timezone,
+      constraints: user.constraints as Record<string, unknown>,
+    },
+    goals,
+    availabilityWindows,
+    scheduleEvents,
+    previousSessions: currentWeekSessions,
+    recentCheckIns,
+    thisWeekCheckIns: [],
+    weekStart: nextWeekStart,
+    todayStr,
+    currentWeekDoneSessions: [],
+    fixedSessions,
+    optionalSlots,
+    safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
+    weeklyReview: parsedWeeklyReview,
+    replanReason: "weekly review — planning next week",
+  };
+
+  const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
+
+  const validSessions = filterSessions(planResult.sessions, constraints).filter(
+    (s) => toDateStr(s.scheduledDate) >= toDateStr(nextWeekStart)
+  );
+
+  // Archive any existing draft plans, then create the new draft
+  await prisma.trainingPlan.updateMany({
+    where: { userId: USER_ID, status: "draft" },
+    data: { status: "archived" },
+  });
+
+  return prisma.trainingPlan.create({
+    data: {
+      userId: USER_ID,
+      startsAt: nextWeekStart,
+      endsAt: nextWeekEnd,
+      status: "draft",
+      revision: 1,
+      replanReason: "weekly review",
+      focusSummary: planResult.focusSummary,
+      goals: {
+        create: goals.map((g) => ({ goalId: g.id })),
+      },
+      sessions: {
+        create: validSessions.map((s) => ({
+          userId: USER_ID,
+          scheduledDate: s.scheduledDate,
+          preferredSlot: s.preferredSlot,
+          planningType: s.planningType,
+          durationMin: s.durationMin,
+          intensity: s.intensity,
+          notes: s.notes ?? null,
+        })),
+      },
+    },
   });
 }
 

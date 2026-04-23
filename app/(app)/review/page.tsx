@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const PRIORITY_OPTIONS = [
@@ -11,13 +11,51 @@ const PRIORITY_OPTIONS = [
   "Balanced as usual",
 ];
 
+const DRAFT_KEY = "review_draft_v1";
+
+type DraftState = {
+  recoveryScore: number | null;
+  selectedPriorities: string[];
+  familyConstraints: string;
+};
+
+function loadDraft(): DraftState {
+  if (typeof window === "undefined")
+    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "" };
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return { recoveryScore: null, selectedPriorities: [], familyConstraints: "" };
+    return JSON.parse(raw) as DraftState;
+  } catch {
+    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "" };
+  }
+}
+
 export default function ReviewPage() {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [recoveryScore, setRecoveryScore] = useState<number | null>(null);
   const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [familyConstraints, setFamilyConstraints] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  // Restore draft on mount
+  useEffect(() => {
+    const draft = loadDraft();
+    setRecoveryScore(draft.recoveryScore);
+    setSelectedPriorities(draft.selectedPriorities);
+    setFamilyConstraints(draft.familyConstraints);
+    setHydrated(true);
+  }, []);
+
+  // Persist draft on change
+  useEffect(() => {
+    if (!hydrated) return;
+    const draft: DraftState = { recoveryScore, selectedPriorities, familyConstraints };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  }, [recoveryScore, selectedPriorities, familyConstraints, hydrated]);
 
   function togglePriority(opt: string) {
     setSelectedPriorities((prev) =>
@@ -35,38 +73,47 @@ export default function ReviewPage() {
       ...(familyConstraints.trim() && { familyConstraints: familyConstraints.trim() }),
     };
 
-    const parts: string[] = ["weekly review"];
-    if (recoveryScore !== null) parts.push(`recovery ${recoveryScore}/5`);
-    if (selectedPriorities.length > 0) parts.push(`priorities: ${selectedPriorities.join(", ")}`);
-    if (familyConstraints.trim()) parts.push(`constraints: ${familyConstraints.trim()}`);
-
     try {
-      const res = await fetch("/api/plans/replan", {
+      const res = await fetch("/api/plans/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reason: parts.join(" · "),
-          weeklyReview,
-        }),
+        body: JSON.stringify({ weeklyReview }),
       });
-      if (!res.ok) throw new Error("Replan failed");
-      router.push("/week");
+      if (!res.ok) throw new Error("Failed to generate plan");
+
+      localStorage.removeItem(DRAFT_KEY);
+      setSuccess(true);
+      setTimeout(() => router.push("/week"), 1800);
     } catch {
       setError("Something went wrong. Please try again.");
       setSubmitting(false);
     }
   }
 
+  if (success) {
+    return (
+      <main className="p-4 flex flex-col items-center justify-center min-h-[60vh] gap-3">
+        <p className="text-2xl">✓</p>
+        <p className="text-base font-medium">Next week is planned</p>
+        <p className="text-sm text-gray-500 text-center">
+          Your current week is unchanged. The new plan activates on Monday.
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="p-4 space-y-6">
-      <h1 className="text-xl font-bold">Weekly Review</h1>
-      <p className="text-sm text-gray-500">
-        Tell the planner what this week looks like. Takes ~30 seconds and produces a much better plan.
-      </p>
+      <div>
+        <h1 className="text-xl font-bold">Plan next week</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Generates a draft plan for next week. Your current week is not affected.
+        </p>
+      </div>
 
       {/* Recovery */}
       <section className="space-y-2">
-        <h2 className="font-semibold text-sm">How are you feeling going into this week?</h2>
+        <h2 className="font-semibold text-sm">How are you feeling going into next week?</h2>
         <div className="flex gap-2">
           {[1, 2, 3, 4, 5].map((n) => (
             <button
@@ -86,7 +133,7 @@ export default function ReviewPage() {
       {/* Priority — multi-select */}
       <section className="space-y-2">
         <h2 className="font-semibold text-sm">
-          What do you want to prioritize this week?
+          What do you want to prioritize next week?
           {selectedPriorities.length > 0 && (
             <span className="ml-2 text-xs font-normal text-gray-400">
               {selectedPriorities.length} selected
@@ -112,7 +159,7 @@ export default function ReviewPage() {
 
       {/* Family / Partner Constraints */}
       <section className="space-y-2">
-        <h2 className="font-semibold text-sm">Partner / family constraints this week</h2>
+        <h2 className="font-semibold text-sm">Partner / family constraints next week</h2>
         <textarea
           value={familyConstraints}
           onChange={(e) => setFamilyConstraints(e.target.value)}
@@ -129,7 +176,7 @@ export default function ReviewPage() {
         disabled={submitting}
         className="w-full rounded bg-black py-3 text-sm font-medium text-white disabled:opacity-50"
       >
-        {submitting ? "Updating plan..." : "Update this week's plan"}
+        {submitting ? "Generating next week's plan..." : "Generate next week's plan"}
       </button>
 
       <button

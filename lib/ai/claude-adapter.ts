@@ -136,6 +136,10 @@ These override default availability windows for the specified day.
 - minMeaningfulCyclingDurationMin: do not schedule cycling sessions shorter than this value.
 - maxHyroxPerWeek: hard cap on HYROX group class sessions per week.
 - preferredHyroxDays: array of day names (e.g. ["tue","thu"]). Prefer placing HYROX sessions on these days when possible.
+- preferredEasyRunKm: target distance for easy and recovery runs (e.g. 5, 10). Use this INSTEAD of inventing a distance. Accepted values: 5, 10, 15, 21 km.
+- preferredTempoRunKm: target distance for tempo and interval runs (e.g. 10, 15). Use this instead of generic ranges.
+- preferredLongRunKm: target distance for the weekly long run (e.g. 21, 30). Use this instead of the default range.
+  When these are set: always use the athlete's preferred distance. Do NOT invent intermediate values like 7 km or 8 km. If unset, default to 10 km easy / 10 km tempo / 21 km long run.
 
 ## planningType values
 - generated: fully flexible (use for most sessions)

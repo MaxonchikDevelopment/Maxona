@@ -48,6 +48,30 @@ export async function POST(
   // Generate coach advice for bad check-ins (non-blocking)
   if (feelScore <= 3) {
     const category = categorizeCheckIn(feelScore, notes?.trim() || null);
+
+    // Gather recent sessions from active plan for context
+    const recentSessions = await prisma.trainingSession.findMany({
+      where: {
+        userId: USER_ID,
+        id: { not: id },
+        plan: { status: "active" },
+        status: { in: ["done", "skipped"] },
+      },
+      include: { checkIn: true },
+      orderBy: { scheduledDate: "desc" },
+      take: 7,
+    });
+
+    const recentContext = recentSessions.map((s) => ({
+      date: s.scheduledDate.toISOString().split("T")[0],
+      intensity: s.intensity as string,
+      notes: s.notes,
+      feelScore: s.checkIn?.feelScore,
+      category: s.checkIn
+        ? categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes)
+        : undefined,
+    }));
+
     const coachAdvice = await generateCoachAdvice({
       feelScore,
       notes: notes?.trim() || null,
@@ -55,6 +79,7 @@ export async function POST(
       sessionDurationMin: session.durationMin,
       sessionNotes: session.notes,
       category,
+      recentContext,
     });
 
     if (coachAdvice) {
@@ -63,6 +88,10 @@ export async function POST(
         data: { coachAdvice },
       });
       return NextResponse.json(updated, { status: 201 });
+    } else {
+      console.warn(
+        `[checkin] coach advice returned null for session ${id} (feelScore=${feelScore}, category=${category})`
+      );
     }
   }
 
