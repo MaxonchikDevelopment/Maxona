@@ -63,6 +63,13 @@ Generate a structured 7-day training plan using the submit_plan tool.
 - A week with only 2–3 sessions is almost always wrong — push for more.
 - Rest days are intentional; do not leave days empty just to be conservative.
 
+## Two-a-day sessions
+- One session per day is the DEFAULT. Do not schedule two unless there is a clear reason.
+- Two-a-days are acceptable ONLY when ALL of: (a) recovery signals are good (all active feelScores ≥ 4), (b) weekly volume target requires it, AND (c) sessions use different modalities (e.g. morning run + afternoon swim).
+- Weekend two-a-days are more acceptable than weekday ones.
+- Two sessions on the same day MUST use different time slots (e.g. morning + afternoon).
+- Never schedule more than 2 sessions per day.
+
 ## Training modalities — REQUIRED
 Use ONLY these four modalities. Do not invent others. The notes field is REQUIRED for every session.
 - "HYROX group class" — the real weekly group session at the gym (functional fitness + running stations); 75–90 min; hard or moderate
@@ -110,6 +117,9 @@ Only schedule sessions within listed windows. Each session must fit entirely ins
 ## fixedSessions
 When the context includes a fixedSessions array, each entry is a recurring session the user has pre-registered (e.g. a weekly HYROX group class). You MUST include every fixedSession in the plan with planningType: "fixed", on its exact date and slot. Do not skip, move, or merge them.
 
+## safetyBlockedSessions
+If the context includes a safetyBlockedSessions array, those fixed sessions were REMOVED by the safety system due to an active injury. Do NOT re-add them. Do NOT schedule any hard session on those dates. Treat those dates as rest or easy-only days.
+
 ## optionalSlots
 When the context includes optionalSlots, each entry is a class or session slot the user *may* attend this week — the planner decides whether to include them based on overall load, recovery, and goals. If you include one, use planningType: "preferred". Never include more optional slots than makes sense for the week's total load.
 
@@ -152,16 +162,28 @@ Rules for ACTIVE thisWeekCheckIns:
 3. Two or more ACTIVE entries with feelScore ≤ 2: reduce remaining weekly volume by 15–20%, no hard sessions for the rest of the week
 4. All entries feelScore ≥ 4: you may maintain or add a modest +5–10% volume — ONE good session does not justify a large load spike
 
-previousWeek (recentCheckIns) signals apply the same rules at lower weight — current-week signals always override. RESOLVED previous-week issues do not count.
+previousWeek (recentCheckIns) ACTIVE signals apply the same rules at lower weight — current-week signals always override.
 
 ## Weekly review context
 When weeklyReview is present, treat it as the athlete's direct input for this planning cycle:
-- recoveryScore (1–5): 1–2 = treat like a low-feel check-in (reduce load); 4–5 = can push
-- priorityNote: what the athlete wants to emphasize this week — shift focus accordingly
-- familyConstraints: additional blocks or reduced availability beyond what scheduleEvents already capture — respect them
+- recoveryScore (1–5): 1–2 = treat like a low-feel check-in (reduce load, no hard sessions); 4–5 = can maintain or slightly increase
+- priorities: focus areas the athlete selected — apply ALL of them:
+  - "More HYROX this week" → include ≥ 2 HYROX sessions if schedule allows
+  - "Easy recovery week" → max 4 sessions total, all easy or moderate, reduce volume ~15%
+  - "Focus on running volume" → include ≥ 3 runs; long run is non-negotiable
+  - "Marathon pace work" → include ≥ 1 tempo or interval run at moderate/hard
+  - "Long ride priority" → include ≥ 1 cycling session ≥ 90 min
+  - "Balanced as usual" → follow default weekly structure
+- familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly
 
-## changeExplanation
-When replanReason is present: REQUIRED. Write 1–3 specific sentences describing exactly what changed versus the previous plan and why — reference specific check-in data, weekly review inputs, or constraints if applicable.`;
+## changeExplanation format
+Required when replanReason is present. Write EXACTLY 2–4 bullet points.
+Format each as: "• [what changed] → [why]" (≤ 15 words per bullet)
+Example:
+• Removed Tuesday HYROX → active knee injury (feelScore 1)
+• Saturday long run reduced 120→80 min → accumulated fatigue
+• Added easy swim Wednesday → low-impact alternative during protection window
+No prose. No intro sentence. Only bullets. Omit entirely for initial plan generation.`;
 
 const SUBMIT_PLAN_TOOL = {
   name: "submit_plan",
@@ -177,7 +199,7 @@ const SUBMIT_PLAN_TOOL = {
       changeExplanation: {
         type: "string",
         description:
-          "Required when replanReason is present. 1–3 sentences on what specifically changed versus the previous plan and why. Omit for initial plan generation.",
+          "Required when replanReason is present. 2–4 bullet points only, format '• [change] → [reason]' (≤15 words each). Example: '• Removed Tue HYROX → active knee injury\\n• Sat run 120→80min → fatigue signals'. No prose. Omit for initial plan.",
       },
       sessions: {
         type: "array",
@@ -245,13 +267,13 @@ function buildUserPrompt(context: PlanningContext): string {
     };
   });
 
-  // Only ACTIVE (unresolved) low-feel warnings carry full weight
+  // Only ACTIVE (unresolved) low-feel warnings from previous week carry weight
   const prevLowFeelWarnings = context.recentCheckIns
-    .filter((c) => c.feelScore <= 2)
-    .map((c) => {
-      const status = c.resolvedAt ? "RESOLVED" : "ACTIVE";
-      return `PREV-WEEK [${status}]: ${c.sessionDate} (${c.sessionIntensity}) feelScore=${c.feelScore}${c.notes ? ` — "${c.notes}"` : ""}`;
-    });
+    .filter((c) => c.feelScore <= 2 && !c.resolvedAt)
+    .map(
+      (c) =>
+        `PREV-WEEK [ACTIVE]: ${c.sessionDate} (${c.sessionIntensity}) feelScore=${c.feelScore}${c.notes ? ` — "${c.notes}"` : ""}`
+    );
 
   const thisWeekLowFeelWarnings = context.thisWeekCheckIns
     .filter((c) => c.feelScore <= 2)
@@ -287,6 +309,12 @@ function buildUserPrompt(context: PlanningContext): string {
       fixedSessions: {
         note: "These sessions are FIXED. Include each one exactly as specified with planningType: 'fixed'.",
         sessions: context.fixedSessions,
+      },
+    }),
+    ...(context.safetyBlockedSessions && context.safetyBlockedSessions.length > 0 && {
+      safetyBlockedSessions: {
+        note: "These fixed sessions were CANCELLED by the safety system due to active injury. Do NOT include them. No hard sessions on these dates.",
+        sessions: context.safetyBlockedSessions,
       },
     }),
     ...(context.optionalSlots.length > 0 && {

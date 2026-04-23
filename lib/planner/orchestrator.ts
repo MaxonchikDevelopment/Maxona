@@ -16,6 +16,34 @@ const RULES = [
   maxWeeklyVolume,
 ];
 
+const INJURY_KEYWORDS = [
+  "injury", "pain", "hurt", "sore", "leg", "knee", "ankle", "back",
+  "hip", "muscle", "hamstring", "calf", "shin", "groin", "shoulder",
+];
+
+function hasInjuryKeywords(notes: string | null): boolean {
+  if (!notes) return false;
+  const lower = notes.toLowerCase();
+  return INJURY_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+function getInjuryWindow(
+  checkIns: RecentCheckIn[]
+): { injuryDate: string; protectUntil: string } | null {
+  const activeInjuries = checkIns
+    .filter((c) => !c.resolvedAt && c.feelScore <= 2 && hasInjuryKeywords(c.notes))
+    .sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+
+  if (activeInjuries.length === 0) return null;
+
+  const injuryDate = activeInjuries[0].sessionDate;
+  const injuryDateObj = new Date(injuryDate + "T00:00:00Z");
+  return {
+    injuryDate,
+    protectUntil: toDateStr(addDays(injuryDateObj, 2)),
+  };
+}
+
 export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: WeeklyReview) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
 
@@ -99,8 +127,8 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
   const doneDateSet = new Set(currentWeekDoneSessions.map((s) => toDateStr(s.scheduledDate)));
   const DAY_OFFSET: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
 
-  const fixedSessions: FixedSession[] = [];
-  const optionalSlots: OptionalSlot[] = [];
+  const allFixedSessions: FixedSession[] = [];
+  const allOptionalSlots: OptionalSlot[] = [];
 
   for (const rs of recurringSessions) {
     const offset = DAY_OFFSET[rs.dayOfWeek] ?? 0;
@@ -116,10 +144,32 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
     };
 
     if (rs.planningType === "preferred") {
-      optionalSlots.push(entry);
+      allOptionalSlots.push(entry);
     } else {
-      fixedSessions.push(entry);
+      allFixedSessions.push(entry);
     }
+  }
+
+  // Deterministic injury safety override — remove fixed/optional sessions
+  // that fall within 2 days of an ACTIVE injury check-in.
+  const injuryWindow = getInjuryWindow(thisWeekCheckIns);
+
+  const safetyBlockedSessions: FixedSession[] = [];
+  let fixedSessions = allFixedSessions;
+  let optionalSlots = allOptionalSlots;
+
+  if (injuryWindow) {
+    fixedSessions = [];
+    for (const fs of allFixedSessions) {
+      if (fs.date > injuryWindow.injuryDate && fs.date <= injuryWindow.protectUntil) {
+        safetyBlockedSessions.push(fs);
+      } else {
+        fixedSessions.push(fs);
+      }
+    }
+    optionalSlots = allOptionalSlots.filter(
+      (os) => !(os.date > injuryWindow.injuryDate && os.date <= injuryWindow.protectUntil)
+    );
   }
 
   const ruleCtx: RuleContext = {
@@ -139,7 +189,17 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
   const adjustedConstraints = {
     ...constraints,
     maxWeeklyMinutes: Math.max(0, constraints.maxWeeklyMinutes - doneMinutesThisWeek),
+    blockedHardSessionDates: [...constraints.blockedHardSessionDates],
   };
+
+  // Deterministically block hard sessions in the injury protection window
+  if (injuryWindow) {
+    let cursor = addDays(new Date(injuryWindow.injuryDate + "T00:00:00Z"), 1);
+    while (toDateStr(cursor) <= injuryWindow.protectUntil) {
+      adjustedConstraints.blockedHardSessionDates.push(toDateStr(cursor));
+      cursor = addDays(cursor, 1);
+    }
+  }
 
   const planningCtx: PlanningContext = {
     user: {
@@ -165,6 +225,7 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
     })),
     fixedSessions,
     optionalSlots,
+    safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
     weeklyReview,
     replanReason,
   };

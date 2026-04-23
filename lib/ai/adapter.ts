@@ -43,7 +43,7 @@ export interface OptionalSlot {
 
 export interface WeeklyReview {
   recoveryScore?: number;
-  priorityNote?: string;
+  priorities?: string[];
   familyConstraints?: string;
 }
 
@@ -65,6 +65,7 @@ export interface PlanningContext {
   currentWeekDoneSessions: CurrentWeekDoneSession[];
   fixedSessions: FixedSession[];
   optionalSlots: OptionalSlot[];
+  safetyBlockedSessions?: FixedSession[];
   weeklyReview?: WeeklyReview;
   replanReason?: string;
 }

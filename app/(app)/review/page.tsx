@@ -14,10 +14,16 @@ const PRIORITY_OPTIONS = [
 export default function ReviewPage() {
   const router = useRouter();
   const [recoveryScore, setRecoveryScore] = useState<number | null>(null);
-  const [priorityNote, setPriorityNote] = useState("");
+  const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [familyConstraints, setFamilyConstraints] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function togglePriority(opt: string) {
+    setSelectedPriorities((prev) =>
+      prev.includes(opt) ? prev.filter((p) => p !== opt) : [...prev, opt]
+    );
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -25,13 +31,13 @@ export default function ReviewPage() {
 
     const weeklyReview = {
       ...(recoveryScore !== null && { recoveryScore }),
-      ...(priorityNote.trim() && { priorityNote: priorityNote.trim() }),
+      ...(selectedPriorities.length > 0 && { priorities: selectedPriorities }),
       ...(familyConstraints.trim() && { familyConstraints: familyConstraints.trim() }),
     };
 
     const parts: string[] = ["weekly review"];
     if (recoveryScore !== null) parts.push(`recovery ${recoveryScore}/5`);
-    if (priorityNote.trim()) parts.push(`priority: ${priorityNote.trim()}`);
+    if (selectedPriorities.length > 0) parts.push(`priorities: ${selectedPriorities.join(", ")}`);
     if (familyConstraints.trim()) parts.push(`constraints: ${familyConstraints.trim()}`);
 
     try {
@@ -65,7 +71,7 @@ export default function ReviewPage() {
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
-              onClick={() => setRecoveryScore(n)}
+              onClick={() => setRecoveryScore(recoveryScore === n ? null : n)}
               className={`h-10 w-10 rounded border text-sm font-medium ${
                 recoveryScore === n ? "bg-black text-white border-black" : "border-gray-300"
               }`}
@@ -77,29 +83,31 @@ export default function ReviewPage() {
         <p className="text-xs text-gray-400">1 = very fatigued / injured · 5 = fresh and ready</p>
       </section>
 
-      {/* Priority */}
+      {/* Priority — multi-select */}
       <section className="space-y-2">
-        <h2 className="font-semibold text-sm">What do you want to prioritize this week?</h2>
-        <div className="flex flex-wrap gap-2 mb-2">
+        <h2 className="font-semibold text-sm">
+          What do you want to prioritize this week?
+          {selectedPriorities.length > 0 && (
+            <span className="ml-2 text-xs font-normal text-gray-400">
+              {selectedPriorities.length} selected
+            </span>
+          )}
+        </h2>
+        <div className="flex flex-wrap gap-2">
           {PRIORITY_OPTIONS.map((opt) => (
             <button
               key={opt}
-              onClick={() => setPriorityNote(priorityNote === opt ? "" : opt)}
+              onClick={() => togglePriority(opt)}
               className={`rounded border px-3 py-1 text-xs ${
-                priorityNote === opt ? "bg-black text-white border-black" : "border-gray-300"
+                selectedPriorities.includes(opt)
+                  ? "bg-black text-white border-black"
+                  : "border-gray-300"
               }`}
             >
               {opt}
             </button>
           ))}
         </div>
-        <input
-          type="text"
-          value={priorityNote}
-          onChange={(e) => setPriorityNote(e.target.value)}
-          placeholder="Or type your own priority..."
-          className="w-full rounded border px-3 py-2 text-sm"
-        />
       </section>
 
       {/* Family / Partner Constraints */}

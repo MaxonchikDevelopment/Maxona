@@ -195,15 +195,16 @@ model TrainingSession {
 }
 
 model CheckIn {
-  id         String    @id @default(cuid())
-  userId     String
-  sessionId  String    @unique
-  occurredAt DateTime
-  feelScore  Int
-  notes      String?
-  resolvedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  userId      String
+  sessionId   String    @unique
+  occurredAt  DateTime
+  feelScore   Int
+  notes       String?
+  coachAdvice String?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   user    User            @relation(fields: [userId], references: [id])
   session TrainingSession @relation(fields: [sessionId], references: [id])

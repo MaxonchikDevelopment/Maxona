@@ -47,6 +47,7 @@ export default async function WeekPage() {
             id: s.checkIn.id,
             feelScore: s.checkIn.feelScore,
             notes: s.checkIn.notes,
+            coachAdvice: s.checkIn.coachAdvice,
             resolvedAt: s.checkIn.resolvedAt?.toISOString() ?? null,
           }
         : null,
@@ -70,8 +71,8 @@ export default async function WeekPage() {
       )}
       {plan.changeExplanation && (
         <div className="rounded border-l-2 border-blue-400 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-          <span className="font-medium">What changed: </span>
-          {plan.changeExplanation}
+          <p className="font-medium mb-1">What changed:</p>
+          <p className="whitespace-pre-line">{plan.changeExplanation}</p>
         </div>
       )}
       {weekDays.map((dateStr, i) => {

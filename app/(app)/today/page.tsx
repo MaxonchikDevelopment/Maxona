@@ -42,6 +42,7 @@ export default async function TodayPage() {
           id: s.checkIn.id,
           feelScore: s.checkIn.feelScore,
           notes: s.checkIn.notes,
+          coachAdvice: s.checkIn.coachAdvice,
           resolvedAt: s.checkIn.resolvedAt?.toISOString() ?? null,
         }
       : null,

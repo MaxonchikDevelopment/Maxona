@@ -5,6 +5,7 @@ export type CheckInProp = {
   id: string;
   feelScore: number;
   notes: string | null;
+  coachAdvice: string | null;
   resolvedAt: string | null;
 };
 
@@ -20,9 +21,9 @@ export type SessionProp = {
   checkIn: CheckInProp | null;
 };
 
-function coachHint(feelScore: number, resolved: boolean): string | null {
+function staticHint(feelScore: number, resolved: boolean): string | null {
   if (resolved) return null;
-  if (feelScore <= 2) return "Tough session — next session will be easy. Mark as resolved once you're feeling better.";
+  if (feelScore <= 2) return "Tough session — mark as resolved once you're feeling better.";
   if (feelScore === 3) return null;
   return "Solid session — good signal for the planner.";
 }
@@ -101,7 +102,8 @@ export function SessionCard({ session }: { session: SessionProp }) {
 
   const isResolved = !!checkIn?.resolvedAt;
   const isLowFeel = !!checkIn && checkIn.feelScore <= 2;
-  const hint = checkIn ? coachHint(checkIn.feelScore, isResolved) : null;
+  const coachAdvice = checkIn?.coachAdvice ?? null;
+  const hint = !isResolved && !coachAdvice ? staticHint(checkIn?.feelScore ?? 3, isResolved) : null;
 
   return (
     <div className="space-y-2 rounded border p-4">
@@ -130,7 +132,13 @@ export function SessionCard({ session }: { session: SessionProp }) {
             )}
           </div>
         ) : (
-          <button onClick={() => { setEditing(false); setOpen(true); }} className="text-sm text-blue-600">
+          <button
+            onClick={() => {
+              setEditing(false);
+              setOpen(true);
+            }}
+            className="text-sm text-blue-600"
+          >
             Check in
           </button>
         )}
@@ -146,6 +154,14 @@ export function SessionCard({ session }: { session: SessionProp }) {
           {checkIn.notes && (
             <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
           )}
+          {/* Coach advice (LLM-generated, only for bad check-ins) */}
+          {coachAdvice && !isResolved && (
+            <div className="rounded bg-amber-50 px-2 py-1.5">
+              <p className="text-xs font-medium text-amber-700 mb-0.5">Coach</p>
+              <p className="text-xs text-amber-800 whitespace-pre-line">{coachAdvice}</p>
+            </div>
+          )}
+          {/* Fallback static hint */}
           {hint && (
             <p className="text-xs text-amber-600">{hint}</p>
           )}
@@ -189,7 +205,7 @@ export function SessionCard({ session }: { session: SessionProp }) {
           </div>
           <input
             type="text"
-            placeholder="Notes (optional)"
+            placeholder="Notes (optional — mention injuries if any)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="w-full rounded border px-2 py-1 text-sm"
@@ -203,7 +219,10 @@ export function SessionCard({ session }: { session: SessionProp }) {
               {submitting ? "Saving..." : editing ? "Update" : "Save"}
             </button>
             <button
-              onClick={() => { setOpen(false); setEditing(false); }}
+              onClick={() => {
+                setOpen(false);
+                setEditing(false);
+              }}
               className="rounded border px-3 py-1 text-sm"
             >
               Cancel

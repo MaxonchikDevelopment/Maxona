@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { generateCoachAdvice } from "@/lib/ai/coach-advice";
 
 const USER_ID = "user_maxon";
 
@@ -42,6 +43,25 @@ export async function POST(
       data: { status: "done" },
     }),
   ]);
+
+  // Generate coach advice for bad check-ins (non-blocking)
+  if (feelScore <= 2) {
+    const coachAdvice = await generateCoachAdvice({
+      feelScore,
+      notes: notes?.trim() || null,
+      sessionIntensity: session.intensity,
+      sessionDurationMin: session.durationMin,
+      sessionNotes: session.notes,
+    });
+
+    if (coachAdvice) {
+      const updated = await prisma.checkIn.update({
+        where: { id: checkIn.id },
+        data: { coachAdvice },
+      });
+      return NextResponse.json(updated, { status: 201 });
+    }
+  }
 
   return NextResponse.json(checkIn, { status: 201 });
 }
