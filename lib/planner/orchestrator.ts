@@ -217,9 +217,9 @@ function buildChangeExplanation({
     bullets.push(`• Focus: ${p.toLowerCase()}${context ? ` — ${context}` : ""}`);
   }
 
-  // 5. Fallback
+  // 5. Fallback — truthful no-op
   if (bullets.length === 0) {
-    bullets.push(`• Plan refreshed — ${replanReason ?? "manual replan"}; sessions adjusted to current week state`);
+    bullets.push(`• No changes to remaining sessions this week — ${replanReason ?? "manual replan"}`);
   }
 
   return bullets.slice(0, 4).join("\n");
@@ -234,6 +234,7 @@ export async function generateWeeklyPlan(
   const todayStr = localDateStr(user.timezone);
   const weekStart = currentWeekStart(user.timezone);
   const weekEnd = addDays(weekStart, 6);
+  const weekEndStr = toDateStr(weekEnd);
 
   const activePlan = await prisma.trainingPlan.findFirst({
     where: { userId: USER_ID, status: "active" },
@@ -449,15 +450,16 @@ export async function generateWeeklyPlan(
   const rawValid = filterSessions(planResult.sessions, adjustedConstraints);
   const validSessions = rawValid.filter((s) => {
     const dateStr = toDateStr(s.scheduledDate);
-    return dateStr >= todayStr && !doneDateSet.has(dateStr);
+    return dateStr >= todayStr && dateStr <= weekEndStr && !doneDateSet.has(dateStr);
   });
 
   // Generate deterministic changeExplanation from the FINAL sessions (always matches what's displayed)
   const changeExplanation = replanReason
     ? buildChangeExplanation({
-        prevPlannedSessions: prevPlannedSessions.filter(
-          (s) => toDateStr(s.scheduledDate) >= todayStr
-        ),
+        prevPlannedSessions: prevPlannedSessions.filter((s: { scheduledDate: Date }) => {
+          const d = toDateStr(s.scheduledDate);
+          return d >= todayStr && d <= weekEndStr;
+        }),
         newSessions: validSessions,
         injuryWindow,
         safetyBlockedSessions,
