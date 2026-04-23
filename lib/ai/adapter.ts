@@ -56,6 +56,20 @@ export interface WeeklyReview {
   parsedConstraints?: ParsedTemporalConstraint[];
 }
 
+export interface ReadinessEntry {
+  date: string;
+  feelScore: number;
+  category: string;
+  tags: string[];
+  notes: string | null;
+}
+
+export interface ReadinessSummary {
+  latestEntry?: ReadinessEntry;
+  activeWarnings: ReadinessEntry[];
+  affectsRemainingWeek: boolean;
+}
+
 export interface PlanningContext {
   user: {
     id: string;
@@ -77,6 +91,7 @@ export interface PlanningContext {
   safetyBlockedSessions?: FixedSession[];
   weeklyReview?: WeeklyReview;
   replanReason?: string;
+  readinessSummary?: ReadinessSummary;
 }
 
 export interface PlannedSession {

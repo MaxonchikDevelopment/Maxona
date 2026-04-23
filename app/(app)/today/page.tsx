@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
+import { DailyReadinessCard } from "@/components/daily-readiness-card";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import type { SessionProp } from "@/components/session-card";
+import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,7 @@ export default async function TodayPage() {
   const [y, m, d] = todayStr.split("-").map(Number);
   const todayDate = new Date(Date.UTC(y, m - 1, d));
 
-  const [sessions, injuryCheckIns] = await Promise.all([
+  const [sessions, injuryCheckIns, readinessRecord] = await Promise.all([
     prisma.trainingSession.findMany({
       where: {
         userId: USER_ID,
@@ -35,6 +37,9 @@ export default async function TodayPage() {
       where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
       include: { session: true },
       orderBy: { occurredAt: "desc" },
+    }),
+    prisma.dailyReadiness.findUnique({
+      where: { userId_date: { userId: USER_ID, date: todayDate } },
     }),
   ]);
 
@@ -70,10 +75,23 @@ export default async function TodayPage() {
       notes: ci.notes,
     }));
 
+  const readinessProp: ReadinessProp | null = readinessRecord
+    ? {
+        id: readinessRecord.id,
+        date: readinessRecord.date.toISOString().split("T")[0],
+        feelScore: readinessRecord.feelScore,
+        notes: readinessRecord.notes,
+        tags: readinessRecord.tags,
+        category: readinessRecord.category,
+        coachAdvice: readinessRecord.coachAdvice,
+      }
+    : null;
+
   return (
     <main className="p-4 space-y-3">
       <h1 className="mb-4 text-xl font-bold">Today</h1>
       <ActiveIssues initialIssues={activeIssues} />
+      <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
       {props.length === 0 ? (
         <p className="text-gray-500">Rest day — nothing scheduled.</p>
       ) : (

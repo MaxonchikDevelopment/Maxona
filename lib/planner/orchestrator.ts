@@ -16,6 +16,8 @@ import type {
   WeeklyReview,
   PlannedSession,
   CurrentWeekDoneSession,
+  ReadinessSummary,
+  ReadinessEntry,
 } from "@/lib/ai/adapter";
 
 const USER_ID = "user_maxon";
@@ -41,6 +43,42 @@ function getInjuryWindow(
   return {
     injuryDate,
     protectUntil: toDateStr(addDays(injuryDateObj, 2)),
+  };
+}
+
+// ─── Readiness summary ───────────────────────────────────────────────────────
+
+function buildReadinessSummary(
+  records: Array<{
+    date: Date;
+    feelScore: number;
+    category: string;
+    tags: string[];
+    notes: string | null;
+  }>,
+  todayStr: string
+): ReadinessSummary | undefined {
+  if (records.length === 0) return undefined;
+
+  const entries: ReadinessEntry[] = records
+    .map((r) => ({
+      date: toDateStr(r.date),
+      feelScore: r.feelScore,
+      category: r.category,
+      tags: r.tags,
+      notes: r.notes,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const latestEntry = entries[0];
+  const activeWarnings = entries.filter(
+    (e) => e.category !== "ok" && e.date >= todayStr
+  );
+
+  return {
+    latestEntry,
+    activeWarnings,
+    affectsRemainingWeek: activeWarnings.length > 0,
   };
 }
 
@@ -246,6 +284,7 @@ export async function generateWeeklyPlan(
     rawPreviousSessions,
     recurringSessions,
     prevPlannedSessions,
+    weeklyReadinessList,
   ] = await Promise.all([
     prisma.goal.findMany({
       where: { userId: USER_ID, status: "active", deletedAt: null },
@@ -282,6 +321,10 @@ export async function generateWeeklyPlan(
           where: { planId: activePlan.id, status: "planned" },
         })
       : Promise.resolve([]),
+    prisma.dailyReadiness.findMany({
+      where: { userId: USER_ID, date: { gte: weekStart, lte: weekEnd } },
+      orderBy: { date: "desc" },
+    }),
   ]);
 
   // Previous-week check-ins with category
@@ -309,6 +352,8 @@ export async function generateWeeklyPlan(
       resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
       category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
     }));
+
+  const readinessSummary = buildReadinessSummary(weeklyReadinessList, todayStr);
 
   // Parse family constraints from free text (Haiku call, non-blocking on failure)
   let parsedWeeklyReview = weeklyReview;
@@ -431,6 +476,7 @@ export async function generateWeeklyPlan(
     safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
     weeklyReview: parsedWeeklyReview,
     replanReason,
+    readinessSummary,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);

@@ -84,6 +84,7 @@ model User {
   trainingSessions    TrainingSession[]
   checkIns            CheckIn[]
   recurringSessions   RecurringSession[]
+  dailyReadiness      DailyReadiness[]
 }
 
 model AvailabilityWindow {
@@ -208,4 +209,21 @@ model CheckIn {
 
   user    User            @relation(fields: [userId], references: [id])
   session TrainingSession @relation(fields: [sessionId], references: [id])
+}
+
+model DailyReadiness {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime @db.Date
+  feelScore   Int
+  notes       String?
+  tags        String[] @default([])
+  category    String
+  coachAdvice String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
 }

@@ -134,6 +134,106 @@ No intro. No preamble.`,
   }
 }
 
+// ─── Daily Readiness Coach Advice ─────────────────────────────────────────────
+
+export async function generateReadinessCoachAdvice(params: {
+  feelScore: number;
+  notes: string | null;
+  tags: string[];
+  category: CheckInCategory;
+}): Promise<string | null> {
+  const tagStr = params.tags.length > 0 ? `Tags: ${params.tags.join(", ")}` : "";
+
+  try {
+    if (params.feelScore <= 3) {
+      const context =
+        params.category === "injury"
+          ? "Athlete reports possible injury or pain — physical issue."
+          : "Athlete reports fatigue, poor recovery, or systemic stress — not an injury.";
+
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 200,
+        messages: [
+          {
+            role: "user",
+            content: `Sports coach. Athlete submitted a daily readiness check-in (not after a session).
+
+Daily readiness score: ${params.feelScore}/6
+Notes: ${params.notes ? `"${params.notes}"` : "(none)"}
+${tagStr}
+Context: ${context}
+
+Give 1–2 concrete suggestions for managing today and tomorrow's training. Rules:
+- Each ≤ 20 words
+- Actionable and specific to the tags/notes if present (e.g. alcohol → hydration; poor_sleep → nap; travel → easy only)
+- For injury: suggest modified load or targeted recovery for tomorrow's session
+- Format: "• [suggestion]"
+No intro. No preamble.`,
+          },
+        ],
+      });
+
+      const block = response.content.find((b) => b.type === "text");
+      return block?.type === "text" ? block.text.trim() : null;
+    }
+
+    if (params.feelScore === 4) {
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 120,
+        messages: [
+          {
+            role: "user",
+            content: `Sports coach. Athlete submitted a daily readiness check-in.
+
+Daily readiness score: 4/6
+Notes: ${params.notes ? `"${params.notes}"` : "(none)"}
+${tagStr}
+
+Give 1 short analytical observation about what a 4/6 readiness means for the next session. Rules:
+- ≤ 20 words
+- Reference any tags if present
+- Format: "• [observation]"
+No intro. No preamble.`,
+          },
+        ],
+      });
+
+      const block = response.content.find((b) => b.type === "text");
+      return block?.type === "text" ? block.text.trim() : null;
+    }
+
+    // feelScore >= 5
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 120,
+      messages: [
+        {
+          role: "user",
+          content: `Sports coach. Athlete submitted a daily readiness check-in.
+
+Daily readiness score: ${params.feelScore}/6
+Notes: ${params.notes ? `"${params.notes}"` : "(none)"}
+${tagStr}
+
+Give 1 short positive observation about readiness for tomorrow's training. Rules:
+- ≤ 20 words
+- Specific, not generic praise
+- Format: "• [observation]"
+No intro. No preamble.`,
+        },
+      ],
+    });
+
+    const block = response.content.find((b) => b.type === "text");
+    return block?.type === "text" ? block.text.trim() : null;
+  } catch (err) {
+    console.error("[coach-advice] generateReadinessCoachAdvice failed:", err);
+    return null;
+  }
+}
+
 // ─── Change Explanation ────────────────────────────────────────────────────────
 
 export interface ChangeSummaryPayload {

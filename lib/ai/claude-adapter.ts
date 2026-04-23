@@ -123,6 +123,22 @@ If the context includes a safetyBlockedSessions array, those fixed sessions were
 ## optionalSlots
 When the context includes optionalSlots, each entry is a class or session slot the user *may* attend this week — the planner decides whether to include them based on overall load, recovery, and goals. If you include one, use planningType: "preferred". Never include more optional slots than makes sense for the week's total load.
 
+## Daily readiness signals
+When dailyReadiness is present, it contains readiness check-ins submitted on rest days or before sessions — NOT post-workout check-ins.
+This is a LOWER-confidence signal than workout check-ins. Apply to REMAINING days only (never to past dates or already-done sessions).
+
+- latestEntry: most recent readiness entry this week
+- activeWarnings: entries with category != "ok" from today onwards; treat as signal to ease load
+- affectsRemainingWeek: true when active warnings exist
+
+Adjustment rules (apply in proportion; these are NOT hard safety blocks):
+- category="injury" + feelScore ≤ 3: treat like a workout injury signal but at 60% confidence — no hard sessions next 2 days, avoid noted body part
+- category="fatigue" + feelScore ≤ 3: bias next 1–2 sessions easier or shorter; no hard sessions tomorrow
+- tags include "alcohol" or "poor_sleep": reduce tomorrow's session intensity one level or cut duration 15–20%
+- tags include "stress" or "travel": prefer easy/moderate tomorrow; avoid hard
+- feelScore ≥ 5: maintain planned load; do NOT overreact positively
+Daily readiness does NOT trigger deterministic safety blocking — only workout check-ins do.
+
 ## familyConstraintsParsed
 When present in the prompt, these are structured constraints parsed from the athlete's free-text input. Apply them as hard schedule constraints:
 - type "blocked": do NOT schedule training on this day/slot
@@ -345,6 +361,16 @@ function buildUserPrompt(context: PlanningContext): string {
             ? `On ${c.day}, only schedule training in the ${c.slot ?? "any"} slot`
             : `No training on ${c.day}${c.slot ? ` during ${c.slot}` : " (all day)"}`,
         })),
+      },
+    }),
+    ...(context.readinessSummary && {
+      dailyReadiness: {
+        note: "Rest-day / morning readiness signals this week. Apply to remaining days only.",
+        latestEntry: context.readinessSummary.latestEntry,
+        ...(context.readinessSummary.activeWarnings.length > 0 && {
+          activeWarnings: context.readinessSummary.activeWarnings,
+        }),
+        affectsRemainingWeek: context.readinessSummary.affectsRemainingWeek,
       },
     }),
     ...(context.thisWeekCheckIns.length > 0 && {
