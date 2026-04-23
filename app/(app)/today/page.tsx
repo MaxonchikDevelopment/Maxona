@@ -2,10 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { DailyReadinessCard } from "@/components/daily-readiness-card";
+import { SignalsHistory } from "@/components/signals-history";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import type { SessionProp } from "@/components/session-card";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
+import type { SignalHistoryItem } from "@/components/signals-history";
 
 export const dynamic = "force-dynamic";
 
@@ -13,23 +15,65 @@ const USER_ID = "user_maxon";
 
 function buildImplicationLine(
   readiness: ReadinessProp | null,
-  activeIssues: IssueItem[]
+  activeIssues: IssueItem[],
+  latestCheckIn: { feelScore: number; category: string; sessionNotes: string | null } | null,
+  nextPlanned: { intensity: string; notes: string | null } | null
 ): string | null {
+  const nextLabel =
+    nextPlanned?.notes?.split(":")[0].trim() ??
+    (nextPlanned ? nextPlanned.intensity : null);
+
+  // 1. Active injury from past check-ins
   if (activeIssues.length > 0) {
     const issue = activeIssues[0];
-    const label = issue.sessionNotes?.split(":")[0].trim() ?? "injury";
-    return `${label} still active — hard sessions blocked`;
+    const issueLabel = issue.sessionNotes?.split(":")[0].trim() ?? "injury";
+    if (nextPlanned && nextPlanned.intensity === "hard") {
+      return `${issueLabel} still active — ${nextLabel} moved to easy`;
+    }
+    return `${issueLabel} still active — hard sessions blocked`;
   }
+
+  // 2. Today's workout check-in was bad
+  if (latestCheckIn && latestCheckIn.feelScore <= 3) {
+    if (latestCheckIn.category === "injury") {
+      const sport = latestCheckIn.sessionNotes?.split(":")[0].trim() ?? "session";
+      if (nextPlanned) {
+        return `Injury flagged in ${sport} — ${nextLabel} stays easy or rest`;
+      }
+      return "Injury flagged — next session stays easy";
+    }
+    if (latestCheckIn.category === "fatigue") {
+      if (nextPlanned) {
+        return `Fatigue noted today — ${nextLabel} kept lighter`;
+      }
+      return "Fatigue noted — next session kept lighter";
+    }
+  }
+
+  // 3. Readiness-based signals
   if (!readiness) return null;
+
   if (readiness.category === "injury" && readiness.feelScore <= 3) {
     return "Possible injury flagged — plan will protect next sessions";
   }
   if (readiness.category === "fatigue" && readiness.feelScore <= 3) {
+    if (nextPlanned) {
+      return `Fatigue noted — ${nextLabel} stays lighter`;
+    }
     return "Fatigue noted — next session kept lighter";
   }
   if ((readiness.tags as string[]).some((t) => ["alcohol", "poor_sleep"].includes(t))) {
+    if (nextPlanned) {
+      return `Poor recovery signal — ${nextLabel} may be shorter`;
+    }
     return "Poor recovery signal — tomorrow's session may be shorter";
   }
+
+  // 4. All good with next session reference
+  if (nextPlanned && readiness.feelScore >= 5) {
+    return `Plan on track — ${nextLabel} ahead`;
+  }
+
   return null;
 }
 
@@ -45,25 +89,50 @@ export default async function TodayPage() {
   const [y, m, d] = todayStr.split("-").map(Number);
   const todayDate = new Date(Date.UTC(y, m - 1, d));
 
-  const [sessions, injuryCheckIns, readinessRecord] = await Promise.all([
-    prisma.trainingSession.findMany({
-      where: {
-        userId: USER_ID,
-        scheduledDate: todayDate,
-        plan: { status: "active" },
-      },
-      include: { checkIn: true },
-      orderBy: { preferredSlot: "asc" },
-    }),
-    prisma.checkIn.findMany({
-      where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
-      include: { session: true },
-      orderBy: { occurredAt: "desc" },
-    }),
-    prisma.dailyReadiness.findUnique({
-      where: { userId_date: { userId: USER_ID, date: todayDate } },
-    }),
-  ]);
+  const fourteenDaysAgo = new Date(todayDate);
+  fourteenDaysAgo.setUTCDate(fourteenDaysAgo.getUTCDate() - 13);
+
+  const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession, historyReadiness, historyCheckIns] =
+    await Promise.all([
+      prisma.trainingSession.findMany({
+        where: {
+          userId: USER_ID,
+          scheduledDate: todayDate,
+          plan: { status: "active" },
+        },
+        include: { checkIn: true },
+        orderBy: { preferredSlot: "asc" },
+      }),
+      prisma.checkIn.findMany({
+        where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
+        include: { session: true },
+        orderBy: { occurredAt: "desc" },
+      }),
+      prisma.dailyReadiness.findUnique({
+        where: { userId_date: { userId: USER_ID, date: todayDate } },
+      }),
+      prisma.trainingSession.findFirst({
+        where: {
+          userId: USER_ID,
+          plan: { status: "active" },
+          status: "planned",
+          scheduledDate: { gt: todayDate },
+        },
+        orderBy: { scheduledDate: "asc" },
+      }),
+      prisma.dailyReadiness.findMany({
+        where: { userId: USER_ID, date: { gte: fourteenDaysAgo } },
+        orderBy: { date: "desc" },
+      }),
+      prisma.checkIn.findMany({
+        where: {
+          userId: USER_ID,
+          occurredAt: { gte: fourteenDaysAgo },
+        },
+        include: { session: true },
+        orderBy: { occurredAt: "desc" },
+      }),
+    ]);
 
   const props: SessionProp[] = sessions.map((s) => ({
     id: s.id,
@@ -109,7 +178,45 @@ export default async function TodayPage() {
       }
     : null;
 
-  const implicationLine = buildImplicationLine(readinessProp, activeIssues);
+  // Worst (lowest feel) check-in from today's sessions
+  const todayCheckIn = sessions
+    .filter((s) => s.checkIn)
+    .map((s) => ({
+      feelScore: s.checkIn!.feelScore,
+      category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
+      sessionNotes: s.notes,
+    }))
+    .sort((a, b) => a.feelScore - b.feelScore)[0] ?? null;
+
+  const nextPlanned = nextPlannedSession
+    ? { intensity: nextPlannedSession.intensity, notes: nextPlannedSession.notes }
+    : null;
+
+  const implicationLine = buildImplicationLine(readinessProp, activeIssues, todayCheckIn, nextPlanned);
+
+  // Build history items (last 14 days), capped at 12
+  const historyItems: SignalHistoryItem[] = [
+    ...historyReadiness.map((r) => ({
+      date: r.date.toISOString().split("T")[0],
+      source: "readiness" as const,
+      feelScore: r.feelScore,
+      category: r.category,
+      notePreview: r.notes ? r.notes.slice(0, 60) : null,
+      sessionLabel: null,
+      resolvedAt: null,
+    })),
+    ...historyCheckIns.map((ci) => ({
+      date: ci.session.scheduledDate.toISOString().split("T")[0],
+      source: "workout" as const,
+      feelScore: ci.feelScore,
+      category: categorizeCheckIn(ci.feelScore, ci.notes),
+      notePreview: ci.notes ? ci.notes.slice(0, 60) : null,
+      sessionLabel: ci.session.notes?.split(":")[0].trim() ?? null,
+      resolvedAt: ci.resolvedAt?.toISOString() ?? null,
+    })),
+  ]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 12);
 
   return (
     <main className="p-4 space-y-3">
@@ -127,6 +234,9 @@ export default async function TodayPage() {
       <ActiveIssues initialIssues={activeIssues} />
       {implicationLine && (
         <p className="text-xs text-gray-500 px-1">{implicationLine}</p>
+      )}
+      {historyItems.length > 0 && (
+        <SignalsHistory items={historyItems} />
       )}
     </main>
   );

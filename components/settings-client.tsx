@@ -33,6 +33,7 @@ type Constraints = {
   weeklyTrainingHoursTarget?: number;
   allowedModalities?: string[];
   avoidFridayEvening?: boolean;
+  preferredEasyRideDurationMin?: number;
   preferredLongRideDurationMin?: number;
   preferredLongRunDurationMin?: number;
   minMeaningfulCyclingDurationMin?: number;
@@ -63,6 +64,9 @@ export function SettingsClient({
 
   // --- Athlete Preferences ---
   const [avoidFriday, setAvoidFriday] = useState(initialConstraints.avoidFridayEvening ?? false);
+  const [easyRideDuration, setEasyRideDuration] = useState(
+    String(initialConstraints.preferredEasyRideDurationMin ?? "")
+  );
   const [longRideDuration, setLongRideDuration] = useState(
     String(initialConstraints.preferredLongRideDurationMin ?? "")
   );
@@ -92,6 +96,7 @@ export function SettingsClient({
           weeklyTrainingHoursTarget: hoursTarget ? Number(hoursTarget) : undefined,
           allowedModalities: modalities,
           avoidFridayEvening: avoidFriday,
+          preferredEasyRideDurationMin: easyRideDuration ? Number(easyRideDuration) : undefined,
           preferredLongRideDurationMin: longRideDuration ? Number(longRideDuration) : undefined,
           preferredLongRunDurationMin: longRunDuration ? Number(longRunDuration) : undefined,
           minMeaningfulCyclingDurationMin: minCyclingDuration ? Number(minCyclingDuration) : undefined,
@@ -273,16 +278,32 @@ export function SettingsClient({
             Avoid Friday evening training when possible
           </label>
 
-          <label className="block text-sm">
-            Cycling long ride target duration (min)
-            <input
-              type="number"
-              value={longRideDuration}
-              onChange={(e) => setLongRideDuration(e.target.value)}
-              placeholder="e.g. 120"
-              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-            />
-          </label>
+          <div className="pt-1 space-y-2">
+            <p className="text-sm font-medium">Cycling durations (min)</p>
+            <p className="text-xs text-gray-400">
+              Target durations — planner uses these instead of guessing.
+            </p>
+            <label className="block text-sm">
+              Easy / recovery ride
+              <input
+                type="number"
+                value={easyRideDuration}
+                onChange={(e) => setEasyRideDuration(e.target.value)}
+                placeholder="e.g. 60"
+                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block text-sm">
+              Long ride
+              <input
+                type="number"
+                value={longRideDuration}
+                onChange={(e) => setLongRideDuration(e.target.value)}
+                placeholder="e.g. 120"
+                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+              />
+            </label>
+          </div>
 
           <label className="block text-sm">
             Long run target duration (min)

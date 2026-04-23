@@ -149,7 +149,8 @@ These override default availability windows for the specified day.
 - weeklyTrainingHoursTarget: if present, use as the total minutes target for the week (multiply by 60). Overrides the default 4-6 session guideline.
 - allowedModalities: if present, use ONLY the listed modalities. Allowed values: "hyrox", "running", "cycling", "swimming". If absent, use all four.
 - avoidFridayEvening: if true, do not schedule sessions on Friday evening slot.
-- preferredLongRideDurationMin: target duration for cycling long rides (e.g. 120).
+- preferredEasyRideDurationMin: target duration for easy / recovery cycling sessions (e.g. 60). Use this INSTEAD of inventing a duration.
+- preferredLongRideDurationMin: target duration for cycling long rides (e.g. 120). Use this INSTEAD of inventing a duration.
 - preferredLongRunDurationMin: target duration for long runs (e.g. 110). Use this instead of the default range when set.
 - minMeaningfulCyclingDurationMin: do not schedule cycling sessions shorter than this value.
 - maxHyroxPerWeek: hard cap on HYROX group class sessions per week.

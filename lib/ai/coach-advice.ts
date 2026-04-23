@@ -3,6 +3,31 @@ import type { CheckInCategory } from "@/lib/checkin-utils";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+export interface WorkoutAnalytics {
+  hardSessionsThisWeek: number;
+  minutesDoneThisWeek: number;
+  backToBackHardRisk: boolean;
+  nextPlannedSession: { date: string; intensity: string; notes: string | null } | null;
+  plannerMode: "protecting" | "reducing" | "maintaining" | "building" | null;
+  isLongRunWeek: boolean;
+  isHyroxHeavyWeek: boolean;
+}
+
+function buildAnalyticsSummary(a: WorkoutAnalytics): string {
+  const parts: string[] = [
+    `Hard sessions this week: ${a.hardSessionsThisWeek} · ${a.minutesDoneThisWeek} min done`,
+  ];
+  if (a.backToBackHardRisk) parts.push("Back-to-back hard load: YES");
+  if (a.nextPlannedSession) {
+    const ns = a.nextPlannedSession;
+    parts.push(`Next planned: ${ns.date} ${ns.intensity}${ns.notes ? ` · ${ns.notes}` : ""}`);
+  }
+  if (a.plannerMode && a.plannerMode !== "maintaining") parts.push(`Planner stance: ${a.plannerMode}`);
+  if (a.isLongRunWeek) parts.push("Long run week: yes");
+  if (a.isHyroxHeavyWeek) parts.push("HYROX-heavy week: yes (≥2 sessions)");
+  return parts.map((p) => `- ${p}`).join("\n");
+}
+
 export async function generateCoachAdvice(params: {
   feelScore: number;
   notes: string | null;
@@ -17,6 +42,7 @@ export async function generateCoachAdvice(params: {
     feelScore?: number;
     category?: string;
   }>;
+  analytics?: WorkoutAnalytics;
 }): Promise<string | null> {
   const weekContext =
     params.recentContext && params.recentContext.length > 0
@@ -27,6 +53,10 @@ export async function generateCoachAdvice(params: {
           )
           .join("\n")}`
       : "";
+
+  const analyticsBlock = params.analytics
+    ? `\nWorkout analytics:\n${buildAnalyticsSummary(params.analytics)}`
+    : "";
 
   if (params.feelScore <= 3) {
     const context =
@@ -46,13 +76,14 @@ export async function generateCoachAdvice(params: {
 Session: ${params.sessionIntensity} · ${params.sessionDurationMin}min${params.sessionNotes ? ` · ${params.sessionNotes}` : ""}
 Feel score: ${params.feelScore}/6
 Notes: ${params.notes ? `"${params.notes}"` : "(none)"}
-Context: ${context}${weekContext}
+Context: ${context}${weekContext}${analyticsBlock}
 
 Give 2–3 concrete next-step suggestions. Rules:
 - Each ≤ 20 words, sport-specific, actionable
 - No "listen to your body" or "rest is important"
 - For injury: suggest specific movement alternatives or targeted mobility work
-- For fatigue: tie suggestions to the weekly load shown above (e.g. "after X sessions this week, …")
+- For fatigue: tie to weekly load from analytics — e.g. "After ${params.analytics?.hardSessionsThisWeek ?? "X"} hard sessions / ${params.analytics?.minutesDoneThisWeek ?? "Y"} min this week, …"
+- If back-to-back hard load or high weekly minutes: suggest recovery alternatives specifically
 - Reference the specific sport or body part mentioned
 - Format: "• [suggestion]"
 No intro. No preamble.`,
@@ -81,13 +112,14 @@ No intro. No preamble.`,
 
 Session: ${params.sessionIntensity} · ${params.sessionDurationMin}min${params.sessionNotes ? ` · ${params.sessionNotes}` : ""}
 Feel score: 4/6
-Notes: ${params.notes ? `"${params.notes}"` : "(none)"}${weekContext}
+Notes: ${params.notes ? `"${params.notes}"` : "(none)"}${weekContext}${analyticsBlock}
 
 Give 1–2 short coach observations. Rules:
 - Each ≤ 20 words
-- Analytical: note readiness level, load trend, or what 4/6 signals about fatigue or adaptation
-- Mildly cautionary if sessions are stacking; mildly positive if load has been light or it's a taper phase
-- No generic praise or alarm — reference the specific session type and weekly context above
+- Analytical: note readiness, load trend, or what 4/6 signals about fatigue or adaptation
+- Reference hard session count or total minutes from analytics if stacking risk exists
+- Mildly cautionary if back-to-back hard or this is the 2nd+ hard session; positive if load is light
+- Reference next planned session from analytics if available — does this session position well for it?
 - Format: "• [observation]"
 No intro. No preamble.`,
           },
@@ -114,12 +146,14 @@ No intro. No preamble.`,
 
 Session: ${params.sessionIntensity} · ${params.sessionDurationMin}min${params.sessionNotes ? ` · ${params.sessionNotes}` : ""}
 Feel score: ${params.feelScore}/6
-Notes: ${params.notes ? `"${params.notes}"` : "(none)"}${weekContext}
+Notes: ${params.notes ? `"${params.notes}"` : "(none)"}${weekContext}${analyticsBlock}
 
 Give 1–2 short coach observations. Rules:
 - Each ≤ 20 words
 - Analytical, not generic praise — reference load, sport, or recovery context
-- One observation may be cautionary if stacking risk exists (back-to-back hard sessions, high weekly volume)
+- If hardSessionsThisWeek ≥ 2 or back-to-back hard: note stacking risk despite good feel
+- If next planned session is hard and near: mention whether this session positions well for it
+- If planner stance is protecting/reducing: acknowledge the positive rebound while keeping context
 - Format: "• [observation]"
 No intro. No preamble.`,
         },

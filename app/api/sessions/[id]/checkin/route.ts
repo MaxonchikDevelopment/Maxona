@@ -2,8 +2,121 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCoachAdvice } from "@/lib/ai/coach-advice";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
+import type { WorkoutAnalytics } from "@/lib/ai/coach-advice";
 
 const USER_ID = "user_maxon";
+
+function weekStartFromDate(date: Date): Date {
+  const dow = date.getUTCDay(); // 0=Sun, 1=Mon
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() - daysFromMonday);
+  return result;
+}
+
+async function buildCheckInContext(
+  sessionId: string,
+  session: { scheduledDate: Date; intensity: string; durationMin: number; notes: string | null },
+  feelScore: number,
+  notes: string | null
+): Promise<{
+  recentContext: Array<{ date: string; intensity: string; notes: string | null; feelScore?: number; category?: string }>;
+  analytics: WorkoutAnalytics;
+}> {
+  const weekStart = weekStartFromDate(session.scheduledDate);
+
+  const [thisWeekDoneSessions, nextPlannedSession] = await Promise.all([
+    prisma.trainingSession.findMany({
+      where: {
+        userId: USER_ID,
+        plan: { status: "active" },
+        scheduledDate: { gte: weekStart },
+        status: { in: ["done", "skipped"] },
+        id: { not: sessionId },
+      },
+      include: { checkIn: true },
+      orderBy: { scheduledDate: "desc" },
+    }),
+    prisma.trainingSession.findFirst({
+      where: {
+        userId: USER_ID,
+        plan: { status: "active" },
+        status: "planned",
+        scheduledDate: { gt: session.scheduledDate },
+      },
+      orderBy: { scheduledDate: "asc" },
+    }),
+  ]);
+
+  const recentContext = thisWeekDoneSessions.slice(0, 6).map((s) => ({
+    date: s.scheduledDate.toISOString().split("T")[0],
+    intensity: s.intensity as string,
+    notes: s.notes,
+    feelScore: s.checkIn?.feelScore,
+    category: s.checkIn
+      ? categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes)
+      : undefined,
+  }));
+
+  const hardSessionsThisWeek =
+    thisWeekDoneSessions.filter((s) => s.intensity === "hard").length +
+    (session.intensity === "hard" ? 1 : 0);
+  const minutesDoneThisWeek =
+    thisWeekDoneSessions.reduce((sum, s) => sum + s.durationMin, 0) + session.durationMin;
+
+  // Most recently completed session before current (by scheduledDate)
+  const lastDone = [...thisWeekDoneSessions].sort(
+    (a, b) => b.scheduledDate.getTime() - a.scheduledDate.getTime()
+  )[0];
+  const backToBackHardRisk =
+    session.intensity === "hard" && lastDone?.intensity === "hard";
+
+  const category = categorizeCheckIn(feelScore, notes);
+  const badCIs = thisWeekDoneSessions.filter(
+    (s) =>
+      s.checkIn &&
+      !s.checkIn.resolvedAt &&
+      categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes) !== "ok"
+  );
+  const hasInjury =
+    badCIs.some((s) => categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes) === "injury") ||
+    category === "injury";
+  const hasFatigue =
+    !hasInjury &&
+    (badCIs.some(
+      (s) => categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes) === "fatigue"
+    ) ||
+      category === "fatigue");
+  const plannerMode = hasInjury
+    ? ("protecting" as const)
+    : hasFatigue
+    ? ("reducing" as const)
+    : ("maintaining" as const);
+
+  const allNotes = [...thisWeekDoneSessions.map((s) => s.notes), session.notes];
+  const isLongRunWeek = allNotes.some((n) => (n ?? "").toLowerCase().includes("long run"));
+  const isHyroxHeavyWeek =
+    allNotes.filter((n) => (n ?? "").toLowerCase().startsWith("hyrox")).length >= 2;
+
+  return {
+    recentContext,
+    analytics: {
+      hardSessionsThisWeek,
+      minutesDoneThisWeek,
+      backToBackHardRisk,
+      nextPlannedSession: nextPlannedSession
+        ? {
+            date: nextPlannedSession.scheduledDate.toISOString().split("T")[0],
+            intensity: nextPlannedSession.intensity,
+            notes: nextPlannedSession.notes,
+          }
+        : null,
+      plannerMode,
+      isLongRunWeek,
+      isHyroxHeavyWeek,
+    },
+  };
+}
 
 export async function POST(
   request: Request,
@@ -45,32 +158,15 @@ export async function POST(
     }),
   ]);
 
-  // Generate coach advice for all feel scores (non-blocking)
+  // Generate coach advice (non-blocking)
   {
     const category = categorizeCheckIn(feelScore, notes?.trim() || null);
-
-    // Gather recent sessions from active plan for context
-    const recentSessions = await prisma.trainingSession.findMany({
-      where: {
-        userId: USER_ID,
-        id: { not: id },
-        plan: { status: "active" },
-        status: { in: ["done", "skipped"] },
-      },
-      include: { checkIn: true },
-      orderBy: { scheduledDate: "desc" },
-      take: 7,
-    });
-
-    const recentContext = recentSessions.map((s) => ({
-      date: s.scheduledDate.toISOString().split("T")[0],
-      intensity: s.intensity as string,
-      notes: s.notes,
-      feelScore: s.checkIn?.feelScore,
-      category: s.checkIn
-        ? categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes)
-        : undefined,
-    }));
+    const { recentContext, analytics } = await buildCheckInContext(
+      id,
+      session,
+      feelScore,
+      notes?.trim() || null
+    );
 
     const coachAdvice = await generateCoachAdvice({
       feelScore,
@@ -80,6 +176,7 @@ export async function POST(
       sessionNotes: session.notes,
       category,
       recentContext,
+      analytics,
     });
 
     if (coachAdvice) {
@@ -148,27 +245,12 @@ export async function PATCH(
     }
 
     const category = categorizeCheckIn(newFeelScore, newNotes);
-    const recentSessions = await prisma.trainingSession.findMany({
-      where: {
-        userId: USER_ID,
-        id: { not: id },
-        plan: { status: "active" },
-        status: { in: ["done", "skipped"] },
-      },
-      include: { checkIn: true },
-      orderBy: { scheduledDate: "desc" },
-      take: 7,
-    });
-
-    const recentContext = recentSessions.map((s) => ({
-      date: s.scheduledDate.toISOString().split("T")[0],
-      intensity: s.intensity as string,
-      notes: s.notes,
-      feelScore: s.checkIn?.feelScore,
-      category: s.checkIn
-        ? categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes)
-        : undefined,
-    }));
+    const { recentContext, analytics } = await buildCheckInContext(
+      id,
+      session,
+      newFeelScore,
+      newNotes
+    );
 
     const coachAdvice = await generateCoachAdvice({
       feelScore: newFeelScore,
@@ -178,6 +260,7 @@ export async function PATCH(
       sessionNotes: session.notes,
       category,
       recentContext,
+      analytics,
     });
 
     data.coachAdvice = coachAdvice ?? null;
