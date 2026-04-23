@@ -123,6 +123,7 @@ function buildChangeSummaryPayload({
   weeklyReview,
   replanReason,
   doneSessionsThisWeek,
+  readinessSummary,
 }: {
   prevPlannedSessions: Array<{
     scheduledDate: Date;
@@ -137,6 +138,7 @@ function buildChangeSummaryPayload({
   weeklyReview?: WeeklyReview;
   replanReason?: string;
   doneSessionsThisWeek: CurrentWeekDoneSession[];
+  readinessSummary?: ReadinessSummary;
 }): ChangeSummaryPayload {
   const injurySignals = thisWeekCheckIns
     .filter((c) => !c.resolvedAt && c.category === "injury")
@@ -237,6 +239,15 @@ function buildChangeSummaryPayload({
     };
   });
 
+  const plannerMode: ChangeSummaryPayload["plannerMode"] =
+    injurySignals.length > 0 || safetyBlockedPayload.length > 0
+      ? "protecting"
+      : fatigueSignals.length > 0
+      ? "reducing"
+      : addedSessions.length > 0 && removedSessions.length === 0
+      ? "building"
+      : "maintaining";
+
   return {
     replanReason,
     doneSessionsThisWeek: doneSessions,
@@ -248,6 +259,16 @@ function buildChangeSummaryPayload({
     addedSessions,
     remainingPlannedSessions,
     weeklyReviewPriority: weeklyReview?.priorities?.[0],
+    readinessSignal: readinessSummary?.latestEntry
+      ? {
+          date: readinessSummary.latestEntry.date,
+          feelScore: readinessSummary.latestEntry.feelScore,
+          category: readinessSummary.latestEntry.category,
+          tags: readinessSummary.latestEntry.tags,
+          notes: readinessSummary.latestEntry.notes,
+        }
+      : undefined,
+    plannerMode,
   };
 }
 
@@ -507,6 +528,7 @@ export async function generateWeeklyPlan(
           weeklyReview: parsedWeeklyReview,
           replanReason,
           doneSessionsThisWeek: planningCtx.currentWeekDoneSessions,
+          readinessSummary,
         })
       )
     : null;

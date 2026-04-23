@@ -247,6 +247,8 @@ export interface ChangeSummaryPayload {
   addedSessions: Array<{ date: string; day: string; label: string; intensity: string }>;
   remainingPlannedSessions: Array<{ date: string; day: string; label: string; intensity: string; durationMin: number }>;
   weeklyReviewPriority?: string;
+  readinessSignal?: { date: string; feelScore: number; category: string; tags: string[]; notes: string | null };
+  plannerMode?: "protecting" | "reducing" | "maintaining" | "building";
 }
 
 function buildFallbackBullets(payload: ChangeSummaryPayload): string {
@@ -315,12 +317,16 @@ export async function renderChangeExplanation(payload: ChangeSummaryPayload): Pr
       payload.latestCheckIn
         ? `Latest check-in: ${payload.latestCheckIn.date} feel=${payload.latestCheckIn.feelScore}/6 category=${payload.latestCheckIn.category}${payload.latestCheckIn.notes ? ` "${payload.latestCheckIn.notes}"` : ""}`
         : null,
+      payload.readinessSignal
+        ? `Daily readiness: ${payload.readinessSignal.date} feel=${payload.readinessSignal.feelScore}/6 category=${payload.readinessSignal.category}${payload.readinessSignal.tags.length > 0 ? ` tags=${payload.readinessSignal.tags.join(",")}` : ""}${payload.readinessSignal.notes ? ` "${payload.readinessSignal.notes}"` : ""}`
+        : null,
       payload.injurySignals.length > 0
         ? `ACTIVE injury: ${payload.injurySignals.map((s) => `${s.date} feel=${s.feelScore}/6${s.notes ? ` "${s.notes}"` : ""}`).join(", ")}`
         : null,
       payload.fatigueSignals.length > 0
         ? `ACTIVE fatigue: ${payload.fatigueSignals.map((s) => `${s.date} feel=${s.feelScore}/6${s.notes ? ` "${s.notes}"` : ""}`).join(", ")}`
         : null,
+      payload.plannerMode ? `Planner stance: ${payload.plannerMode}` : null,
       `Sessions removed: ${removed.length > 0 ? removed.join("; ") : "none"}`,
       `Sessions added: ${added.length > 0 ? added.join("; ") : "none"}`,
       `Remaining plan: ${remaining.length > 0 ? remaining.join("; ") : "rest of week clear"}`,
@@ -344,8 +350,8 @@ Rules:
 - 3–4 bullets max
 - Each ≤ 25 words
 - Only reference sessions listed above — never invent sessions
-- Explain WHY the change helps (recovery, taper, load balance, specificity)
-- Reference check-in feel score or body state when relevant
+- Anchor tone to the planner stance: protecting → explain what's being avoided; reducing → explain fatigue context; building → explain load increase; maintaining → confirm stability
+- Reference check-in or readiness feel score when relevant; mention tags (poor_sleep, alcohol, etc.) if they drove the change
 - Sound like an experienced coach, not a template
 - Format: "• [bullet]"
 No intro. No preamble.`,

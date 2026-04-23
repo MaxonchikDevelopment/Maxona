@@ -36,7 +36,8 @@ export function inferTagsFromNotes(notes: string | null): ReadinessTag[] {
   const lower = (notes ?? "").toLowerCase();
   const result: ReadinessTag[] = [];
   if (/alcohol|beer|wine|spirit|hangover|drink/.test(lower)) result.push("alcohol");
-  if (/sleep|insomnia|tired|night/.test(lower)) result.push("poor_sleep");
+  // "tired" alone is too broad (training fatigue, not sleep); "night" alone matches too much
+  if (/sleep|insomnia|no sleep|bad sleep|slept badly|woke up/.test(lower)) result.push("poor_sleep");
   if (/stress|anxious|overwhelm/.test(lower)) result.push("stress");
   if (/travel|flight|jet/.test(lower)) result.push("travel");
   if (/soreness|doms|stiff/.test(lower)) result.push("soreness");

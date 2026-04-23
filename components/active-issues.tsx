@@ -50,8 +50,8 @@ export function ActiveIssues({ initialIssues }: { initialIssues: IssueItem[] }) 
 
   return (
     <div className="rounded border-l-2 border-orange-400 bg-orange-50 px-3 py-2 space-y-2">
-      <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">
-        Active issues · {issues.length}
+      <p className="text-xs font-semibold text-orange-700">
+        Active issue{issues.length > 1 ? "s" : ""}{issues.length > 1 ? ` · ${issues.length}` : ""}
       </p>
       {issues.map((issue) => {
         const label = issue.sessionNotes?.split(":")[0].trim() ?? issue.sessionIntensity;

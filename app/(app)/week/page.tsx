@@ -59,6 +59,18 @@ export default async function WeekPage() {
     redirect("/week");
   }
 
+  // Latest non-ok readiness this week — shown as a compact chip when it influenced the plan
+  const latestReadiness = plan
+    ? await prisma.dailyReadiness.findFirst({
+        where: {
+          userId: USER_ID,
+          date: { gte: plan.startsAt, lte: plan.endsAt },
+          category: { not: "ok" },
+        },
+        orderBy: { date: "desc" },
+      })
+    : null;
+
   // Active injury check-ins (across all time — injury tracking is persistent)
   const injuryCheckIns = await prisma.checkIn.findMany({
     where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
@@ -129,6 +141,21 @@ export default async function WeekPage() {
         <h1 className="text-xl font-bold">Week</h1>
         <ReplanButton mode="replan" />
       </div>
+
+      {latestReadiness && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
+          <span className="font-medium">
+            {latestReadiness.category === "injury" ? "Injury signal" : "Fatigue"} · {latestReadiness.feelScore}/6
+          </span>
+          {(latestReadiness.tags as string[]).length > 0 && (
+            <>
+              <span>·</span>
+              <span>{(latestReadiness.tags as string[]).join(", ")}</span>
+            </>
+          )}
+          <span>· plan adapted</span>
+        </div>
+      )}
 
       <ActiveIssues initialIssues={activeIssues} />
 

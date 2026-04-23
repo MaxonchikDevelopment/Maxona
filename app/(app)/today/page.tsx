@@ -11,6 +11,28 @@ export const dynamic = "force-dynamic";
 
 const USER_ID = "user_maxon";
 
+function buildImplicationLine(
+  readiness: ReadinessProp | null,
+  activeIssues: IssueItem[]
+): string | null {
+  if (activeIssues.length > 0) {
+    const issue = activeIssues[0];
+    const label = issue.sessionNotes?.split(":")[0].trim() ?? "injury";
+    return `${label} still active — hard sessions blocked`;
+  }
+  if (!readiness) return null;
+  if (readiness.category === "injury" && readiness.feelScore <= 3) {
+    return "Possible injury flagged — plan will protect next sessions";
+  }
+  if (readiness.category === "fatigue" && readiness.feelScore <= 3) {
+    return "Fatigue noted — next session kept lighter";
+  }
+  if ((readiness.tags as string[]).some((t) => ["alcohol", "poor_sleep"].includes(t))) {
+    return "Poor recovery signal — tomorrow's session may be shorter";
+  }
+  return null;
+}
+
 export default async function TodayPage() {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
 
@@ -87,19 +109,24 @@ export default async function TodayPage() {
       }
     : null;
 
+  const implicationLine = buildImplicationLine(readinessProp, activeIssues);
+
   return (
     <main className="p-4 space-y-3">
-      <h1 className="mb-4 text-xl font-bold">Today</h1>
-      <ActiveIssues initialIssues={activeIssues} />
+      <h1 className="text-xl font-bold">Today</h1>
       <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
       {props.length === 0 ? (
-        <p className="text-gray-500">Rest day — nothing scheduled.</p>
+        <p className="text-sm text-gray-500">Rest day — nothing scheduled.</p>
       ) : (
         <div className="space-y-3">
           {props.map((s) => (
             <SessionCard key={s.id} session={s} todayStr={todayStr} />
           ))}
         </div>
+      )}
+      <ActiveIssues initialIssues={activeIssues} />
+      {implicationLine && (
+        <p className="text-xs text-gray-500 px-1">{implicationLine}</p>
       )}
     </main>
   );

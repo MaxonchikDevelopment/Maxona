@@ -42,9 +42,9 @@ function staticHint(
   category: "injury" | "fatigue" | "ok",
   feelScore: number
 ): string | null {
-  if (category === "injury") return "Possible injury flagged — mark resolved once you're feeling better.";
-  if (category === "fatigue") return "Tough day — the planner will ease next session load.";
-  if (feelScore >= 5) return "Solid session — good signal for the planner.";
+  if (category === "injury") return "Possible injury noted — mark resolved when feeling better.";
+  if (category === "fatigue") return "Tough day — load adjusted for next session.";
+  if (feelScore >= 5) return "Strong session — plan unchanged.";
   return null;
 }
 
