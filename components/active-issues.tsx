@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export type IssueItem = {
   checkInId: string;
@@ -19,8 +20,14 @@ function shortDateLabel(dateStr: string): string {
 }
 
 export function ActiveIssues({ initialIssues }: { initialIssues: IssueItem[] }) {
+  const router = useRouter();
   const [issues, setIssues] = useState(initialIssues);
   const [resolving, setResolving] = useState<string | null>(null);
+
+  // Sync local state when server re-renders with fresh props (e.g. after router.refresh())
+  useEffect(() => {
+    setIssues(initialIssues);
+  }, [initialIssues]);
 
   if (issues.length === 0) return null;
 
@@ -34,6 +41,7 @@ export function ActiveIssues({ initialIssues }: { initialIssues: IssueItem[] }) 
       });
       if (res.ok) {
         setIssues((prev) => prev.filter((i) => i.checkInId !== issue.checkInId));
+        router.refresh();
       }
     } finally {
       setResolving(null);

@@ -42,7 +42,63 @@ function getInjuryWindow(
   };
 }
 
-// Deterministic changeExplanation — generated from actual final sessions, never from LLM intent.
+// ─── Diff helpers ────────────────────────────────────────────────────────────
+
+function dayLabel(dateStr: string): string {
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const d = new Date(dateStr + "T12:00:00Z");
+  return DAYS[d.getUTCDay()];
+}
+
+// Normalize notes to a canonical modality bucket for diffing.
+function modalityKey(notes: string | null | undefined, intensity: string): string {
+  const raw = (notes ?? "").toLowerCase();
+  if (raw.startsWith("running")) return "running";
+  if (raw.startsWith("hyrox")) return "hyrox";
+  if (raw.startsWith("cycling")) return "cycling";
+  if (raw.startsWith("swimming")) return "swimming";
+  return intensity;
+}
+
+// Human-readable session label for bullet text.
+function friendlyLabel(notes: string | null | undefined, intensity: string): string {
+  if (!notes) return intensity;
+  const colon = notes.indexOf(":");
+  if (colon === -1) return notes.trim(); // "HYROX group class"
+  const modality = notes.slice(0, colon).trim();
+  const detail = notes.slice(colon + 1).trim();
+  const short = detail.split(/\s+/).slice(0, 3).join(" ");
+  return short ? `${modality}: ${short}` : modality;
+}
+
+// One-line rationale for an added session.
+function sessionAddRationale(s: PlannedSession, hasIssue: boolean): string {
+  const lower = (s.notes ?? "").toLowerCase();
+  if (lower.includes("long run")) return "weekly long run cornerstone; builds aerobic base for marathon";
+  if (lower.includes("tempo")) return "race-pace stimulus; improves lactate threshold";
+  if (lower.includes("interval")) return "speed work; neuromuscular adaptation for race pace";
+  if (lower.startsWith("hyrox") || lower.includes("hyrox")) return "HYROX-specific work; dual-goal balance";
+  if (lower.includes("cycling") || lower.includes("swimming")) {
+    return hasIssue
+      ? "low-impact active recovery; aerobic work without run stress while issue settles"
+      : "cross-training; aerobic base without adding run load";
+  }
+  if (s.intensity === "easy") return "easy aerobic; maintains training frequency without load spike";
+  return "fills available training window; supports weekly volume target";
+}
+
+function reviewPriorityRationale(priority: string): string {
+  if (priority.toLowerCase().includes("hyrox")) return "2+ sessions scheduled; specificity for race day";
+  if (priority.toLowerCase().includes("running volume")) return "3+ runs; long run locked in for marathon base";
+  if (priority.toLowerCase().includes("recovery")) return "volume cut ~15%; adaptation consolidation";
+  if (priority.toLowerCase().includes("marathon pace")) return "tempo/interval run added; race-pace neuromuscular training";
+  if (priority.toLowerCase().includes("long ride")) return "cycling session ≥ 90 min; aerobic base via low-impact modality";
+  return "";
+}
+
+// ─── Deterministic changeExplanation ─────────────────────────────────────────
+// Diffs by date+modality so that same-date modality changes are caught.
+// Always matches the final validSessions displayed in the plan.
 function buildChangeExplanation({
   prevPlannedSessions,
   newSessions,
@@ -73,103 +129,88 @@ function buildChangeExplanation({
   const fatigueSignals = thisWeekCheckIns.filter(
     (c) => c.category === "fatigue" && !c.resolvedAt
   );
+  const hasIssue = injurySignals.length > 0 || fatigueSignals.length > 0;
 
-  // 1. Safety-blocked fixed sessions (deterministic — these are always accurate)
+  // 1. Safety-blocked fixed sessions — always accurate, always first
+  const safetyBlockedDates = new Set(safetyBlockedSessions.map((s) => s.date));
   for (const blocked of safetyBlockedSessions) {
     if (bullets.length >= 4) break;
-    const day = dayLabel(blocked.date);
-    const type = (blocked.notes ?? "session").split(":")[0].trim();
     const ci = injurySignals[0];
-    const scoreStr = ci ? ` · feel ${ci.feelScore}/6` : "";
     bullets.push(
-      `• ${day} ${type} removed — injury rest window${scoreStr}; prevents aggravation`
+      `• ${dayLabel(blocked.date)} ${friendlyLabel(blocked.notes, blocked.intensity)} removed — injury rest window${ci ? ` (feel ${ci.feelScore}/6)` : ""}; avoids aggravating injury`
     );
   }
 
-  // 2. Diff prev planned vs new sessions by date
-  const prevByDate = new Map<
-    string,
-    { notes: string | null; intensity: string; durationMin: number }
-  >();
+  // 2. Diff by date+modality — catches same-date modality swaps (running→swimming etc)
+  type SnapKey = string; // "YYYY-MM-DD|modality"
+
+  const prevByKey = new Map<SnapKey, { date: string; notes: string | null; intensity: string }>();
   for (const s of prevPlannedSessions) {
     const d = toDateStr(s.scheduledDate);
-    if (!prevByDate.has(d)) prevByDate.set(d, s);
+    const key = `${d}|${modalityKey(s.notes, s.intensity)}`;
+    if (!prevByKey.has(key)) prevByKey.set(key, { date: d, notes: s.notes, intensity: s.intensity });
   }
 
-  const newDates = new Set(newSessions.map((s) => toDateStr(s.scheduledDate)));
-  const prevDates = new Set(prevByDate.keys());
-
-  // Removed sessions
-  for (const [date, s] of prevByDate) {
-    if (bullets.length >= 4) break;
-    if (!newDates.has(date)) {
-      const day = dayLabel(date);
-      const type = (s.notes ?? s.intensity).split(":")[0].trim();
-      let reason: string;
-      if (
-        injuryWindow &&
-        date > injuryWindow.injuryDate &&
-        date <= injuryWindow.protectUntil
-      ) {
-        const ci = injurySignals[0];
-        reason = `injury window${ci ? ` (feel ${ci.feelScore}/6)` : ""}; hard work blocked`;
-      } else if (injurySignals.length > 0) {
-        reason = `active injury (feel ${injurySignals[0].feelScore}/6); load reduced to protect recovery`;
-      } else if (fatigueSignals.length > 0) {
-        reason = `fatigue signal (feel ${fatigueSignals[0].feelScore}/6); volume cut to preserve quality`;
-      } else {
-        reason = "schedule conflict or availability change";
-      }
-      bullets.push(`• ${day} ${type} removed — ${reason}`);
-    }
-  }
-
-  // Added sessions — infer brief rationale from modality/intensity
-  const addedByDate = new Map<string, PlannedSession>();
+  const newByKey = new Map<SnapKey, PlannedSession>();
   for (const s of newSessions) {
     const d = toDateStr(s.scheduledDate);
-    if (!prevDates.has(d) && !addedByDate.has(d)) addedByDate.set(d, s);
-  }
-  for (const [date, s] of addedByDate) {
-    if (bullets.length >= 4) break;
-    const day = dayLabel(date);
-    const notesLower = (s.notes ?? "").toLowerCase();
-    const typeLabel = (s.notes ?? s.intensity).split(":")[0].trim();
-    let rationale: string;
-    if (notesLower.includes("long run")) {
-      rationale = "marathon base cornerstone; builds aerobic capacity";
-    } else if (notesLower.includes("tempo") || notesLower.includes("interval")) {
-      rationale = "race-pace stimulus; improves lactate threshold";
-    } else if (notesLower.includes("hyrox")) {
-      rationale = "HYROX-specific strength; dual-goal balance";
-    } else if (notesLower.includes("cycling") || notesLower.includes("swimming")) {
-      rationale =
-        injurySignals.length > 0 || fatigueSignals.length > 0
-          ? "low-impact alternative; active recovery while injury/fatigue settles"
-          : "cross-training; aerobic base without run stress";
-    } else if (s.intensity === "easy") {
-      rationale = "easy aerobic work; maintains frequency without adding load";
-    } else {
-      rationale = "fills available training slot; supports weekly volume target";
-    }
-    bullets.push(`• ${day} ${typeLabel} added — ${rationale}`);
+    const key = `${d}|${modalityKey(s.notes, s.intensity)}`;
+    if (!newByKey.has(key)) newByKey.set(key, s);
   }
 
-  // 3. Signal summary when diff was minor
+  const prevKeySet = new Set(prevByKey.keys());
+  const newKeySet = new Set(newByKey.keys());
+
+  // Removed (in prev but not in new)
+  for (const [key, s] of prevByKey) {
+    if (bullets.length >= 4) break;
+    if (newKeySet.has(key)) continue;
+    // Skip if already covered by a safetyBlocked bullet above
+    if (safetyBlockedDates.has(s.date)) continue;
+    const label = friendlyLabel(s.notes, s.intensity);
+    let reason: string;
+    if (
+      injuryWindow &&
+      s.date > injuryWindow.injuryDate &&
+      s.date <= injuryWindow.protectUntil
+    ) {
+      const ci = injurySignals[0];
+      reason = `injury window${ci ? ` (feel ${ci.feelScore}/6)` : ""}; hard work blocked for recovery`;
+    } else if (injurySignals.length > 0) {
+      reason = `active injury (feel ${injurySignals[0].feelScore}/6); load reduced to protect long-term training`;
+    } else if (fatigueSignals.length > 0) {
+      reason = `fatigue signal (feel ${fatigueSignals[0].feelScore}/6); cut to preserve training quality`;
+    } else {
+      reason = "schedule or availability change";
+    }
+    bullets.push(`• ${dayLabel(s.date)} ${label} removed — ${reason}`);
+  }
+
+  // Added (in new but not in prev)
+  for (const [key, s] of newByKey) {
+    if (bullets.length >= 4) break;
+    if (prevKeySet.has(key)) continue;
+    const d = toDateStr(s.scheduledDate);
+    const label = friendlyLabel(s.notes, s.intensity);
+    const rationale = sessionAddRationale(s, hasIssue);
+    bullets.push(`• ${dayLabel(d)} ${label} added — ${rationale}`);
+  }
+
+  // 3. Signal summary when structural diff was minor
   if (bullets.length < 2) {
     if (injurySignals.length > 0 && safetyBlockedSessions.length === 0) {
       bullets.push(
-        `• Hard sessions blocked this week — active injury (feel ${injurySignals[0].feelScore}/6); protects long-term training availability`
+        `• Hard sessions limited — active injury (feel ${injurySignals[0].feelScore}/6); easy/moderate only to protect recovery`
       );
     } else if (fatigueSignals.length > 0) {
       const count = fatigueSignals.length;
       bullets.push(
-        `• Load eased — ${count} fatigue signal${count > 1 ? "s" : ""} (feel ${fatigueSignals[0].feelScore}/6); quality sessions beat tired ones`
+        `• Load eased — ${count} fatigue signal${count > 1 ? "s" : ""} (feel ${fatigueSignals[0].feelScore}/6); better to train fresh than exhausted`
       );
     }
   }
 
-  // 4. Weekly review priority (with brief performance context)
+  // 4. Weekly review focus
   if (weeklyReview?.priorities?.length && bullets.length < 4) {
     const p = weeklyReview.priorities[0];
     const context = reviewPriorityRationale(p);
@@ -182,21 +223,6 @@ function buildChangeExplanation({
   }
 
   return bullets.slice(0, 4).join("\n");
-}
-
-function reviewPriorityRationale(priority: string): string {
-  if (priority.toLowerCase().includes("hyrox")) return "2+ sessions scheduled; specificity for race day";
-  if (priority.toLowerCase().includes("running volume")) return "3+ runs; long run locked in for marathon base";
-  if (priority.toLowerCase().includes("recovery")) return "volume cut ~15%; adaptation consolidation";
-  if (priority.toLowerCase().includes("marathon pace")) return "tempo/interval run added; race-pace neuromuscular training";
-  if (priority.toLowerCase().includes("long ride")) return "cycling session ≥ 90 min; aerobic base via low-impact modality";
-  return "";
-}
-
-function dayLabel(dateStr: string): string {
-  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const d = new Date(dateStr + "T12:00:00Z");
-  return DAYS[d.getUTCDay()];
 }
 
 export async function generateWeeklyPlan(

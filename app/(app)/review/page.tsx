@@ -13,11 +13,28 @@ const PRIORITY_OPTIONS = [
 
 const DRAFT_KEY = "review_draft_v1";
 
+const DOW_LABELS: Record<number, string> = {
+  0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat",
+};
+
 type DraftState = {
   recoveryScore: number | null;
   selectedPriorities: string[];
   familyConstraints: string;
 };
+
+type ExistingDraft = {
+  planId: string;
+  weekStart: string;
+  focusSummary: string | null;
+  sessions: Array<{
+    scheduledDate: string;
+    durationMin: number;
+    intensity: string;
+    notes: string | null;
+    preferredSlot: string;
+  }>;
+} | null;
 
 function loadDraft(): DraftState {
   if (typeof window === "undefined")
@@ -31,6 +48,16 @@ function loadDraft(): DraftState {
   }
 }
 
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function shortDay(dateStr: string): string {
+  const d = new Date(dateStr + (dateStr.includes("T") ? "" : "T12:00:00Z"));
+  return DOW_LABELS[d.getUTCDay()];
+}
+
 export default function ReviewPage() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
@@ -40,8 +67,9 @@ export default function ReviewPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [existingDraft, setExistingDraft] = useState<ExistingDraft | undefined>(undefined);
 
-  // Restore draft on mount
+  // Restore form draft on mount
   useEffect(() => {
     const draft = loadDraft();
     setRecoveryScore(draft.recoveryScore);
@@ -50,7 +78,15 @@ export default function ReviewPage() {
     setHydrated(true);
   }, []);
 
-  // Persist draft on change
+  // Check for existing next-week draft
+  useEffect(() => {
+    fetch("/api/plans/review")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setExistingDraft(data as ExistingDraft))
+      .catch(() => setExistingDraft(null));
+  }, []);
+
+  // Persist form draft on change
   useEffect(() => {
     if (!hydrated) return;
     const draft: DraftState = { recoveryScore, selectedPriorities, familyConstraints };
@@ -102,14 +138,62 @@ export default function ReviewPage() {
     );
   }
 
+  const hasDraft = existingDraft != null;
+  const weekStartLabel =
+    hasDraft && existingDraft
+      ? formatDate(
+          typeof existingDraft.weekStart === "string"
+            ? existingDraft.weekStart
+            : new Date(existingDraft.weekStart).toISOString()
+        )
+      : null;
+
   return (
     <main className="p-4 space-y-6">
       <div>
         <h1 className="text-xl font-bold">Plan next week</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Generates a draft plan for next week. Your current week is not affected.
+          Generates a draft for next week only. Your current week is not affected.
         </p>
       </div>
+
+      {/* Existing draft notice */}
+      {hasDraft && existingDraft && (
+        <div className="rounded border border-blue-200 bg-blue-50 px-3 py-3 space-y-2">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm font-medium text-blue-900">Next week already planned</p>
+              {weekStartLabel && (
+                <p className="text-xs text-blue-600 mt-0.5">Starts {weekStartLabel}</p>
+              )}
+            </div>
+            <span className="text-xs text-blue-400 font-mono">draft</span>
+          </div>
+          {existingDraft.focusSummary && (
+            <p className="text-xs italic text-blue-800">{existingDraft.focusSummary}</p>
+          )}
+          {existingDraft.sessions.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {existingDraft.sessions.map((s, i) => (
+                <span
+                  key={i}
+                  className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700"
+                >
+                  {shortDay(
+                    typeof s.scheduledDate === "string"
+                      ? s.scheduledDate
+                      : new Date(s.scheduledDate).toISOString().split("T")[0]
+                  )}{" "}
+                  · {s.intensity} · {s.notes?.split(":")[0] ?? "session"}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-blue-500">
+            Customize below and click &quot;Update plan&quot; to regenerate.
+          </p>
+        </div>
+      )}
 
       {/* Recovery */}
       <section className="space-y-2">
@@ -176,7 +260,11 @@ export default function ReviewPage() {
         disabled={submitting}
         className="w-full rounded bg-black py-3 text-sm font-medium text-white disabled:opacity-50"
       >
-        {submitting ? "Generating next week's plan..." : "Generate next week's plan"}
+        {submitting
+          ? "Generating next week's plan..."
+          : hasDraft
+          ? "Update next week's plan"
+          : "Generate next week's plan"}
       </button>
 
       <button

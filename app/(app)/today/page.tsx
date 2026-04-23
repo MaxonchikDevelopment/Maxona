@@ -79,7 +79,7 @@ export default async function TodayPage() {
       ) : (
         <div className="space-y-3">
           {props.map((s) => (
-            <SessionCard key={s.id} session={s} />
+            <SessionCard key={s.id} session={s} todayStr={todayStr} />
           ))}
         </div>
       )}

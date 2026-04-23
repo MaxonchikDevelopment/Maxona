@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export type CheckInProp = {
   id: string;
@@ -47,7 +48,14 @@ function staticHint(
   return null;
 }
 
-export function SessionCard({ session }: { session: SessionProp }) {
+export function SessionCard({
+  session,
+  todayStr,
+}: {
+  session: SessionProp;
+  todayStr?: string;
+}) {
+  const router = useRouter();
   const [checkIn, setCheckIn] = useState<CheckInProp | null>(session.checkIn);
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
@@ -55,6 +63,7 @@ export function SessionCard({ session }: { session: SessionProp }) {
   const [notes, setNotes] = useState(session.checkIn?.notes ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(session.status === "done" || !!session.checkIn);
+  const isFuture = todayStr ? session.scheduledDate > todayStr : false;
 
   async function submitCheckIn() {
     setSubmitting(true);
@@ -97,6 +106,7 @@ export function SessionCard({ session }: { session: SessionProp }) {
     const data = await res.json();
     setCheckIn(data);
     setSubmitting(false);
+    router.refresh();
   }
 
   async function reopenIssue() {
@@ -110,6 +120,7 @@ export function SessionCard({ session }: { session: SessionProp }) {
     const data = await res.json();
     setCheckIn(data);
     setSubmitting(false);
+    router.refresh();
   }
 
   function startEdit() {
@@ -143,7 +154,11 @@ export function SessionCard({ session }: { session: SessionProp }) {
         {done ? (
           <div className="flex items-center gap-2">
             <span className={`text-sm ${isResolved ? "text-gray-400" : "text-green-600"}`}>
-              {isResolved ? "Done · resolved" : `Done · ${checkIn?.feelScore ?? ""}/6`}
+              {isResolved
+                ? "Done · resolved"
+                : checkIn
+                ? `Done · ${checkIn.feelScore}/6`
+                : "Done"}
             </span>
             {!editing && (
               <button onClick={startEdit} className="text-xs text-gray-400 underline">
@@ -151,6 +166,8 @@ export function SessionCard({ session }: { session: SessionProp }) {
               </button>
             )}
           </div>
+        ) : isFuture ? (
+          <span className="text-xs text-gray-400">Upcoming</span>
         ) : (
           <button
             onClick={() => {

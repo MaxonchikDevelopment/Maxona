@@ -57,7 +57,9 @@ const SYSTEM_PROMPT = `You are an adaptive sports training assistant for an endu
 Generate a structured 7-day training plan using the submit_plan tool.
 
 ## Session density — CRITICAL
-- Target 4–6 training sessions per week. This is an active, fit athlete with genuine training capacity.
+- Default target is 4–5 training sessions per week. This is an active, fit athlete.
+- 6 sessions is allowed ONLY when: (a) weeklyTrainingHoursTarget > 12h is set OR (b) a specific "high-volume" priority is in weeklyReview AND all recovery signals are green.
+- NEVER schedule 6 consecutive training days with no rest — always include at least 1 full rest day.
 - A week with only 2–3 sessions is almost always wrong — push for more.
 - Rest days are intentional; do not leave days empty just to be conservative.
 
@@ -136,10 +138,13 @@ These override default availability windows for the specified day.
 - minMeaningfulCyclingDurationMin: do not schedule cycling sessions shorter than this value.
 - maxHyroxPerWeek: hard cap on HYROX group class sessions per week.
 - preferredHyroxDays: array of day names (e.g. ["tue","thu"]). Prefer placing HYROX sessions on these days when possible.
-- preferredEasyRunKm: target distance for easy and recovery runs (e.g. 5, 10). Use this INSTEAD of inventing a distance. Accepted values: 5, 10, 15, 21 km.
-- preferredTempoRunKm: target distance for tempo and interval runs (e.g. 10, 15). Use this instead of generic ranges.
-- preferredLongRunKm: target distance for the weekly long run (e.g. 21, 30). Use this instead of the default range.
-  When these are set: always use the athlete's preferred distance. Do NOT invent intermediate values like 7 km or 8 km. If unset, default to 10 km easy / 10 km tempo / 21 km long run.
+- preferredEasyRunKm: target distance for easy and recovery runs. Use this INSTEAD of inventing a distance. Accepted values: 5, 10, 15, 21 km.
+- preferredTempoRunKm: target distance for tempo and interval runs. Use this instead of generic ranges.
+- preferredLongRunKm: target distance for the weekly long run. Use this instead of the default range.
+CRITICAL — running distances:
+  - When any preferred distance is set: use EXACTLY that value in the notes. Do NOT invent intermediate values (7, 8, 9, 12, 14, 18 km, etc.).
+  - When NO preferences are set: default strictly to 10 km easy/tempo, 21 km long run. Do not choose other values.
+  - Meaningful defaults are: 5 / 10 / 15 / 21 km. Easy flush runs (5 km) are fine when intentional. Arbitrary middling distances (7 km, 8 km) are not acceptable.
 
 ## planningType values
 - generated: fully flexible (use for most sessions)

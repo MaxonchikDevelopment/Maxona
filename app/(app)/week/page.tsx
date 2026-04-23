@@ -181,7 +181,7 @@ export default async function WeekPage() {
             ) : (
               <div className="space-y-2">
                 {daySessions.map((s) => (
-                  <SessionCard key={s.id} session={s} />
+                  <SessionCard key={s.id} session={s} todayStr={todayStr} />
                 ))}
               </div>
             )}
