@@ -5,7 +5,16 @@ import { noConflictSchedule } from "@/lib/rules/no-conflict-schedule";
 import { noOutsideAvailability } from "@/lib/rules/no-outside-availability";
 import { minRestHardSessions } from "@/lib/rules/min-rest-hard-sessions";
 import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
-import type { PlanningContext, RecentCheckIn, FixedSession, OptionalSlot, WeeklyReview } from "@/lib/ai/adapter";
+import { categorizeCheckIn } from "@/lib/checkin-utils";
+import { parseFamilyConstraints } from "@/lib/ai/parse-family-constraints";
+import type {
+  PlanningContext,
+  RecentCheckIn,
+  FixedSession,
+  OptionalSlot,
+  WeeklyReview,
+  PlannedSession,
+} from "@/lib/ai/adapter";
 
 const USER_ID = "user_maxon";
 
@@ -16,22 +25,11 @@ const RULES = [
   maxWeeklyVolume,
 ];
 
-const INJURY_KEYWORDS = [
-  "injury", "pain", "hurt", "sore", "leg", "knee", "ankle", "back",
-  "hip", "muscle", "hamstring", "calf", "shin", "groin", "shoulder",
-];
-
-function hasInjuryKeywords(notes: string | null): boolean {
-  if (!notes) return false;
-  const lower = notes.toLowerCase();
-  return INJURY_KEYWORDS.some((kw) => lower.includes(kw));
-}
-
 function getInjuryWindow(
   checkIns: RecentCheckIn[]
 ): { injuryDate: string; protectUntil: string } | null {
   const activeInjuries = checkIns
-    .filter((c) => !c.resolvedAt && c.feelScore <= 2 && hasInjuryKeywords(c.notes))
+    .filter((c) => !c.resolvedAt && c.category === "injury")
     .sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
 
   if (activeInjuries.length === 0) return null;
@@ -44,7 +42,132 @@ function getInjuryWindow(
   };
 }
 
-export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: WeeklyReview) {
+// Deterministic changeExplanation — generated from actual final sessions, never from LLM intent.
+function buildChangeExplanation({
+  prevPlannedSessions,
+  newSessions,
+  injuryWindow,
+  safetyBlockedSessions,
+  thisWeekCheckIns,
+  weeklyReview,
+  replanReason,
+}: {
+  prevPlannedSessions: Array<{
+    scheduledDate: Date;
+    notes: string | null;
+    intensity: string;
+    durationMin: number;
+  }>;
+  newSessions: PlannedSession[];
+  injuryWindow: { injuryDate: string; protectUntil: string } | null;
+  safetyBlockedSessions: FixedSession[];
+  thisWeekCheckIns: RecentCheckIn[];
+  weeklyReview?: WeeklyReview;
+  replanReason?: string;
+}): string {
+  const bullets: string[] = [];
+
+  const injurySignals = thisWeekCheckIns.filter(
+    (c) => c.category === "injury" && !c.resolvedAt
+  );
+  const fatigueSignals = thisWeekCheckIns.filter(
+    (c) => c.category === "fatigue" && !c.resolvedAt
+  );
+
+  // 1. Safety-blocked fixed sessions (deterministic — these are always accurate)
+  for (const blocked of safetyBlockedSessions) {
+    if (bullets.length >= 4) break;
+    const day = dayLabel(blocked.date);
+    const type = (blocked.notes ?? "session").split(":")[0].trim();
+    const ci = injurySignals[0];
+    const scoreStr = ci ? ` (feelScore ${ci.feelScore}/6)` : "";
+    bullets.push(`• ${day} ${type} cancelled → injury protection${scoreStr}`);
+  }
+
+  // 2. Diff prev planned vs new sessions by date
+  const prevByDate = new Map<
+    string,
+    { notes: string | null; intensity: string; durationMin: number }
+  >();
+  for (const s of prevPlannedSessions) {
+    const d = toDateStr(s.scheduledDate);
+    if (!prevByDate.has(d)) prevByDate.set(d, s);
+  }
+
+  const newDates = new Set(newSessions.map((s) => toDateStr(s.scheduledDate)));
+  const prevDates = new Set(prevByDate.keys());
+
+  // Removed sessions
+  for (const [date, s] of prevByDate) {
+    if (bullets.length >= 4) break;
+    if (!newDates.has(date)) {
+      const day = dayLabel(date);
+      const type = (s.notes ?? s.intensity).split(":")[0].trim();
+      let reason = "rescheduled";
+      if (
+        injuryWindow &&
+        date > injuryWindow.injuryDate &&
+        date <= injuryWindow.protectUntil
+      ) {
+        reason = "injury protection window";
+      } else if (injurySignals.length > 0) {
+        reason = `active injury (${injurySignals[0].feelScore}/6)`;
+      } else if (fatigueSignals.length > 0) {
+        reason = `fatigue signals (${fatigueSignals[0].feelScore}/6)`;
+      }
+      bullets.push(`• Removed ${day} ${type} → ${reason}`);
+    }
+  }
+
+  // Added sessions
+  const addedByDate = new Map<string, PlannedSession>();
+  for (const s of newSessions) {
+    const d = toDateStr(s.scheduledDate);
+    if (!prevDates.has(d) && !addedByDate.has(d)) addedByDate.set(d, s);
+  }
+  for (const [date, s] of addedByDate) {
+    if (bullets.length >= 4) break;
+    const day = dayLabel(date);
+    const type = (s.notes ?? s.intensity).split(":")[0].trim();
+    bullets.push(`• Added ${day} ${type}`);
+  }
+
+  // 3. Catch-all signal summary if diff was empty
+  if (bullets.length < 2) {
+    if (injurySignals.length > 0 && safetyBlockedSessions.length === 0) {
+      bullets.push(
+        `• Hard sessions blocked → active injury (feelScore ${injurySignals[0].feelScore}/6)`
+      );
+    } else if (fatigueSignals.length > 0) {
+      bullets.push(
+        `• Load eased → fatigue this week (feelScore ${fatigueSignals[0].feelScore}/6)`
+      );
+    }
+  }
+
+  // 4. Weekly review priority
+  if (weeklyReview?.priorities?.length && bullets.length < 4) {
+    bullets.push(`• Focus: ${weeklyReview.priorities[0].toLowerCase()}`);
+  }
+
+  // 5. Fallback
+  if (bullets.length === 0) {
+    bullets.push(`• Plan updated → ${replanReason ?? "manual replan"}`);
+  }
+
+  return bullets.slice(0, 4).join("\n");
+}
+
+function dayLabel(dateStr: string): string {
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const d = new Date(dateStr + "T12:00:00Z");
+  return DAYS[d.getUTCDay()];
+}
+
+export async function generateWeeklyPlan(
+  replanReason?: string,
+  weeklyReview?: WeeklyReview
+) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
 
   const todayStr = localDateStr(user.timezone);
@@ -66,40 +189,52 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
       })
     : [];
 
-  const [goals, availabilityWindows, scheduleEvents, rawPreviousSessions, recurringSessions] =
-    await Promise.all([
-      prisma.goal.findMany({
-        where: { userId: USER_ID, status: "active", deletedAt: null },
-      }),
-      prisma.availabilityWindow.findMany({
-        where: {
-          userId: USER_ID,
-          AND: [
-            { OR: [{ validFrom: null }, { validFrom: { lte: weekEnd } }] },
-            { OR: [{ validUntil: null }, { validUntil: { gte: weekStart } }] },
-          ],
-        },
-      }),
-      prisma.scheduleEvent.findMany({
-        where: {
-          userId: USER_ID,
-          startsAt: { lt: addDays(weekStart, 7) },
-          endsAt: { gte: weekStart },
-        },
-      }),
-      prisma.trainingSession.findMany({
-        where: {
-          userId: USER_ID,
-          scheduledDate: { gte: addDays(weekStart, -7), lt: weekStart },
-        },
-        include: { checkIn: true },
-      }),
-      prisma.recurringSession.findMany({
-        where: { userId: USER_ID, isActive: true },
-      }),
-    ]);
+  const [
+    goals,
+    availabilityWindows,
+    scheduleEvents,
+    rawPreviousSessions,
+    recurringSessions,
+    prevPlannedSessions,
+  ] = await Promise.all([
+    prisma.goal.findMany({
+      where: { userId: USER_ID, status: "active", deletedAt: null },
+    }),
+    prisma.availabilityWindow.findMany({
+      where: {
+        userId: USER_ID,
+        AND: [
+          { OR: [{ validFrom: null }, { validFrom: { lte: weekEnd } }] },
+          { OR: [{ validUntil: null }, { validUntil: { gte: weekStart } }] },
+        ],
+      },
+    }),
+    prisma.scheduleEvent.findMany({
+      where: {
+        userId: USER_ID,
+        startsAt: { lt: addDays(weekStart, 7) },
+        endsAt: { gte: weekStart },
+      },
+    }),
+    prisma.trainingSession.findMany({
+      where: {
+        userId: USER_ID,
+        scheduledDate: { gte: addDays(weekStart, -7), lt: weekStart },
+      },
+      include: { checkIn: true },
+    }),
+    prisma.recurringSession.findMany({
+      where: { userId: USER_ID, isActive: true },
+    }),
+    // Previous plan's still-planned sessions — used for deterministic diff
+    activePlan
+      ? prisma.trainingSession.findMany({
+          where: { planId: activePlan.id, status: "planned" },
+        })
+      : Promise.resolve([]),
+  ]);
 
-  // Previous-week check-ins — include resolvedAt so Claude knows which are cleared
+  // Previous-week check-ins with category
   const recentCheckIns: RecentCheckIn[] = rawPreviousSessions
     .filter((s) => s.checkIn != null)
     .map((s) => ({
@@ -109,6 +244,7 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
       feelScore: s.checkIn!.feelScore,
       notes: s.checkIn!.notes,
       resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
+      category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
     }));
 
   // Current-week check-ins — highest priority signal
@@ -121,11 +257,28 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
       feelScore: s.checkIn!.feelScore,
       notes: s.checkIn!.notes,
       resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
+      category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
     }));
 
-  // Split recurring sessions into fixed (guaranteed) vs optional (planner may choose)
-  const doneDateSet = new Set(currentWeekDoneSessions.map((s) => toDateStr(s.scheduledDate)));
-  const DAY_OFFSET: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+  // Parse family constraints from free text (Haiku call, non-blocking on failure)
+  let parsedWeeklyReview = weeklyReview;
+  if (weeklyReview?.familyConstraints) {
+    const parsed = await parseFamilyConstraints(
+      weeklyReview.familyConstraints,
+      todayStr
+    );
+    if (parsed.length > 0) {
+      parsedWeeklyReview = { ...weeklyReview, parsedConstraints: parsed };
+    }
+  }
+
+  // Split recurring sessions into fixed vs optional
+  const doneDateSet = new Set(
+    currentWeekDoneSessions.map((s) => toDateStr(s.scheduledDate))
+  );
+  const DAY_OFFSET: Record<string, number> = {
+    mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6,
+  };
 
   const allFixedSessions: FixedSession[] = [];
   const allOptionalSlots: OptionalSlot[] = [];
@@ -150,8 +303,7 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
     }
   }
 
-  // Deterministic injury safety override — remove fixed/optional sessions
-  // that fall within 2 days of an ACTIVE injury check-in.
+  // Deterministic injury safety override
   const injuryWindow = getInjuryWindow(thisWeekCheckIns);
 
   const safetyBlockedSessions: FixedSession[] = [];
@@ -168,7 +320,8 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
       }
     }
     optionalSlots = allOptionalSlots.filter(
-      (os) => !(os.date > injuryWindow.injuryDate && os.date <= injuryWindow.protectUntil)
+      (os) =>
+        !(os.date > injuryWindow.injuryDate && os.date <= injuryWindow.protectUntil)
     );
   }
 
@@ -226,7 +379,7 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
     fixedSessions,
     optionalSlots,
     safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
-    weeklyReview,
+    weeklyReview: parsedWeeklyReview,
     replanReason,
   };
 
@@ -237,6 +390,19 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
     const dateStr = toDateStr(s.scheduledDate);
     return dateStr >= todayStr && !doneDateSet.has(dateStr);
   });
+
+  // Generate deterministic changeExplanation from the FINAL sessions (always matches what's displayed)
+  const changeExplanation = replanReason
+    ? buildChangeExplanation({
+        prevPlannedSessions,
+        newSessions: validSessions,
+        injuryWindow,
+        safetyBlockedSessions,
+        thisWeekCheckIns,
+        weeklyReview: parsedWeeklyReview,
+        replanReason,
+      })
+    : null;
 
   return prisma.$transaction(async (tx) => {
     if (activePlan) {
@@ -256,7 +422,7 @@ export async function generateWeeklyPlan(replanReason?: string, weeklyReview?: W
         parentPlanId: activePlan?.id ?? null,
         replanReason: replanReason ?? null,
         focusSummary: planResult.focusSummary,
-        changeExplanation: planResult.changeExplanation ?? null,
+        changeExplanation,
         goals: {
           create: goals.map((g) => ({ goalId: g.id })),
         },

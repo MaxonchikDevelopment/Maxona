@@ -21,18 +21,37 @@ export type SessionProp = {
   checkIn: CheckInProp | null;
 };
 
-function staticHint(feelScore: number, resolved: boolean): string | null {
-  if (resolved) return null;
-  if (feelScore <= 2) return "Tough session — mark as resolved once you're feeling better.";
-  if (feelScore === 3) return null;
-  return "Solid session — good signal for the planner.";
+// Keyword list mirrors lib/checkin-utils.ts — kept inline to avoid server-only imports in client bundle
+const INJURY_KEYWORDS = [
+  "injury", "injured", "pain", "hurt", "sore", "knee", "ankle", "back",
+  "hip", "hamstring", "calf", "shin", "groin", "shoulder", "wrist", "foot",
+  "muscle", "strain", "sprain", "tendon", "ligament",
+  "боль", "болит", "болят", "травм", "колен", "лодыжк", "спин", "бедр", "плеч",
+  "schmerz", "schmerzen", "verletzt", "verletzung", "knie", "knöchel", "rücken", "hüfte", "schulter",
+];
+
+function classifyCheckIn(feelScore: number, notes: string | null): "injury" | "fatigue" | "ok" {
+  if (feelScore >= 4) return "ok";
+  const lower = (notes ?? "").toLowerCase();
+  if (INJURY_KEYWORDS.some((kw) => lower.includes(kw))) return "injury";
+  return "fatigue";
+}
+
+function staticHint(
+  category: "injury" | "fatigue" | "ok",
+  feelScore: number
+): string | null {
+  if (category === "injury") return "Possible injury flagged — mark resolved once you're feeling better.";
+  if (category === "fatigue") return "Tough day — the planner will ease next session load.";
+  if (feelScore >= 5) return "Solid session — good signal for the planner.";
+  return null;
 }
 
 export function SessionCard({ session }: { session: SessionProp }) {
   const [checkIn, setCheckIn] = useState<CheckInProp | null>(session.checkIn);
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
-  const [feelScore, setFeelScore] = useState(session.checkIn?.feelScore ?? 3);
+  const [feelScore, setFeelScore] = useState(session.checkIn?.feelScore ?? 4);
   const [notes, setNotes] = useState(session.checkIn?.notes ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(session.status === "done" || !!session.checkIn);
@@ -94,16 +113,17 @@ export function SessionCard({ session }: { session: SessionProp }) {
   }
 
   function startEdit() {
-    setFeelScore(checkIn?.feelScore ?? 3);
+    setFeelScore(checkIn?.feelScore ?? 4);
     setNotes(checkIn?.notes ?? "");
     setEditing(true);
     setOpen(true);
   }
 
   const isResolved = !!checkIn?.resolvedAt;
-  const isLowFeel = !!checkIn && checkIn.feelScore <= 2;
+  const category = checkIn ? classifyCheckIn(checkIn.feelScore, checkIn.notes) : "ok";
+  const isInjury = category === "injury";
   const coachAdvice = checkIn?.coachAdvice ?? null;
-  const hint = !isResolved && !coachAdvice ? staticHint(checkIn?.feelScore ?? 3, isResolved) : null;
+  const hint = !isResolved && !coachAdvice ? staticHint(category, checkIn?.feelScore ?? 4) : null;
 
   return (
     <div className="space-y-2 rounded border p-4">
@@ -123,7 +143,7 @@ export function SessionCard({ session }: { session: SessionProp }) {
         {done ? (
           <div className="flex items-center gap-2">
             <span className={`text-sm ${isResolved ? "text-gray-400" : "text-green-600"}`}>
-              {isResolved ? "Done · resolved" : `Done · ${checkIn?.feelScore ?? ""}/5`}
+              {isResolved ? "Done · resolved" : `Done · ${checkIn?.feelScore ?? ""}/6`}
             </span>
             {!editing && (
               <button onClick={startEdit} className="text-xs text-gray-400 underline">
@@ -154,7 +174,7 @@ export function SessionCard({ session }: { session: SessionProp }) {
           {checkIn.notes && (
             <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
           )}
-          {/* Coach advice (LLM-generated, only for bad check-ins) */}
+          {/* Coach advice — shown for both injury and fatigue check-ins */}
           {coachAdvice && !isResolved && (
             <div className="rounded bg-amber-50 px-2 py-1.5">
               <p className="text-xs font-medium text-amber-700 mb-0.5">Coach</p>
@@ -165,7 +185,8 @@ export function SessionCard({ session }: { session: SessionProp }) {
           {hint && (
             <p className="text-xs text-amber-600">{hint}</p>
           )}
-          {isLowFeel && !isResolved && (
+          {/* Resolve/reopen — injury ONLY, not fatigue */}
+          {isInjury && !isResolved && (
             <button
               onClick={resolveIssue}
               disabled={submitting}
@@ -174,7 +195,7 @@ export function SessionCard({ session }: { session: SessionProp }) {
               Mark issue resolved
             </button>
           )}
-          {isResolved && (
+          {isInjury && isResolved && (
             <button
               onClick={reopenIssue}
               disabled={submitting}
@@ -189,9 +210,9 @@ export function SessionCard({ session }: { session: SessionProp }) {
       {/* Check-in / edit form */}
       {open && (
         <div className="space-y-2 border-t pt-2">
-          <p className="text-xs text-gray-400">How did it feel? (1 = terrible, 5 = great)</p>
+          <p className="text-xs text-gray-400">How did it feel? (1 = terrible, 6 = great)</p>
           <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map((n) => (
+            {[1, 2, 3, 4, 5, 6].map((n) => (
               <button
                 key={n}
                 onClick={() => setFeelScore(n)}

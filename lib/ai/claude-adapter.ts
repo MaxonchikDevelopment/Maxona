@@ -27,7 +27,6 @@ export class ClaudeAdapter implements AIAdapter {
 
     return {
       focusSummary: input.focusSummary,
-      changeExplanation: input.changeExplanation,
       sessions: input.sessions.map((s) => ({
         scheduledDate: new Date(s.scheduledDate),
         preferredSlot: s.preferredSlot as PlannedSession["preferredSlot"],
@@ -42,7 +41,6 @@ export class ClaudeAdapter implements AIAdapter {
 
 interface SubmitPlanInput {
   focusSummary: string;
-  changeExplanation?: string;
   sessions: Array<{
     scheduledDate: string;
     preferredSlot: string;
@@ -65,7 +63,7 @@ Generate a structured 7-day training plan using the submit_plan tool.
 
 ## Two-a-day sessions
 - One session per day is the DEFAULT. Do not schedule two unless there is a clear reason.
-- Two-a-days are acceptable ONLY when ALL of: (a) recovery signals are good (all active feelScores ≥ 4), (b) weekly volume target requires it, AND (c) sessions use different modalities (e.g. morning run + afternoon swim).
+- Two-a-days are acceptable ONLY when ALL of: (a) recovery signals are good (all active feelScores ≥ 5), (b) weekly volume target requires it, AND (c) sessions use different modalities (e.g. morning run + afternoon swim).
 - Weekend two-a-days are more acceptable than weekday ones.
 - Two sessions on the same day MUST use different time slots (e.g. morning + afternoon).
 - Never schedule more than 2 sessions per day.
@@ -123,6 +121,12 @@ If the context includes a safetyBlockedSessions array, those fixed sessions were
 ## optionalSlots
 When the context includes optionalSlots, each entry is a class or session slot the user *may* attend this week — the planner decides whether to include them based on overall load, recovery, and goals. If you include one, use planningType: "preferred". Never include more optional slots than makes sense for the week's total load.
 
+## familyConstraintsParsed
+When present in the prompt, these are structured constraints parsed from the athlete's free-text input. Apply them as hard schedule constraints:
+- type "blocked": do NOT schedule training on this day/slot
+- type "available_only": on this day, ONLY use this slot for training; all other slots on that day are blocked
+These override default availability windows for the specified day.
+
 ## User-defined constraints (from user.constraints)
 - weeklyTrainingHoursTarget: if present, use as the total minutes target for the week (multiply by 60). Overrides the default 4-6 session guideline.
 - allowedModalities: if present, use ONLY the listed modalities. Allowed values: "hyrox", "running", "cycling", "swimming". If absent, use all four.
@@ -152,21 +156,19 @@ Read thisWeekCheckIns and previousWeek.lowFeelWarnings BEFORE planning any sessi
 Only ACTIVE check-in warnings trigger the protective rules below.
 
 thisWeekCheckIns are from the CURRENT week — they are the highest-priority signal.
+Each check-in now includes a pre-computed "category" field: "injury", "fatigue", or "ok".
 
 Rules for ACTIVE thisWeekCheckIns:
-1. Any entry with feelScore ≤ 2 AND notes mentioning injury / pain / hurt / sore / leg / knee / ankle / back:
-   - MANDATORY: no hard sessions for the NEXT 2 days after that date
-   - Convert the immediately following session to easy only or rest
-   - Do NOT schedule the affected movement pattern (running if leg/knee, etc.)
-2. Any entry with feelScore ≤ 2 (no injury keyword): make the immediately next session easy only
-3. Two or more ACTIVE entries with feelScore ≤ 2: reduce remaining weekly volume by 15–20%, no hard sessions for the rest of the week
-4. All entries feelScore ≥ 4: you may maintain or add a modest +5–10% volume — ONE good session does not justify a large load spike
+1. category="injury": MANDATORY — no hard sessions for the NEXT 2 days after that date; do NOT schedule the affected movement pattern (running if leg/knee, upper body if shoulder/wrist, etc.)
+2. category="fatigue": the next 1–2 sessions must be easy or rest only; do not apply injury-level blocking
+3. Two or more ACTIVE entries with category != "ok": reduce remaining weekly volume 15–20%; no hard sessions for the rest of the week
+4. All entries feelScore ≥ 5: you may maintain or add a modest +5–10% volume — one good session does not justify a large load spike
 
 previousWeek (recentCheckIns) ACTIVE signals apply the same rules at lower weight — current-week signals always override.
 
 ## Weekly review context
 When weeklyReview is present, treat it as the athlete's direct input for this planning cycle:
-- recoveryScore (1–5): 1–2 = treat like a low-feel check-in (reduce load, no hard sessions); 4–5 = can maintain or slightly increase
+- recoveryScore (1–5): 1–2 = treat like a fatigue signal (reduce load, no hard sessions); 4–5 = can maintain or slightly increase
 - priorities: focus areas the athlete selected — apply ALL of them:
   - "More HYROX this week" → include ≥ 2 HYROX sessions if schedule allows
   - "Easy recovery week" → max 4 sessions total, all easy or moderate, reduce volume ~15%
@@ -174,16 +176,7 @@ When weeklyReview is present, treat it as the athlete's direct input for this pl
   - "Marathon pace work" → include ≥ 1 tempo or interval run at moderate/hard
   - "Long ride priority" → include ≥ 1 cycling session ≥ 90 min
   - "Balanced as usual" → follow default weekly structure
-- familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly
-
-## changeExplanation format
-Required when replanReason is present. Write EXACTLY 2–4 bullet points.
-Format each as: "• [what changed] → [why]" (≤ 15 words per bullet)
-Example:
-• Removed Tuesday HYROX → active knee injury (feelScore 1)
-• Saturday long run reduced 120→80 min → accumulated fatigue
-• Added easy swim Wednesday → low-impact alternative during protection window
-No prose. No intro sentence. Only bullets. Omit entirely for initial plan generation.`;
+- familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly`;
 
 const SUBMIT_PLAN_TOOL = {
   name: "submit_plan",
@@ -195,11 +188,6 @@ const SUBMIT_PLAN_TOOL = {
         type: "string",
         description:
           "One sentence describing the week's training theme, e.g. 'Marathon base-building week with HYROX strength on Tuesday and Thursday.'",
-      },
-      changeExplanation: {
-        type: "string",
-        description:
-          "Required when replanReason is present. 2–4 bullet points only, format '• [change] → [reason]' (≤15 words each). Example: '• Removed Tue HYROX → active knee injury\\n• Sat run 120→80min → fatigue signals'. No prose. Omit for initial plan.",
       },
       sessions: {
         type: "array",
@@ -261,25 +249,26 @@ function buildUserPrompt(context: PlanningContext): string {
         ? {
             feelScore: ci.feelScore,
             notes: ci.notes,
+            category: ci.category,
             status: ci.resolvedAt ? "RESOLVED" : "ACTIVE",
           }
         : null,
     };
   });
 
-  // Only ACTIVE (unresolved) low-feel warnings from previous week carry weight
+  // Only ACTIVE (unresolved) non-ok check-ins from previous week carry weight
   const prevLowFeelWarnings = context.recentCheckIns
-    .filter((c) => c.feelScore <= 2 && !c.resolvedAt)
+    .filter((c) => c.category !== "ok" && !c.resolvedAt)
     .map(
       (c) =>
-        `PREV-WEEK [ACTIVE]: ${c.sessionDate} (${c.sessionIntensity}) feelScore=${c.feelScore}${c.notes ? ` — "${c.notes}"` : ""}`
+        `PREV-WEEK [ACTIVE]: ${c.sessionDate} (${c.sessionIntensity}) feelScore=${c.feelScore}/6 category=${c.category}${c.notes ? ` — "${c.notes}"` : ""}`
     );
 
   const thisWeekLowFeelWarnings = context.thisWeekCheckIns
-    .filter((c) => c.feelScore <= 2)
+    .filter((c) => c.category !== "ok")
     .map((c) => {
       const status = c.resolvedAt ? "RESOLVED" : "ACTIVE";
-      return `THIS-WEEK [${status}]: ${c.sessionDate} (${c.sessionIntensity}) feelScore=${c.feelScore}${c.notes ? ` — "${c.notes}"` : ""}`;
+      return `THIS-WEEK [${status}]: ${c.sessionDate} (${c.sessionIntensity}) feelScore=${c.feelScore}/6 category=${c.category}${c.notes ? ` — "${c.notes}"` : ""}`;
     });
 
   const doneMinutes = context.currentWeekDoneSessions.reduce(
@@ -336,6 +325,19 @@ function buildUserPrompt(context: PlanningContext): string {
         ...context.weeklyReview,
       },
     }),
+    ...(context.weeklyReview?.parsedConstraints && context.weeklyReview.parsedConstraints.length > 0 && {
+      familyConstraintsParsed: {
+        note: "Structured constraints parsed from familyConstraints text. Apply as hard schedule rules.",
+        constraints: context.weeklyReview.parsedConstraints.map((c) => ({
+          day: c.day,
+          ...(c.slot && { slot: c.slot }),
+          type: c.type,
+          meaning: c.type === "available_only"
+            ? `On ${c.day}, only schedule training in the ${c.slot ?? "any"} slot`
+            : `No training on ${c.day}${c.slot ? ` during ${c.slot}` : " (all day)"}`,
+        })),
+      },
+    }),
     ...(context.thisWeekCheckIns.length > 0 && {
       thisWeekCheckIns: {
         note: "From the CURRENT week. ACTIVE issues apply full protective rules. RESOLVED issues are cleared.",
@@ -344,6 +346,7 @@ function buildUserPrompt(context: PlanningContext): string {
           intensity: c.sessionIntensity,
           feelScore: c.feelScore,
           notes: c.notes,
+          category: c.category,
           status: c.resolvedAt ? "RESOLVED" : "ACTIVE",
         })),
         ...(thisWeekLowFeelWarnings.length > 0 && {

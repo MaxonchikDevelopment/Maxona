@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCoachAdvice } from "@/lib/ai/coach-advice";
+import { categorizeCheckIn } from "@/lib/checkin-utils";
 
 const USER_ID = "user_maxon";
 
@@ -11,8 +12,8 @@ export async function POST(
   const { id } = await params;
   const { feelScore, notes } = await request.json();
 
-  if (typeof feelScore !== "number" || feelScore < 1 || feelScore > 5) {
-    return NextResponse.json({ error: "feelScore must be 1–5" }, { status: 400 });
+  if (typeof feelScore !== "number" || feelScore < 1 || feelScore > 6) {
+    return NextResponse.json({ error: "feelScore must be 1–6" }, { status: 400 });
   }
 
   const session = await prisma.trainingSession.findFirst({
@@ -45,13 +46,15 @@ export async function POST(
   ]);
 
   // Generate coach advice for bad check-ins (non-blocking)
-  if (feelScore <= 2) {
+  if (feelScore <= 3) {
+    const category = categorizeCheckIn(feelScore, notes?.trim() || null);
     const coachAdvice = await generateCoachAdvice({
       feelScore,
       notes: notes?.trim() || null,
       sessionIntensity: session.intensity,
       sessionDurationMin: session.durationMin,
       sessionNotes: session.notes,
+      category,
     });
 
     if (coachAdvice) {
@@ -84,8 +87,8 @@ export async function PATCH(
   const data: Record<string, unknown> = {};
 
   if (typeof body.feelScore === "number") {
-    if (body.feelScore < 1 || body.feelScore > 5) {
-      return NextResponse.json({ error: "feelScore must be 1–5" }, { status: 400 });
+    if (body.feelScore < 1 || body.feelScore > 6) {
+      return NextResponse.json({ error: "feelScore must be 1–6" }, { status: 400 });
     }
     data.feelScore = body.feelScore;
   }

@@ -265,7 +265,7 @@ export function SettingsClient({
           </label>
 
           <label className="block text-sm">
-            Preferred long ride duration (min)
+            Cycling long ride target duration (min)
             <input
               type="number"
               value={longRideDuration}
@@ -276,7 +276,7 @@ export function SettingsClient({
           </label>
 
           <label className="block text-sm">
-            Preferred long run duration (min)
+            Long run target duration (min)
             <input
               type="number"
               value={longRunDuration}
@@ -287,7 +287,7 @@ export function SettingsClient({
           </label>
 
           <label className="block text-sm">
-            Min meaningful cycling duration (min)
+            Shortest useful cycling session (min)
             <input
               type="number"
               value={minCyclingDuration}

@@ -7,6 +7,13 @@ import type {
   SessionPlanningType,
   SessionIntensity,
 } from "@prisma/client";
+import type { CheckInCategory } from "@/lib/checkin-utils";
+
+export interface ParsedTemporalConstraint {
+  day: string;
+  slot: string | null;
+  type: "available_only" | "blocked";
+}
 
 export interface RecentCheckIn {
   sessionId: string;
@@ -15,6 +22,7 @@ export interface RecentCheckIn {
   feelScore: number;
   notes: string | null;
   resolvedAt: string | null;
+  category: CheckInCategory;
 }
 
 export interface CurrentWeekDoneSession {
@@ -45,6 +53,7 @@ export interface WeeklyReview {
   recoveryScore?: number;
   priorities?: string[];
   familyConstraints?: string;
+  parsedConstraints?: ParsedTemporalConstraint[];
 }
 
 export interface PlanningContext {

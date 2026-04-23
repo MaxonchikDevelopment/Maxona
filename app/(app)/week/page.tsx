@@ -9,15 +9,25 @@ const USER_ID = "user_maxon";
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function WeekPage() {
-  const plan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "active" },
-    include: {
-      sessions: {
-        include: { checkIn: true },
-        orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
+  const [user, plan] = await Promise.all([
+    prisma.user.findUniqueOrThrow({ where: { id: USER_ID } }),
+    prisma.trainingPlan.findFirst({
+      where: { userId: USER_ID, status: "active" },
+      include: {
+        sessions: {
+          include: { checkIn: true },
+          orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
+        },
       },
-    },
-  });
+    }),
+  ]);
+
+  const todayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: user.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 
   if (!plan) {
     return (
@@ -77,13 +87,40 @@ export default async function WeekPage() {
       )}
       {weekDays.map((dateStr, i) => {
         const daySessions = sessionsByDate[dateStr] ?? [];
+        const isPast = dateStr < todayStr;
+        const allDone =
+          daySessions.length > 0 &&
+          daySessions.every((s) => s.status === "done" || s.status === "skipped");
+        const showCompact = isPast && allDone;
+
         return (
           <div key={dateStr}>
-            <p className="mb-1 text-sm font-semibold text-gray-400">
+            <p
+              className={`mb-1 ${
+                showCompact
+                  ? "text-xs text-gray-400"
+                  : "text-sm font-semibold text-gray-400"
+              }`}
+            >
               {DOW[i]} · {dateStr}
             </p>
             {daySessions.length === 0 ? (
-              <p className="text-sm text-gray-400">Rest</p>
+              <p className={showCompact ? "text-xs text-gray-300" : "text-sm text-gray-400"}>
+                Rest
+              </p>
+            ) : showCompact ? (
+              <div className="flex flex-wrap gap-1.5">
+                {daySessions.map((s) => (
+                  <span
+                    key={s.id}
+                    className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+                  >
+                    {s.intensity} · {s.durationMin}min
+                    {s.checkIn ? ` · ${s.checkIn.feelScore}/6` : ""}
+                    {s.notes ? ` · ${s.notes.split(":")[0]}` : ""}
+                  </span>
+                ))}
+              </div>
             ) : (
               <div className="space-y-2">
                 {daySessions.map((s) => (
