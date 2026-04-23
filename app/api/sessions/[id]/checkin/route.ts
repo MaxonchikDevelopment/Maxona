@@ -45,8 +45,8 @@ export async function POST(
     }),
   ]);
 
-  // Generate coach advice for bad (≤3) and good (≥5) check-ins (non-blocking)
-  if (feelScore <= 3 || feelScore >= 5) {
+  // Generate coach advice for all feel scores (non-blocking)
+  {
     const category = categorizeCheckIn(feelScore, notes?.trim() || null);
 
     // Gather recent sessions from active plan for context
@@ -147,45 +147,40 @@ export async function PATCH(
       data.resolvedAt = null;
     }
 
-    if (newFeelScore !== 4) {
-      // Generate advice for both bad (≤3) and good (≥5) scores
-      const category = categorizeCheckIn(newFeelScore, newNotes);
-      const recentSessions = await prisma.trainingSession.findMany({
-        where: {
-          userId: USER_ID,
-          id: { not: id },
-          plan: { status: "active" },
-          status: { in: ["done", "skipped"] },
-        },
-        include: { checkIn: true },
-        orderBy: { scheduledDate: "desc" },
-        take: 7,
-      });
+    const category = categorizeCheckIn(newFeelScore, newNotes);
+    const recentSessions = await prisma.trainingSession.findMany({
+      where: {
+        userId: USER_ID,
+        id: { not: id },
+        plan: { status: "active" },
+        status: { in: ["done", "skipped"] },
+      },
+      include: { checkIn: true },
+      orderBy: { scheduledDate: "desc" },
+      take: 7,
+    });
 
-      const recentContext = recentSessions.map((s) => ({
-        date: s.scheduledDate.toISOString().split("T")[0],
-        intensity: s.intensity as string,
-        notes: s.notes,
-        feelScore: s.checkIn?.feelScore,
-        category: s.checkIn
-          ? categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes)
-          : undefined,
-      }));
+    const recentContext = recentSessions.map((s) => ({
+      date: s.scheduledDate.toISOString().split("T")[0],
+      intensity: s.intensity as string,
+      notes: s.notes,
+      feelScore: s.checkIn?.feelScore,
+      category: s.checkIn
+        ? categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes)
+        : undefined,
+    }));
 
-      const coachAdvice = await generateCoachAdvice({
-        feelScore: newFeelScore,
-        notes: newNotes,
-        sessionIntensity: session.intensity,
-        sessionDurationMin: session.durationMin,
-        sessionNotes: session.notes,
-        category,
-        recentContext,
-      });
+    const coachAdvice = await generateCoachAdvice({
+      feelScore: newFeelScore,
+      notes: newNotes,
+      sessionIntensity: session.intensity,
+      sessionDurationMin: session.durationMin,
+      sessionNotes: session.notes,
+      category,
+      recentContext,
+    });
 
-      data.coachAdvice = coachAdvice ?? null;
-    } else {
-      data.coachAdvice = null;
-    }
+    data.coachAdvice = coachAdvice ?? null;
   }
 
   const updated = await prisma.checkIn.update({

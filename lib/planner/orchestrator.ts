@@ -7,6 +7,7 @@ import { minRestHardSessions } from "@/lib/rules/min-rest-hard-sessions";
 import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { parseFamilyConstraints } from "@/lib/ai/parse-family-constraints";
+import { renderChangeExplanation, type ChangeSummaryPayload } from "@/lib/ai/coach-advice";
 import type {
   PlanningContext,
   RecentCheckIn,
@@ -14,6 +15,7 @@ import type {
   OptionalSlot,
   WeeklyReview,
   PlannedSession,
+  CurrentWeekDoneSession,
 } from "@/lib/ai/adapter";
 
 const USER_ID = "user_maxon";
@@ -71,35 +73,10 @@ function friendlyLabel(notes: string | null | undefined, intensity: string): str
   return short ? `${modality}: ${short}` : modality;
 }
 
-// One-line rationale for an added session.
-function sessionAddRationale(s: PlannedSession, hasIssue: boolean): string {
-  const lower = (s.notes ?? "").toLowerCase();
-  if (lower.includes("long run")) return "weekly long run cornerstone; builds aerobic base for marathon";
-  if (lower.includes("tempo")) return "race-pace stimulus; improves lactate threshold";
-  if (lower.includes("interval")) return "speed work; neuromuscular adaptation for race pace";
-  if (lower.startsWith("hyrox") || lower.includes("hyrox")) return "HYROX-specific work; dual-goal balance";
-  if (lower.includes("cycling") || lower.includes("swimming")) {
-    return hasIssue
-      ? "low-impact active recovery; aerobic work without run stress while issue settles"
-      : "cross-training; aerobic base without adding run load";
-  }
-  if (s.intensity === "easy") return "easy aerobic; maintains training frequency without load spike";
-  return "fills available training window; supports weekly volume target";
-}
-
-function reviewPriorityRationale(priority: string): string {
-  if (priority.toLowerCase().includes("hyrox")) return "2+ sessions scheduled; specificity for race day";
-  if (priority.toLowerCase().includes("running volume")) return "3+ runs; long run locked in for marathon base";
-  if (priority.toLowerCase().includes("recovery")) return "volume cut ~15%; adaptation consolidation";
-  if (priority.toLowerCase().includes("marathon pace")) return "tempo/interval run added; race-pace neuromuscular training";
-  if (priority.toLowerCase().includes("long ride")) return "cycling session ≥ 90 min; aerobic base via low-impact modality";
-  return "";
-}
-
-// ─── Deterministic changeExplanation ─────────────────────────────────────────
+// ─── Structured change summary for LLM rendering ─────────────────────────────
 // Diffs by date+modality so that same-date modality changes are caught.
 // Always matches the final validSessions displayed in the plan.
-function buildChangeExplanation({
+function buildChangeSummaryPayload({
   prevPlannedSessions,
   newSessions,
   injuryWindow,
@@ -107,6 +84,7 @@ function buildChangeExplanation({
   thisWeekCheckIns,
   weeklyReview,
   replanReason,
+  doneSessionsThisWeek,
 }: {
   prevPlannedSessions: Array<{
     scheduledDate: Date;
@@ -120,28 +98,41 @@ function buildChangeExplanation({
   thisWeekCheckIns: RecentCheckIn[];
   weeklyReview?: WeeklyReview;
   replanReason?: string;
-}): string {
-  const bullets: string[] = [];
+  doneSessionsThisWeek: CurrentWeekDoneSession[];
+}): ChangeSummaryPayload {
+  const injurySignals = thisWeekCheckIns
+    .filter((c) => !c.resolvedAt && c.category === "injury")
+    .map((c) => ({ date: c.sessionDate, feelScore: c.feelScore, notes: c.notes }));
+  const fatigueSignals = thisWeekCheckIns
+    .filter((c) => !c.resolvedAt && c.category === "fatigue")
+    .map((c) => ({ date: c.sessionDate, feelScore: c.feelScore, notes: c.notes }));
 
-  const injurySignals = thisWeekCheckIns.filter(
-    (c) => c.category === "injury" && !c.resolvedAt
+  const sortedCIs = [...thisWeekCheckIns].sort((a, b) =>
+    b.sessionDate.localeCompare(a.sessionDate)
   );
-  const fatigueSignals = thisWeekCheckIns.filter(
-    (c) => c.category === "fatigue" && !c.resolvedAt
-  );
-  const hasIssue = injurySignals.length > 0 || fatigueSignals.length > 0;
+  const latestCheckIn =
+    sortedCIs.length > 0
+      ? {
+          date: sortedCIs[0].sessionDate,
+          feelScore: sortedCIs[0].feelScore,
+          notes: sortedCIs[0].notes,
+          category: sortedCIs[0].category as string,
+        }
+      : undefined;
 
-  // 1. Safety-blocked fixed sessions — always accurate, always first
+  const doneSessions = doneSessionsThisWeek.map((s) => ({
+    date: s.date,
+    label: friendlyLabel(s.notes, s.intensity as string),
+    intensity: s.intensity as string,
+  }));
+
   const safetyBlockedDates = new Set(safetyBlockedSessions.map((s) => s.date));
-  for (const blocked of safetyBlockedSessions) {
-    if (bullets.length >= 4) break;
-    const ci = injurySignals[0];
-    bullets.push(
-      `• ${dayLabel(blocked.date)} ${friendlyLabel(blocked.notes, blocked.intensity)} removed — injury rest window${ci ? ` (feel ${ci.feelScore}/6)` : ""}; avoids aggravating injury`
-    );
-  }
+  const safetyBlockedPayload = safetyBlockedSessions.map((s) => ({
+    date: s.date,
+    day: dayLabel(s.date),
+    label: friendlyLabel(s.notes, s.intensity),
+  }));
 
-  // 2. Diff by date+modality — catches same-date modality swaps (running→swimming etc)
   type SnapKey = string; // "YYYY-MM-DD|modality"
 
   const prevByKey = new Map<SnapKey, { date: string; notes: string | null; intensity: string }>();
@@ -161,68 +152,65 @@ function buildChangeExplanation({
   const prevKeySet = new Set(prevByKey.keys());
   const newKeySet = new Set(newByKey.keys());
 
-  // Removed (in prev but not in new)
-  for (const [key, s] of prevByKey) {
-    if (bullets.length >= 4) break;
-    if (newKeySet.has(key)) continue;
-    // Skip if already covered by a safetyBlocked bullet above
+  const removedSessions: ChangeSummaryPayload["removedSessions"] = [];
+  for (const [, s] of prevByKey) {
+    if (newKeySet.has(`${s.date}|${modalityKey(s.notes, s.intensity)}`)) continue;
     if (safetyBlockedDates.has(s.date)) continue;
-    const label = friendlyLabel(s.notes, s.intensity);
+
     let reason: string;
-    if (
-      injuryWindow &&
-      s.date > injuryWindow.injuryDate &&
-      s.date <= injuryWindow.protectUntil
-    ) {
+    if (injuryWindow && s.date > injuryWindow.injuryDate && s.date <= injuryWindow.protectUntil) {
       const ci = injurySignals[0];
-      reason = `injury window${ci ? ` (feel ${ci.feelScore}/6)` : ""}; hard work blocked for recovery`;
+      reason = `injury window${ci ? ` (feel ${ci.feelScore}/6)` : ""}`;
     } else if (injurySignals.length > 0) {
-      reason = `active injury (feel ${injurySignals[0].feelScore}/6); load reduced to protect long-term training`;
+      reason = `active injury (feel ${injurySignals[0].feelScore}/6)`;
     } else if (fatigueSignals.length > 0) {
-      reason = `fatigue signal (feel ${fatigueSignals[0].feelScore}/6); cut to preserve training quality`;
+      reason = `fatigue signal (feel ${fatigueSignals[0].feelScore}/6)`;
     } else {
       reason = "schedule or availability change";
     }
-    bullets.push(`• ${dayLabel(s.date)} ${label} removed — ${reason}`);
+    removedSessions.push({
+      date: s.date,
+      day: dayLabel(s.date),
+      label: friendlyLabel(s.notes, s.intensity),
+      reason,
+    });
   }
 
-  // Added (in new but not in prev)
-  for (const [key, s] of newByKey) {
-    if (bullets.length >= 4) break;
-    if (prevKeySet.has(key)) continue;
+  const addedSessions: ChangeSummaryPayload["addedSessions"] = [];
+  for (const [, s] of newByKey) {
     const d = toDateStr(s.scheduledDate);
-    const label = friendlyLabel(s.notes, s.intensity);
-    const rationale = sessionAddRationale(s, hasIssue);
-    bullets.push(`• ${dayLabel(d)} ${label} added — ${rationale}`);
+    if (prevKeySet.has(`${d}|${modalityKey(s.notes, s.intensity)}`)) continue;
+    addedSessions.push({
+      date: d,
+      day: dayLabel(d),
+      label: friendlyLabel(s.notes, s.intensity),
+      intensity: s.intensity,
+    });
   }
 
-  // 3. Signal summary when structural diff was minor
-  if (bullets.length < 2) {
-    if (injurySignals.length > 0 && safetyBlockedSessions.length === 0) {
-      bullets.push(
-        `• Hard sessions limited — active injury (feel ${injurySignals[0].feelScore}/6); easy/moderate only to protect recovery`
-      );
-    } else if (fatigueSignals.length > 0) {
-      const count = fatigueSignals.length;
-      bullets.push(
-        `• Load eased — ${count} fatigue signal${count > 1 ? "s" : ""} (feel ${fatigueSignals[0].feelScore}/6); better to train fresh than exhausted`
-      );
-    }
-  }
+  const remainingPlannedSessions = newSessions.map((s) => {
+    const d = toDateStr(s.scheduledDate);
+    return {
+      date: d,
+      day: dayLabel(d),
+      label: friendlyLabel(s.notes, s.intensity),
+      intensity: s.intensity,
+      durationMin: s.durationMin,
+    };
+  });
 
-  // 4. Weekly review focus
-  if (weeklyReview?.priorities?.length && bullets.length < 4) {
-    const p = weeklyReview.priorities[0];
-    const context = reviewPriorityRationale(p);
-    bullets.push(`• Focus: ${p.toLowerCase()}${context ? ` — ${context}` : ""}`);
-  }
-
-  // 5. Fallback — truthful no-op
-  if (bullets.length === 0) {
-    bullets.push(`• No changes to remaining sessions this week — ${replanReason ?? "manual replan"}`);
-  }
-
-  return bullets.slice(0, 4).join("\n");
+  return {
+    replanReason,
+    doneSessionsThisWeek: doneSessions,
+    latestCheckIn,
+    injurySignals,
+    fatigueSignals,
+    safetyBlockedSessions: safetyBlockedPayload,
+    removedSessions,
+    addedSessions,
+    remainingPlannedSessions,
+    weeklyReviewPriority: weeklyReview?.priorities?.[0],
+  };
 }
 
 export async function generateWeeklyPlan(
@@ -458,20 +446,23 @@ export async function generateWeeklyPlan(
     activeThisWeekCIs.length === 0 || activeThisWeekCIs.every((c) => c.feelScore >= 5);
   const validSessions = deduplicateSessions(dateFiltered, { injuryActive, recoveryOk });
 
-  // Generate deterministic changeExplanation from the FINAL sessions (always matches what's displayed)
+  // LLM-authored changeExplanation grounded in deterministic diff payload
   const changeExplanation = replanReason
-    ? buildChangeExplanation({
-        prevPlannedSessions: prevPlannedSessions.filter((s: { scheduledDate: Date }) => {
-          const d = toDateStr(s.scheduledDate);
-          return d >= todayStr && d <= weekEndStr;
-        }),
-        newSessions: validSessions,
-        injuryWindow,
-        safetyBlockedSessions,
-        thisWeekCheckIns,
-        weeklyReview: parsedWeeklyReview,
-        replanReason,
-      })
+    ? await renderChangeExplanation(
+        buildChangeSummaryPayload({
+          prevPlannedSessions: prevPlannedSessions.filter((s: { scheduledDate: Date }) => {
+            const d = toDateStr(s.scheduledDate);
+            return d >= todayStr && d <= weekEndStr;
+          }),
+          newSessions: validSessions,
+          injuryWindow,
+          safetyBlockedSessions,
+          thisWeekCheckIns,
+          weeklyReview: parsedWeeklyReview,
+          replanReason,
+          doneSessionsThisWeek: planningCtx.currentWeekDoneSessions,
+        })
+      )
     : null;
 
   return prisma.$transaction(async (tx) => {
