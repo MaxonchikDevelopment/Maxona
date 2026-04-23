@@ -113,6 +113,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Check-in not found" }, { status: 404 });
   }
 
+  const existing = session.checkIn;
   const data: Record<string, unknown> = {};
 
   if (typeof body.feelScore === "number") {
@@ -132,8 +133,66 @@ export async function PATCH(
     data.resolvedAt = null;
   }
 
+  const isScoreOrNotesEdit = typeof body.feelScore === "number" || "notes" in body;
+
+  if (isScoreOrNotesEdit) {
+    const newFeelScore = typeof body.feelScore === "number" ? body.feelScore : existing.feelScore;
+    const newNotes = "notes" in body ? (body.notes?.trim() || null) : existing.notes;
+
+    if (newFeelScore <= 3) {
+      // Auto-unresolve if previously resolved and caller didn't explicitly set resolved
+      if (existing.resolvedAt && body.resolved !== true) {
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[checkin] auto-unresolving ${existing.id} — feelScore=${newFeelScore} is still low`);
+        }
+        data.resolvedAt = null;
+      }
+
+      const category = categorizeCheckIn(newFeelScore, newNotes);
+      const recentSessions = await prisma.trainingSession.findMany({
+        where: {
+          userId: USER_ID,
+          id: { not: id },
+          plan: { status: "active" },
+          status: { in: ["done", "skipped"] },
+        },
+        include: { checkIn: true },
+        orderBy: { scheduledDate: "desc" },
+        take: 7,
+      });
+
+      const recentContext = recentSessions.map((s) => ({
+        date: s.scheduledDate.toISOString().split("T")[0],
+        intensity: s.intensity as string,
+        notes: s.notes,
+        feelScore: s.checkIn?.feelScore,
+        category: s.checkIn
+          ? categorizeCheckIn(s.checkIn.feelScore, s.checkIn.notes)
+          : undefined,
+      }));
+
+      const coachAdvice = await generateCoachAdvice({
+        feelScore: newFeelScore,
+        notes: newNotes,
+        sessionIntensity: session.intensity,
+        sessionDurationMin: session.durationMin,
+        sessionNotes: session.notes,
+        category,
+        recentContext,
+      });
+
+      if (coachAdvice) {
+        data.coachAdvice = coachAdvice;
+      } else if (process.env.NODE_ENV !== "production") {
+        console.warn(`[checkin] PATCH advice failed for session ${id} (feelScore=${newFeelScore}, category=${category})`);
+      }
+    } else {
+      data.coachAdvice = null;
+    }
+  }
+
   const updated = await prisma.checkIn.update({
-    where: { id: session.checkIn.id },
+    where: { id: existing.id },
     data,
   });
 

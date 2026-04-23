@@ -429,7 +429,9 @@ export async function generateWeeklyPlan(
   // Generate deterministic changeExplanation from the FINAL sessions (always matches what's displayed)
   const changeExplanation = replanReason
     ? buildChangeExplanation({
-        prevPlannedSessions,
+        prevPlannedSessions: prevPlannedSessions.filter(
+          (s) => toDateStr(s.scheduledDate) >= todayStr
+        ),
         newSessions: validSessions,
         injuryWindow,
         safetyBlockedSessions,
