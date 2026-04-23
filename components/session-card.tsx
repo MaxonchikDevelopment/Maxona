@@ -78,6 +78,7 @@ export function SessionCard({
     setOpen(false);
     setEditing(false);
     setSubmitting(false);
+    router.refresh();
   }
 
   async function updateCheckIn() {
@@ -93,6 +94,7 @@ export function SessionCard({
     setEditing(false);
     setOpen(false);
     setSubmitting(false);
+    router.refresh();
   }
 
   async function resolveIssue() {
