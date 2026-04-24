@@ -13,8 +13,13 @@ async function fetchStravaMetrics(sessionId: string): Promise<StravaSessionMetri
   });
   if (links.length === 0) return undefined;
   const acts = links.map((l) => l.activity);
-  const hrs = acts.filter((a) => a.averageHeartrate != null).map((a) => a.averageHeartrate!);
-  const maxHrs = acts.filter((a) => a.maxHeartrate != null).map((a) => a.maxHeartrate!);
+  // Filter implausible HR readings (sensor noise / watch glitch)
+  const hrs = acts
+    .filter((a) => a.averageHeartrate != null && a.averageHeartrate >= 50 && a.averageHeartrate <= 220)
+    .map((a) => a.averageHeartrate!);
+  const maxHrs = acts
+    .filter((a) => a.maxHeartrate != null && a.maxHeartrate >= 50 && a.maxHeartrate <= 220)
+    .map((a) => a.maxHeartrate!);
   const speeds = acts.filter((a) => a.averageSpeed > 0).map((a) => a.averageSpeed);
   return {
     activityCount: acts.length,

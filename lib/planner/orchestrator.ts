@@ -558,26 +558,13 @@ export async function generateWeeklyPlan(
       },
     });
 
-    for (const s of currentWeekDoneSessions) {
-      const carried = await tx.trainingSession.create({
-        data: {
-          planId: newPlan.id,
-          userId: USER_ID,
-          scheduledDate: s.scheduledDate,
-          preferredSlot: s.preferredSlot,
-          planningType: s.planningType,
-          durationMin: s.durationMin,
-          intensity: s.intensity,
-          notes: s.notes,
-          status: s.status,
-        },
+    // Move done/skipped sessions to the new plan by updating planId only.
+    // This preserves session IDs so CheckIn and SessionStravaActivityLink FKs stay intact.
+    if (currentWeekDoneSessions.length > 0) {
+      await tx.trainingSession.updateMany({
+        where: { id: { in: currentWeekDoneSessions.map((s) => s.id) } },
+        data: { planId: newPlan.id },
       });
-      if (s.checkIn) {
-        await tx.checkIn.update({
-          where: { id: s.checkIn.id },
-          data: { sessionId: carried.id },
-        });
-      }
     }
 
     if (validSessions.length > 0) {

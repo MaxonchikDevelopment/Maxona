@@ -43,9 +43,24 @@ function buildAnalyticsSummary(a: WorkoutAnalytics): string {
     const sm = a.stravaMetrics;
     const segs: string[] = [sm.sportMix.join("+")];
     if (sm.totalDistance > 0) segs.push(`${(sm.totalDistance / 1000).toFixed(1)}km`);
-    if (sm.totalMovingTime > 0) segs.push(`${Math.floor(sm.totalMovingTime / 60)}min moving`);
+    if (sm.totalMovingTime > 0) {
+      segs.push(`${Math.floor(sm.totalMovingTime / 60)}min moving`);
+      const breakMin = Math.round((sm.totalElapsedTime - sm.totalMovingTime) / 60);
+      if (breakMin >= 5) segs.push(`${breakMin}min stopped`);
+    }
+    if (sm.averageSpeedMean && sm.averageSpeedMean > 0 && sm.totalDistance > 0) {
+      const isRunning = sm.sportMix.some((sp) => /run/i.test(sp));
+      if (isRunning) {
+        const paceSecPerKm = 1000 / sm.averageSpeedMean;
+        const paceMin = Math.floor(paceSecPerKm / 60);
+        const paceSec = Math.round(paceSecPerKm % 60);
+        segs.push(`pace ${paceMin}:${String(paceSec).padStart(2, "0")}/km`);
+      } else {
+        segs.push(`avg ${(sm.averageSpeedMean * 3.6).toFixed(1)}km/h`);
+      }
+    }
     if (sm.avgHeartrateMean) segs.push(`HR avg ${Math.round(sm.avgHeartrateMean)}`);
-    if (sm.maxHeartrateMax) segs.push(`max ${Math.round(sm.maxHeartrateMax)}`);
+    if (sm.maxHeartrateMax) segs.push(`max HR ${Math.round(sm.maxHeartrateMax)}`);
     if (sm.totalElevationGain > 0) segs.push(`${Math.round(sm.totalElevationGain)}m elev`);
     parts.push(`Strava${sm.splitSession ? " (split session)" : ""}: ${segs.join(" · ")}`);
   }
@@ -109,6 +124,7 @@ Give 2–3 concrete next-step suggestions. Rules:
 - For fatigue: tie to weekly load from analytics — e.g. "After ${params.analytics?.hardSessionsThisWeek ?? "X"} hard sessions / ${params.analytics?.minutesDoneThisWeek ?? "Y"} min this week, …"
 - If back-to-back hard load or high weekly minutes: suggest recovery alternatives specifically
 - Reference the specific sport or body part mentioned
+- If Strava data shows distance or pace: reference the actual numbers (e.g. "5.2km at 6:10/km") — skip HR if not in the analytics block
 - Format: "• [suggestion]"
 No intro. No preamble.`,
           },
@@ -144,6 +160,7 @@ Give 1–2 short coach observations. Rules:
 - Reference load trend or hard session count only if back-to-back hard risk is confirmed or hardSessionsThisWeek ≥ 3; otherwise stay positive or neutral
 - If load is light: lean positive — athlete is pacing well
 - Reference next planned session from analytics if available — does this session position well for it?
+- If Strava data present: briefly note actual distance or pace vs session type; skip HR if not in analytics block
 - Format: "• [observation]"
 No intro. No preamble.`,
           },
@@ -178,6 +195,7 @@ Give 1–2 short coach observations. Rules:
 - If hardSessionsThisWeek ≥ 2 or back-to-back hard: note stacking risk despite good feel
 - If next planned session is hard and near: mention whether this session positions well for it
 - If planner stance is protecting/reducing: acknowledge the positive rebound while keeping context
+- If Strava data shows distance or pace: reference the specific number (e.g. "7.1km at 5:05/km"); skip HR commentary if not shown in analytics block
 - Format: "• [observation]"
 No intro. No preamble.`,
         },
