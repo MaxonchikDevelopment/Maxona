@@ -6,13 +6,14 @@ import type { WorkoutAnalytics, StravaSessionMetrics } from "@/lib/ai/coach-advi
 
 const USER_ID = "user_maxon";
 
-async function fetchStravaMetrics(sessionId: string): Promise<StravaSessionMetrics | undefined> {
+async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number): Promise<StravaSessionMetrics | undefined> {
   const links = await prisma.sessionStravaActivityLink.findMany({
     where: { sessionId },
     include: { activity: true },
   });
   if (links.length === 0) return undefined;
   const acts = links.map((l) => l.activity);
+
   // Filter implausible HR readings (sensor noise / watch glitch)
   const hrs = acts
     .filter((a) => a.averageHeartrate != null && a.averageHeartrate >= 50 && a.averageHeartrate <= 220)
@@ -21,16 +22,34 @@ async function fetchStravaMetrics(sessionId: string): Promise<StravaSessionMetri
     .filter((a) => a.maxHeartrate != null && a.maxHeartrate >= 50 && a.maxHeartrate <= 220)
     .map((a) => a.maxHeartrate!);
   const speeds = acts.filter((a) => a.averageSpeed > 0).map((a) => a.averageSpeed);
+
+  const totalMovingTime = acts.reduce((s, a) => s + a.movingTime, 0);
+  const totalElapsedTime = acts.reduce((s, a) => s + a.elapsedTime, 0);
+  const totalDistance = acts.reduce((s, a) => s + a.distance, 0);
+  const totalElevationGain = acts.reduce((s, a) => s + a.totalElevationGain, 0);
+
+  const pauseTime = Math.max(0, totalElapsedTime - totalMovingTime);
+  const pauseRatio = totalElapsedTime > 0 ? pauseTime / totalElapsedTime : 0;
+  const elevationPerKm = totalDistance > 0 ? totalElevationGain / (totalDistance / 1000) : null;
+  const actualMovingMin = totalMovingTime / 60;
+  const actualVsPlannedDurationDeltaMin = plannedDurationMin > 0
+    ? actualMovingMin - plannedDurationMin
+    : null;
+
   return {
     activityCount: acts.length,
-    totalDistance: acts.reduce((s, a) => s + a.distance, 0),
-    totalMovingTime: acts.reduce((s, a) => s + a.movingTime, 0),
-    totalElapsedTime: acts.reduce((s, a) => s + a.elapsedTime, 0),
-    totalElevationGain: acts.reduce((s, a) => s + a.totalElevationGain, 0),
+    sportMix: [...new Set(acts.map((a) => a.sportType))],
+    totalDistance,
+    totalMovingTime,
+    totalElapsedTime,
+    totalElevationGain,
+    pauseTime,
+    pauseRatio,
     avgHeartrateMean: hrs.length > 0 ? hrs.reduce((s, h) => s + h, 0) / hrs.length : null,
     maxHeartrateMax: maxHrs.length > 0 ? Math.max(...maxHrs) : null,
     averageSpeedMean: speeds.length > 0 ? speeds.reduce((s, v) => s + v, 0) / speeds.length : null,
-    sportMix: [...new Set(acts.map((a) => a.sportType))],
+    elevationPerKm,
+    actualVsPlannedDurationDeltaMin,
     splitSession: acts.length > 1,
   };
 }
@@ -192,7 +211,7 @@ export async function POST(
     const category = categorizeCheckIn(feelScore, notes?.trim() || null);
     const [{ recentContext, analytics }, stravaMetrics] = await Promise.all([
       buildCheckInContext(id, session, feelScore, notes?.trim() || null),
-      fetchStravaMetrics(id),
+      fetchStravaMetrics(id, session.durationMin),
     ]);
 
     const coachAdvice = await generateCoachAdvice({
@@ -274,7 +293,7 @@ export async function PATCH(
     const category = categorizeCheckIn(newFeelScore, newNotes);
     const [{ recentContext, analytics }, stravaMetrics] = await Promise.all([
       buildCheckInContext(id, session, newFeelScore, newNotes),
-      fetchStravaMetrics(id),
+      fetchStravaMetrics(id, session.durationMin),
     ]);
 
     const coachAdvice = await generateCoachAdvice({

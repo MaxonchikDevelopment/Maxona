@@ -5,14 +5,18 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export interface StravaSessionMetrics {
   activityCount: number;
+  sportMix: string[];
   totalDistance: number;
   totalMovingTime: number;
   totalElapsedTime: number;
   totalElevationGain: number;
+  pauseTime: number;
+  pauseRatio: number;
   avgHeartrateMean: number | null;
   maxHeartrateMax: number | null;
   averageSpeedMean: number | null;
-  sportMix: string[];
+  elevationPerKm: number | null;
+  actualVsPlannedDurationDeltaMin: number | null;
   splitSession: boolean;
 }
 
@@ -45,8 +49,11 @@ function buildAnalyticsSummary(a: WorkoutAnalytics): string {
     if (sm.totalDistance > 0) segs.push(`${(sm.totalDistance / 1000).toFixed(1)}km`);
     if (sm.totalMovingTime > 0) {
       segs.push(`${Math.floor(sm.totalMovingTime / 60)}min moving`);
-      const breakMin = Math.round((sm.totalElapsedTime - sm.totalMovingTime) / 60);
-      if (breakMin >= 5) segs.push(`${breakMin}min stopped`);
+      const breakMin = Math.round(sm.pauseTime / 60);
+      if (breakMin >= 5) {
+        const pauseFlag = sm.pauseRatio > 0.15 ? ` [HIGH PAUSE: ${Math.round(sm.pauseRatio * 100)}%]` : "";
+        segs.push(`${breakMin}min stopped${pauseFlag}`);
+      }
     }
     if (sm.averageSpeedMean && sm.averageSpeedMean > 0 && sm.totalDistance > 0) {
       const isRunning = sm.sportMix.some((sp) => /run/i.test(sp));
@@ -61,7 +68,18 @@ function buildAnalyticsSummary(a: WorkoutAnalytics): string {
     }
     if (sm.avgHeartrateMean) segs.push(`HR avg ${Math.round(sm.avgHeartrateMean)}`);
     if (sm.maxHeartrateMax) segs.push(`max HR ${Math.round(sm.maxHeartrateMax)}`);
-    if (sm.totalElevationGain > 0) segs.push(`${Math.round(sm.totalElevationGain)}m elev`);
+    if (sm.totalElevationGain > 0) {
+      const elevPerKmStr = sm.elevationPerKm !== null && sm.elevationPerKm >= 10
+        ? ` (${Math.round(sm.elevationPerKm)}m/km)`
+        : "";
+      segs.push(`${Math.round(sm.totalElevationGain)}m elev${elevPerKmStr}`);
+    }
+    if (sm.actualVsPlannedDurationDeltaMin !== null) {
+      const delta = Math.round(sm.actualVsPlannedDurationDeltaMin);
+      if (Math.abs(delta) >= 5) {
+        segs.push(delta >= 0 ? `+${delta}min vs plan` : `${delta}min vs plan`);
+      }
+    }
     parts.push(`Strava${sm.splitSession ? " (split session)" : ""}: ${segs.join(" · ")}`);
   }
   return parts.map((p) => `- ${p}`).join("\n");
@@ -125,6 +143,9 @@ Give 2–3 concrete next-step suggestions. Rules:
 - If back-to-back hard load or high weekly minutes: suggest recovery alternatives specifically
 - Reference the specific sport or body part mentioned
 - If Strava data shows distance or pace: reference the actual numbers (e.g. "5.2km at 6:10/km") — skip HR if not in the analytics block
+- If Strava shows "HIGH PAUSE" flag: reference fragmented session pattern specifically
+- If Strava shows elevation per km (e.g. "35m/km"): mention hill load if it contributed to difficulty
+- If Strava shows "-Xmin vs plan": briefly acknowledge short execution before giving recovery advice
 - Format: "• [suggestion]"
 No intro. No preamble.`,
           },
@@ -161,6 +182,9 @@ Give 1–2 short coach observations. Rules:
 - If load is light: lean positive — athlete is pacing well
 - Reference next planned session from analytics if available — does this session position well for it?
 - If Strava data present: briefly note actual distance or pace vs session type; skip HR if not in analytics block
+- If Strava shows "HIGH PAUSE": note the stopping pattern — useful data even at 4/6
+- If Strava shows elevation per km (Xm/km) and it is ≥ 15: briefly note the hill component
+- If Strava shows "+Xmin vs plan" or "-Xmin vs plan": reference execution vs planned duration
 - Format: "• [observation]"
 No intro. No preamble.`,
           },
@@ -196,6 +220,9 @@ Give 1–2 short coach observations. Rules:
 - If next planned session is hard and near: mention whether this session positions well for it
 - If planner stance is protecting/reducing: acknowledge the positive rebound while keeping context
 - If Strava data shows distance or pace: reference the specific number (e.g. "7.1km at 5:05/km"); skip HR commentary if not shown in analytics block
+- If Strava shows elevation per km (Xm/km): credit the hill stimulus explicitly
+- If Strava shows "+Xmin vs plan": note strong execution over target
+- If Strava shows "HIGH PAUSE" despite good feel: still flag the stopping pattern as worth watching
 - Format: "• [observation]"
 No intro. No preamble.`,
         },
