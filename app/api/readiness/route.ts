@@ -61,13 +61,9 @@ export async function POST(request: Request) {
     ? null
     : await generateReadinessCoachAdvice({ feelScore, notes: trimmedNotes, tags, category });
 
-  if (coachAdvice) {
-    const updated = await prisma.dailyReadiness.update({
-      where: { id: record.id },
-      data: { coachAdvice },
-    });
-    return NextResponse.json(updated, { status: 201 });
-  }
-
-  return NextResponse.json(record, { status: 201 });
+  const updated = await prisma.dailyReadiness.update({
+    where: { id: record.id },
+    data: { coachAdvice },
+  });
+  return NextResponse.json(updated, { status: 201 });
 }
