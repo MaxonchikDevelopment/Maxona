@@ -265,58 +265,45 @@ export function SettingsClient({
       </section>
 
       {/* Athlete Preferences */}
-      <section className="space-y-3">
-        <h2 className="font-semibold">Athlete Preferences</h2>
-        <p className="text-xs text-gray-500">Planner inputs — tell the AI how you train.</p>
+      <section className="space-y-5">
+        <h2 className="font-semibold">Preferences</h2>
+
+        {/* Running */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={avoidFriday}
-              onChange={(e) => setAvoidFriday(e.target.checked)}
-            />
-            Avoid Friday evening training when possible
-          </label>
-
-          <div className="pt-1 space-y-2">
-            <p className="text-sm font-medium">Cycling durations (min)</p>
-            <p className="text-xs text-gray-400">
-              Target durations — planner uses these instead of guessing.
-            </p>
-            <label className="block text-sm">
-              Easy / recovery ride
-              <input
-                type="number"
-                value={easyRideDuration}
-                onChange={(e) => setEasyRideDuration(e.target.value)}
-                placeholder="e.g. 60"
-                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-              />
-            </label>
-            <label className="block text-sm">
-              Long ride
-              <input
-                type="number"
-                value={longRideDuration}
-                onChange={(e) => setLongRideDuration(e.target.value)}
-                placeholder="e.g. 120"
-                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-              />
-            </label>
-            <label className="block text-sm">
-              Minimum ride length
-              <input
-                type="number"
-                value={minCyclingDuration}
-                onChange={(e) => setMinCyclingDuration(e.target.value)}
-                placeholder="e.g. 60"
-                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-              />
-            </label>
-          </div>
-
+          <p className="text-sm font-medium text-gray-700">Running</p>
+          <p className="text-xs text-gray-400">Standard distances: 5, 10, 15, 21 km</p>
           <label className="block text-sm">
-            Long run target duration (min)
+            Easy / recovery run (km)
+            <input
+              type="number"
+              value={easyRunKm}
+              onChange={(e) => setEasyRunKm(e.target.value)}
+              placeholder="e.g. 10"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Tempo / interval run (km)
+            <input
+              type="number"
+              value={tempoRunKm}
+              onChange={(e) => setTempoRunKm(e.target.value)}
+              placeholder="e.g. 10"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Long run distance (km)
+            <input
+              type="number"
+              value={longRunKm}
+              onChange={(e) => setLongRunKm(e.target.value)}
+              placeholder="e.g. 21"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Long run target time (min)
             <input
               type="number"
               value={longRunDuration}
@@ -325,9 +312,48 @@ export function SettingsClient({
               className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
             />
           </label>
+        </div>
 
+        {/* Cycling */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-gray-700">Cycling</p>
           <label className="block text-sm">
-            Max HYROX sessions per week
+            Easy / recovery ride (min)
+            <input
+              type="number"
+              value={easyRideDuration}
+              onChange={(e) => setEasyRideDuration(e.target.value)}
+              placeholder="e.g. 60"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Long ride (min)
+            <input
+              type="number"
+              value={longRideDuration}
+              onChange={(e) => setLongRideDuration(e.target.value)}
+              placeholder="e.g. 120"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Minimum ride length (min)
+            <input
+              type="number"
+              value={minCyclingDuration}
+              onChange={(e) => setMinCyclingDuration(e.target.value)}
+              placeholder="e.g. 60"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+
+        {/* HYROX */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-gray-700">HYROX</p>
+          <label className="block text-sm">
+            Max sessions per week
             <input
               type="number"
               value={maxHyrox}
@@ -336,9 +362,8 @@ export function SettingsClient({
               className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
             />
           </label>
-
           <div className="text-sm">
-            <p className="mb-1">Preferred HYROX days</p>
+            <p className="mb-1">Preferred days</p>
             <div className="flex flex-wrap gap-2">
               {DAYS.map((d) => (
                 <label key={d} className="flex items-center gap-1 text-sm">
@@ -352,44 +377,17 @@ export function SettingsClient({
               ))}
             </div>
           </div>
-
-          <div className="pt-1 space-y-2">
-            <p className="text-sm font-medium">Running distances (km)</p>
-            <p className="text-xs text-gray-400">
-              Planner defaults — use standard values like 5, 10, 15, 21.
-            </p>
-            <label className="block text-sm">
-              Easy / recovery run
-              <input
-                type="number"
-                value={easyRunKm}
-                onChange={(e) => setEasyRunKm(e.target.value)}
-                placeholder="e.g. 10"
-                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-              />
-            </label>
-            <label className="block text-sm">
-              Tempo / interval run
-              <input
-                type="number"
-                value={tempoRunKm}
-                onChange={(e) => setTempoRunKm(e.target.value)}
-                placeholder="e.g. 10"
-                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-              />
-            </label>
-            <label className="block text-sm">
-              Long run
-              <input
-                type="number"
-                value={longRunKm}
-                onChange={(e) => setLongRunKm(e.target.value)}
-                placeholder="e.g. 21"
-                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-              />
-            </label>
-          </div>
         </div>
+
+        {/* Other */}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={avoidFriday}
+            onChange={(e) => setAvoidFriday(e.target.checked)}
+          />
+          Avoid Friday evening training
+        </label>
 
         <button
           onClick={() => saveConstraints.mutate()}

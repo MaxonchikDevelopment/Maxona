@@ -23,18 +23,12 @@ export async function activateDraftIfReady(
   const draftStartStr = draft.startsAt.toISOString().split("T")[0];
   if (todayStr < draftStartStr) return false;
 
-  const active = await prisma.trainingPlan.findFirst({
-    where: { userId, status: "active" },
-    select: { id: true },
-  });
-
   await prisma.$transaction(async (tx) => {
-    if (active) {
-      await tx.trainingPlan.update({
-        where: { id: active.id },
-        data: { status: "archived" },
-      });
-    }
+    // Archive ALL active plans — guards against the synthetic-test multi-active edge case.
+    await tx.trainingPlan.updateMany({
+      where: { userId, status: "active" },
+      data: { status: "archived" },
+    });
     await tx.trainingPlan.update({
       where: { id: draft.id },
       data: { status: "active" },

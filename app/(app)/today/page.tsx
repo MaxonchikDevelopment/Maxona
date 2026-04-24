@@ -226,7 +226,7 @@ export default async function TodayPage() {
     })),
   ]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 10);
+    .slice(0, 7);
 
   return (
     <main className="p-4 space-y-3">

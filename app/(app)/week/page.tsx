@@ -148,7 +148,7 @@ export default async function WeekPage() {
       {latestReadiness && (
         <div className="flex flex-wrap items-center gap-1.5 rounded bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
           <span className="font-medium">
-            {latestReadiness.category === "injury" ? "Injury signal" : "Fatigue"} · {latestReadiness.feelScore}/6
+            {latestReadiness.category === "injury" ? "Injury" : "Fatigue"} · {latestReadiness.feelScore}/6
           </span>
           {(latestReadiness.tags as string[]).length > 0 && (
             <>
