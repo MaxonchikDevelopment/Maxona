@@ -9,6 +9,10 @@ export type SignalHistoryItem = {
 };
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function shortDate(dateStr: string): string {
@@ -42,7 +46,7 @@ export function SignalsHistory({ items }: { items: SignalHistoryItem[] }) {
                 }`}
               >
                 {item.source === "workout"
-                  ? (item.sessionLabel ?? "session")
+                  ? cap(item.sessionLabel ?? "session")
                   : "readiness"}
               </span>
               <span
@@ -68,7 +72,7 @@ export function SignalsHistory({ items }: { items: SignalHistoryItem[] }) {
                       : "bg-amber-50 text-amber-600"
                   }`}
                 >
-                  {isInjury ? "injury" : "fatigue"}
+                  {isInjury ? "Injury" : "Fatigue"}
                   {isResolved ? " ✓" : ""}
                 </span>
               )}

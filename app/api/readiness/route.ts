@@ -55,12 +55,11 @@ export async function POST(request: Request) {
     },
   });
 
-  const coachAdvice = await generateReadinessCoachAdvice({
-    feelScore,
-    notes: trimmedNotes,
-    tags,
-    category,
-  });
+  // Silent neutral entry — no signal worth coaching on
+  const isSilentNeutral = feelScore === 4 && !trimmedNotes && tags.length === 0;
+  const coachAdvice = isSilentNeutral
+    ? null
+    : await generateReadinessCoachAdvice({ feelScore, notes: trimmedNotes, tags, category });
 
   if (coachAdvice) {
     const updated = await prisma.dailyReadiness.update({

@@ -216,15 +216,17 @@ export default async function TodayPage() {
 
   // Build history items (last 7 days), capped at 7
   const historyItems: SignalHistoryItem[] = [
-    ...historyReadiness.map((r) => ({
-      date: r.date.toISOString().split("T")[0],
-      source: "readiness" as const,
-      feelScore: r.feelScore,
-      category: r.category,
-      notePreview: r.notes ? r.notes.slice(0, 60) : null,
-      sessionLabel: null,
-      resolvedAt: null,
-    })),
+    ...historyReadiness
+      .filter((r) => !(r.category === "ok" && !r.notes && r.tags.length === 0))
+      .map((r) => ({
+        date: r.date.toISOString().split("T")[0],
+        source: "readiness" as const,
+        feelScore: r.feelScore,
+        category: r.category,
+        notePreview: r.notes ? r.notes.slice(0, 60) : null,
+        sessionLabel: null,
+        resolvedAt: null,
+      })),
     ...historyCheckIns.map((ci) => ({
       date: ci.session.scheduledDate.toISOString().split("T")[0],
       source: "workout" as const,

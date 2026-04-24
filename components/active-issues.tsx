@@ -54,7 +54,8 @@ export function ActiveIssues({ initialIssues }: { initialIssues: IssueItem[] }) 
         Active issue{issues.length > 1 ? "s" : ""}{issues.length > 1 ? ` · ${issues.length}` : ""}
       </p>
       {issues.map((issue) => {
-        const label = issue.sessionNotes?.split(":")[0].trim() ?? issue.sessionIntensity;
+        const rawLabel = issue.sessionNotes?.split(":")[0].trim() ?? issue.sessionIntensity;
+        const label = rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
         return (
           <div key={issue.checkInId} className="flex items-start justify-between gap-3">
             <div className="min-w-0">
