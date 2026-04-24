@@ -69,12 +69,14 @@ export default async function WeekPage() {
     }),
   ]);
 
-  // Latest non-ok readiness this week — shown as a compact chip
+  // Readiness chip: only today's non-ok signal is relevant on the week view.
+  // Yesterday's readiness is stale — hide it so it doesn't linger as a false warning.
+  const todayDate = new Date(todayStr + "T00:00:00Z");
   const latestReadiness = plan
     ? await prisma.dailyReadiness.findFirst({
         where: {
           userId: USER_ID,
-          date: { gte: plan.startsAt, lte: plan.endsAt },
+          date: { gte: todayDate },
           category: { not: "ok" },
         },
         orderBy: { date: "desc" },

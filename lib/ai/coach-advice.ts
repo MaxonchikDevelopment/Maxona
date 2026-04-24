@@ -116,9 +116,9 @@ Notes: ${params.notes ? `"${params.notes}"` : "(none)"}${weekContext}${analytics
 
 Give 1–2 short coach observations. Rules:
 - Each ≤ 20 words
-- Analytical: note readiness, load trend, or what 4/6 signals about fatigue or adaptation
-- Reference hard session count or total minutes from analytics if stacking risk exists
-- Mildly cautionary if back-to-back hard or this is the 2nd+ hard session; positive if load is light
+- Default tone: neutral and analytical — 4/6 is workable and normal, not a warning sign
+- Reference load trend or hard session count only if back-to-back hard risk is confirmed or hardSessionsThisWeek ≥ 3; otherwise stay positive or neutral
+- If load is light: lean positive — athlete is pacing well
 - Reference next planned session from analytics if available — does this session position well for it?
 - Format: "• [observation]"
 No intro. No preamble.`,
@@ -225,9 +225,11 @@ Daily readiness score: 4/6
 Notes: ${params.notes ? `"${params.notes}"` : "(none)"}
 ${tagStr}
 
-Give 1 short analytical observation about what a 4/6 readiness means for the next session. Rules:
+Give 1 short analytical observation about today's readiness. Rules:
 - ≤ 20 words
-- Reference any tags if present
+- Treat 4/6 as okay and workable — not a warning, not a problem
+- Only reference tags if they add context; do not over-explain normal fatigue
+- Tone: neutral to mildly positive — athlete is ready to train
 - Format: "• [observation]"
 No intro. No preamble.`,
           },

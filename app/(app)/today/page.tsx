@@ -204,7 +204,17 @@ export default async function TodayPage() {
 
   const implicationLine = buildImplicationLine(readinessProp, activeIssues, todayCheckIn, nextPlanned);
 
-  // Build history items (last 7 days), capped at 10
+  // Signal tier: unresolved injury first, resolved injury, fatigue, ok last.
+  // Within same tier, most recent date first. This surfaces meaningful signals
+  // before bland neutral entries, keeping the list useful when capped.
+  function signalTier(item: { category: string; resolvedAt: string | null }): number {
+    if (item.category === "injury" && !item.resolvedAt) return 0;
+    if (item.category === "injury") return 1;
+    if (item.category === "fatigue") return 2;
+    return 3;
+  }
+
+  // Build history items (last 7 days), capped at 7
   const historyItems: SignalHistoryItem[] = [
     ...historyReadiness.map((r) => ({
       date: r.date.toISOString().split("T")[0],
@@ -225,7 +235,11 @@ export default async function TodayPage() {
       resolvedAt: ci.resolvedAt?.toISOString() ?? null,
     })),
   ]
-    .sort((a, b) => b.date.localeCompare(a.date))
+    .sort((a, b) => {
+      const tierDiff = signalTier(a) - signalTier(b);
+      if (tierDiff !== 0) return tierDiff;
+      return b.date.localeCompare(a.date);
+    })
     .slice(0, 7);
 
   return (
