@@ -21,7 +21,7 @@ export function SignalsHistory({ items }: { items: SignalHistoryItem[] }) {
 
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Recent signals · 14 days</p>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Recent signals · 7 days</p>
       <div className="space-y-1">
         {items.map((item, i) => {
           const isOk = item.category === "ok";

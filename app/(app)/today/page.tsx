@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { DailyReadinessCard } from "@/components/daily-readiness-card";
 import { SignalsHistory } from "@/components/signals-history";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
+import { activateDraftIfReady } from "@/lib/planner/rollover";
 import type { SessionProp } from "@/components/session-card";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
@@ -86,11 +88,19 @@ export default async function TodayPage() {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+
+  // Shared rollover — activates next-week draft if its Monday has arrived,
+  // regardless of which page the user opened first.
+  if (await activateDraftIfReady(USER_ID, todayStr)) {
+    redirect("/today");
+  }
+
   const [y, m, d] = todayStr.split("-").map(Number);
   const todayDate = new Date(Date.UTC(y, m - 1, d));
 
-  const fourteenDaysAgo = new Date(todayDate);
-  fourteenDaysAgo.setUTCDate(fourteenDaysAgo.getUTCDate() - 13);
+  // 7-day signal window (includes today)
+  const sevenDaysAgo = new Date(todayDate);
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6);
 
   const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession, historyReadiness, historyCheckIns] =
     await Promise.all([
@@ -121,13 +131,13 @@ export default async function TodayPage() {
         orderBy: { scheduledDate: "asc" },
       }),
       prisma.dailyReadiness.findMany({
-        where: { userId: USER_ID, date: { gte: fourteenDaysAgo } },
+        where: { userId: USER_ID, date: { gte: sevenDaysAgo } },
         orderBy: { date: "desc" },
       }),
       prisma.checkIn.findMany({
         where: {
           userId: USER_ID,
-          occurredAt: { gte: fourteenDaysAgo },
+          occurredAt: { gte: sevenDaysAgo },
         },
         include: { session: true },
         orderBy: { occurredAt: "desc" },
@@ -194,7 +204,7 @@ export default async function TodayPage() {
 
   const implicationLine = buildImplicationLine(readinessProp, activeIssues, todayCheckIn, nextPlanned);
 
-  // Build history items (last 14 days), capped at 12
+  // Build history items (last 7 days), capped at 10
   const historyItems: SignalHistoryItem[] = [
     ...historyReadiness.map((r) => ({
       date: r.date.toISOString().split("T")[0],
@@ -216,7 +226,7 @@ export default async function TodayPage() {
     })),
   ]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 12);
+    .slice(0, 10);
 
   return (
     <main className="p-4 space-y-3">

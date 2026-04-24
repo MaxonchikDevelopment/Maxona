@@ -4,6 +4,7 @@ import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { ReplanButton } from "@/components/replan-button";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
+import { activateDraftIfReady } from "@/lib/planner/rollover";
 import type { SessionProp } from "@/components/session-card";
 import type { IssueItem } from "@/components/active-issues";
 
@@ -12,13 +13,36 @@ export const dynamic = "force-dynamic";
 const USER_ID = "user_maxon";
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+const READINESS_TAG_LABELS: Record<string, string> = {
+  alcohol: "Alcohol",
+  poor_sleep: "Poor sleep",
+  stress: "Stress",
+  travel: "Travel",
+  soreness: "Soreness",
+  stomach: "Stomach",
+};
+
 function toDateStr(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
 export default async function WeekPage() {
-  const [user, plan] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { id: USER_ID } }),
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
+
+  const todayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: user.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  // Shared rollover — activates next-week draft if its Monday has arrived.
+  // Fires from any main route so the user never sees a stale active plan.
+  if (await activateDraftIfReady(USER_ID, todayStr)) {
+    redirect("/week");
+  }
+
+  const [plan, draftPlan, injuryCheckIns] = await Promise.all([
     prisma.trainingPlan.findFirst({
       where: { userId: USER_ID, status: "active" },
       include: {
@@ -28,38 +52,24 @@ export default async function WeekPage() {
         },
       },
     }),
+    prisma.trainingPlan.findFirst({
+      where: { userId: USER_ID, status: "draft" },
+      orderBy: { startsAt: "desc" },
+      include: {
+        sessions: {
+          include: { checkIn: true },
+          orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
+        },
+      },
+    }),
+    prisma.checkIn.findMany({
+      where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
+      include: { session: true },
+      orderBy: { occurredAt: "desc" },
+    }),
   ]);
 
-  const todayStr = new Intl.DateTimeFormat("en-CA", {
-    timeZone: user.timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-
-  // Check for a draft plan whose week has started — auto-activate it
-  const draftPlan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "draft" },
-    orderBy: { startsAt: "desc" },
-    include: {
-      sessions: {
-        include: { checkIn: true },
-        orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
-      },
-    },
-  });
-
-  if (draftPlan && todayStr >= toDateStr(draftPlan.startsAt)) {
-    await prisma.$transaction(async (tx) => {
-      if (plan) {
-        await tx.trainingPlan.update({ where: { id: plan.id }, data: { status: "archived" } });
-      }
-      await tx.trainingPlan.update({ where: { id: draftPlan.id }, data: { status: "active" } });
-    });
-    redirect("/week");
-  }
-
-  // Latest non-ok readiness this week — shown as a compact chip when it influenced the plan
+  // Latest non-ok readiness this week — shown as a compact chip
   const latestReadiness = plan
     ? await prisma.dailyReadiness.findFirst({
         where: {
@@ -70,13 +80,6 @@ export default async function WeekPage() {
         orderBy: { date: "desc" },
       })
     : null;
-
-  // Active injury check-ins (across all time — injury tracking is persistent)
-  const injuryCheckIns = await prisma.checkIn.findMany({
-    where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
-    include: { session: true },
-    orderBy: { occurredAt: "desc" },
-  });
 
   const activeIssues: IssueItem[] = injuryCheckIns
     .filter((ci) => categorizeCheckIn(ci.feelScore, ci.notes) === "injury")
@@ -150,10 +153,13 @@ export default async function WeekPage() {
           {(latestReadiness.tags as string[]).length > 0 && (
             <>
               <span>·</span>
-              <span>{(latestReadiness.tags as string[]).join(", ")}</span>
+              <span>
+                {(latestReadiness.tags as string[])
+                  .map((t) => READINESS_TAG_LABELS[t] ?? t)
+                  .join(", ")}
+              </span>
             </>
           )}
-          <span>· plan adapted</span>
         </div>
       )}
 

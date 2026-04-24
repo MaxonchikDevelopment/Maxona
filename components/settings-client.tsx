@@ -303,6 +303,16 @@ export function SettingsClient({
                 className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
               />
             </label>
+            <label className="block text-sm">
+              Minimum ride length
+              <input
+                type="number"
+                value={minCyclingDuration}
+                onChange={(e) => setMinCyclingDuration(e.target.value)}
+                placeholder="e.g. 60"
+                className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+              />
+            </label>
           </div>
 
           <label className="block text-sm">
@@ -312,17 +322,6 @@ export function SettingsClient({
               value={longRunDuration}
               onChange={(e) => setLongRunDuration(e.target.value)}
               placeholder="e.g. 110"
-              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-            />
-          </label>
-
-          <label className="block text-sm">
-            Shortest useful cycling session (min)
-            <input
-              type="number"
-              value={minCyclingDuration}
-              onChange={(e) => setMinCyclingDuration(e.target.value)}
-              placeholder="e.g. 60"
               className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
             />
           </label>
