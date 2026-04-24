@@ -1,6 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { StravaSettings } from "@/components/strava-settings";
+import type { StravaConnectionProp } from "@/components/strava-settings";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const SLOTS = ["morning", "daytime", "afternoon", "evening"] as const;
@@ -48,10 +50,12 @@ export function SettingsClient({
   initialConstraints,
   userName,
   userTimezone,
+  initialStravaConnection,
 }: {
   initialConstraints: Constraints;
   userName: string;
   userTimezone: string;
+  initialStravaConnection: StravaConnectionProp;
 }) {
   const qc = useQueryClient();
 
@@ -556,6 +560,14 @@ export function SettingsClient({
             {addRecSession.isPending ? "Adding..." : "Add session"}
           </button>
         </div>
+      </section>
+
+      {/* Strava */}
+      <section className="space-y-3">
+        <h2 className="font-semibold">Strava</h2>
+        <Suspense fallback={null}>
+          <StravaSettings initialConnection={initialStravaConnection} />
+        </Suspense>
       </section>
 
       {/* Logout */}

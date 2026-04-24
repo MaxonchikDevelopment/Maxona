@@ -85,6 +85,8 @@ model User {
   checkIns            CheckIn[]
   recurringSessions   RecurringSession[]
   dailyReadiness      DailyReadiness[]
+  stravaConnection    StravaConnection?
+  stravaActivities    StravaActivity[]
 }
 
 model AvailabilityWindow {
@@ -190,9 +192,10 @@ model TrainingSession {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  plan    TrainingPlan @relation(fields: [planId], references: [id])
-  user    User         @relation(fields: [userId], references: [id])
-  checkIn CheckIn?
+  plan        TrainingPlan              @relation(fields: [planId], references: [id])
+  user        User                      @relation(fields: [userId], references: [id])
+  checkIn     CheckIn?
+  stravaLinks SessionStravaActivityLink[]
 }
 
 model CheckIn {
@@ -226,4 +229,70 @@ model DailyReadiness {
   user User @relation(fields: [userId], references: [id])
 
   @@unique([userId, date])
+}
+
+model StravaConnection {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  stravaAthleteId String
+  accessToken     String
+  refreshToken    String
+  expiresAt       DateTime
+  scope           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model StravaActivity {
+  id                 String   @id @default(cuid())
+  userId             String
+  stravaActivityId   String   @unique
+  stravaAthleteId    String
+  name               String
+  sportType          String
+  startDate          DateTime
+  distance           Float    @default(0)
+  movingTime         Int      @default(0)
+  elapsedTime        Int      @default(0)
+  totalElevationGain Float    @default(0)
+  averageHeartrate   Float?
+  maxHeartrate       Float?
+  averageSpeed       Float    @default(0)
+  maxSpeed           Float    @default(0)
+  calories           Float?
+  description        String?
+  rawJson            Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user         User                        @relation(fields: [userId], references: [id])
+  sessionLinks SessionStravaActivityLink[]
+
+  @@index([userId, startDate])
+}
+
+model SessionStravaActivityLink {
+  id               String   @id @default(cuid())
+  sessionId        String
+  stravaActivityId String
+  isPrimary        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  session  TrainingSession @relation(fields: [sessionId], references: [id])
+  activity StravaActivity  @relation(fields: [stravaActivityId], references: [id])
+
+  @@unique([sessionId, stravaActivityId])
+}
+
+model StravaWebhookEvent {
+  id         String   @id @default(cuid())
+  objectType String
+  objectId   String
+  aspectType String
+  ownerId    String
+  eventTime  DateTime
+  raw        Json
+  createdAt  DateTime @default(now())
 }

@@ -7,6 +7,32 @@ import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import type { SessionProp } from "@/components/session-card";
 import type { IssueItem } from "@/components/active-issues";
+import type { StravaLinkProp } from "@/components/strava-panel";
+
+// Explicit type covering only what this page uses — bypasses Prisma 6 inference bug
+// when two same-model findFirst calls are in the same Promise.all.
+type PlanWithSessions = {
+  startsAt: Date;
+  focusSummary: string | null;
+  changeExplanation: string | null;
+  sessions: Array<{
+    id: string;
+    scheduledDate: Date;
+    preferredSlot: string;
+    planningType: string;
+    status: string;
+    durationMin: number;
+    intensity: string;
+    notes: string | null;
+    checkIn: {
+      id: string;
+      feelScore: number;
+      notes: string | null;
+      coachAdvice: string | null;
+      resolvedAt: Date | null;
+    } | null;
+  }>;
+};
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +68,10 @@ export default async function WeekPage() {
     redirect("/week");
   }
 
-  const [plan, draftPlan, injuryCheckIns] = await Promise.all([
+  const stravaConnection = await prisma.stravaConnection.findUnique({ where: { userId: USER_ID } });
+  const stravaConnected = !!stravaConnection;
+
+  const [planRaw, draftPlan, injuryCheckIns] = await Promise.all([
     prisma.trainingPlan.findFirst({
       where: { userId: USER_ID, status: "active" },
       include: {
@@ -72,7 +101,7 @@ export default async function WeekPage() {
   // Readiness chip: only today's non-ok signal is relevant on the week view.
   // Yesterday's readiness is stale — hide it so it doesn't linger as a false warning.
   const todayDate = new Date(todayStr + "T00:00:00Z");
-  const latestReadiness = plan
+  const latestReadiness = planRaw
     ? await prisma.dailyReadiness.findFirst({
         where: {
           userId: USER_ID,
@@ -95,7 +124,7 @@ export default async function WeekPage() {
       notes: ci.notes,
     }));
 
-  if (!plan) {
+  if (!planRaw) {
     return (
       <main className="p-4 space-y-4">
         <h1 className="mb-4 text-xl font-bold">Week</h1>
@@ -107,6 +136,37 @@ export default async function WeekPage() {
         )}
       </main>
     );
+  }
+
+  // Cast through unknown — Prisma 6 loses fields when same model appears twice in Promise.all
+  const plan = planRaw as unknown as PlanWithSessions;
+
+  // Batch-load Strava links for all sessions — avoids doubly-nested include type issues
+  const stravaLinksBySession: Record<string, StravaLinkProp[]> = {};
+  if (stravaConnected) {
+    const allLinks = await prisma.sessionStravaActivityLink.findMany({
+      where: { sessionId: { in: plan.sessions.map((s) => s.id) } },
+      include: { activity: true },
+      orderBy: { createdAt: "asc" },
+    });
+    for (const l of allLinks) {
+      if (!stravaLinksBySession[l.sessionId]) stravaLinksBySession[l.sessionId] = [];
+      stravaLinksBySession[l.sessionId].push({
+        id: l.id,
+        isPrimary: l.isPrimary,
+        activity: {
+          id: l.activity.id,
+          stravaActivityId: l.activity.stravaActivityId,
+          name: l.activity.name,
+          sportType: l.activity.sportType,
+          startDate: l.activity.startDate.toISOString(),
+          distance: l.activity.distance,
+          movingTime: l.activity.movingTime,
+          averageHeartrate: l.activity.averageHeartrate,
+          maxHeartrate: l.activity.maxHeartrate,
+        },
+      });
+    }
   }
 
   const sessionsByDate: Record<string, SessionProp[]> = {};
@@ -131,6 +191,8 @@ export default async function WeekPage() {
             resolvedAt: s.checkIn.resolvedAt?.toISOString() ?? null,
           }
         : null,
+      stravaLinks: stravaLinksBySession[s.id] ?? [],
+      stravaConnected,
     });
   }
 

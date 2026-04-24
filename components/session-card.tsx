@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { StravaPanel } from "@/components/strava-panel";
+import type { StravaLinkProp } from "@/components/strava-panel";
 
 export type CheckInProp = {
   id: string;
@@ -20,6 +22,8 @@ export type SessionProp = {
   intensity: string;
   notes: string | null;
   checkIn: CheckInProp | null;
+  stravaLinks?: StravaLinkProp[];
+  stravaConnected?: boolean;
 };
 
 // Keyword list mirrors lib/checkin-utils.ts — kept inline to avoid server-only imports in client bundle
@@ -225,6 +229,16 @@ export function SessionCard({
             </button>
           )}
         </div>
+      )}
+
+      {/* Strava activity links */}
+      {session.stravaConnected && (
+        <StravaPanel
+          sessionId={session.id}
+          sessionDate={session.scheduledDate}
+          initialLinks={session.stravaLinks ?? []}
+          stravaConnected={session.stravaConnected}
+        />
       )}
 
       {/* Check-in / edit form */}

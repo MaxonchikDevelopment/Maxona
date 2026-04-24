@@ -102,6 +102,9 @@ export default async function TodayPage() {
   const sevenDaysAgo = new Date(todayDate);
   sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6);
 
+  const stravaConnection = await prisma.stravaConnection.findUnique({ where: { userId: USER_ID } });
+  const stravaConnected = !!stravaConnection;
+
   const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession, historyReadiness, historyCheckIns] =
     await Promise.all([
       prisma.trainingSession.findMany({
@@ -110,7 +113,10 @@ export default async function TodayPage() {
           scheduledDate: todayDate,
           plan: { status: "active" },
         },
-        include: { checkIn: true },
+        include: {
+          checkIn: true,
+          stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
+        },
         orderBy: { preferredSlot: "asc" },
       }),
       prisma.checkIn.findMany({
@@ -162,6 +168,22 @@ export default async function TodayPage() {
           resolvedAt: s.checkIn.resolvedAt?.toISOString() ?? null,
         }
       : null,
+    stravaLinks: s.stravaLinks.map((l) => ({
+      id: l.id,
+      isPrimary: l.isPrimary,
+      activity: {
+        id: l.activity.id,
+        stravaActivityId: l.activity.stravaActivityId,
+        name: l.activity.name,
+        sportType: l.activity.sportType,
+        startDate: l.activity.startDate.toISOString(),
+        distance: l.activity.distance,
+        movingTime: l.activity.movingTime,
+        averageHeartrate: l.activity.averageHeartrate,
+        maxHeartrate: l.activity.maxHeartrate,
+      },
+    })),
+    stravaConnected,
   }));
 
   const activeIssues: IssueItem[] = injuryCheckIns

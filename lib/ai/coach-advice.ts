@@ -3,6 +3,19 @@ import type { CheckInCategory } from "@/lib/checkin-utils";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+export interface StravaSessionMetrics {
+  activityCount: number;
+  totalDistance: number;
+  totalMovingTime: number;
+  totalElapsedTime: number;
+  totalElevationGain: number;
+  avgHeartrateMean: number | null;
+  maxHeartrateMax: number | null;
+  averageSpeedMean: number | null;
+  sportMix: string[];
+  splitSession: boolean;
+}
+
 export interface WorkoutAnalytics {
   hardSessionsThisWeek: number;
   minutesDoneThisWeek: number;
@@ -11,6 +24,7 @@ export interface WorkoutAnalytics {
   plannerMode: "protecting" | "reducing" | "maintaining" | "building" | null;
   isLongRunWeek: boolean;
   isHyroxHeavyWeek: boolean;
+  stravaMetrics?: StravaSessionMetrics;
 }
 
 function buildAnalyticsSummary(a: WorkoutAnalytics): string {
@@ -25,6 +39,16 @@ function buildAnalyticsSummary(a: WorkoutAnalytics): string {
   if (a.plannerMode && a.plannerMode !== "maintaining") parts.push(`Planner stance: ${a.plannerMode}`);
   if (a.isLongRunWeek) parts.push("Long run week: yes");
   if (a.isHyroxHeavyWeek) parts.push("HYROX-heavy week: yes (≥2 sessions)");
+  if (a.stravaMetrics) {
+    const sm = a.stravaMetrics;
+    const segs: string[] = [sm.sportMix.join("+")];
+    if (sm.totalDistance > 0) segs.push(`${(sm.totalDistance / 1000).toFixed(1)}km`);
+    if (sm.totalMovingTime > 0) segs.push(`${Math.floor(sm.totalMovingTime / 60)}min moving`);
+    if (sm.avgHeartrateMean) segs.push(`HR avg ${Math.round(sm.avgHeartrateMean)}`);
+    if (sm.maxHeartrateMax) segs.push(`max ${Math.round(sm.maxHeartrateMax)}`);
+    if (sm.totalElevationGain > 0) segs.push(`${Math.round(sm.totalElevationGain)}m elev`);
+    parts.push(`Strava${sm.splitSession ? " (split session)" : ""}: ${segs.join(" · ")}`);
+  }
   return parts.map((p) => `- ${p}`).join("\n");
 }
 
