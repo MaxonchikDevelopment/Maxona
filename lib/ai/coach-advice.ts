@@ -17,6 +17,8 @@ export interface StravaSessionMetrics {
   averageSpeedMean: number | null;
   elevationPerKm: number | null;
   actualVsPlannedDurationDeltaMin: number | null;
+  paceConsistencyCV: number | null;
+  sufferScore: number | null;
   splitSession: boolean;
 }
 
@@ -80,6 +82,11 @@ function buildAnalyticsSummary(a: WorkoutAnalytics): string {
         segs.push(delta >= 0 ? `+${delta}min vs plan` : `${delta}min vs plan`);
       }
     }
+    if (sm.paceConsistencyCV !== null) {
+      if (sm.paceConsistencyCV < 0.03) segs.push("even splits");
+      else if (sm.paceConsistencyCV > 0.08) segs.push(`uneven splits (CV: ${Math.round(sm.paceConsistencyCV * 100)}%)`);
+    }
+    if (sm.sufferScore !== null) segs.push(`effort: ${Math.round(sm.sufferScore)}`);
     parts.push(`Strava${sm.splitSession ? " (split session)" : ""}: ${segs.join(" · ")}`);
   }
   return parts.map((p) => `- ${p}`).join("\n");
@@ -146,6 +153,8 @@ Give 2–3 concrete next-step suggestions. Rules:
 - If Strava shows "HIGH PAUSE" flag: reference fragmented session pattern specifically
 - If Strava shows elevation per km (e.g. "35m/km"): mention hill load if it contributed to difficulty
 - If Strava shows "-Xmin vs plan": briefly acknowledge short execution before giving recovery advice
+- If Strava shows "uneven splits (CV: X%)": note pacing inconsistency as a possible fatigue or pacing control issue
+- If Strava shows "effort: X" and X > 100: reference the high training load in recovery advice
 - Format: "• [suggestion]"
 No intro. No preamble.`,
           },
@@ -185,6 +194,9 @@ Give 1–2 short coach observations. Rules:
 - If Strava shows "HIGH PAUSE": note the stopping pattern — useful data even at 4/6
 - If Strava shows elevation per km (Xm/km) and it is ≥ 15: briefly note the hill component
 - If Strava shows "+Xmin vs plan" or "-Xmin vs plan": reference execution vs planned duration
+- If Strava shows "uneven splits (CV: X%)": briefly note pacing variation
+- If Strava shows "even splits": briefly credit consistent execution
+- If Strava shows "effort: X": reference relative effort in context of week load
 - Format: "• [observation]"
 No intro. No preamble.`,
           },
@@ -223,6 +235,8 @@ Give 1–2 short coach observations. Rules:
 - If Strava shows elevation per km (Xm/km): credit the hill stimulus explicitly
 - If Strava shows "+Xmin vs plan": note strong execution over target
 - If Strava shows "HIGH PAUSE" despite good feel: still flag the stopping pattern as worth watching
+- If Strava shows "even splits": credit consistent pacing as a performance quality marker
+- If Strava shows "effort: X" and X > 80: acknowledge meaningful training load alongside good feel
 - Format: "• [observation]"
 No intro. No preamble.`,
         },

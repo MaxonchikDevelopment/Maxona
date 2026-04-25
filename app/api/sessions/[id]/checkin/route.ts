@@ -3,18 +3,54 @@ import { prisma } from "@/lib/prisma";
 import { generateCoachAdvice } from "@/lib/ai/coach-advice";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import type { WorkoutAnalytics, StravaSessionMetrics } from "@/lib/ai/coach-advice";
+import { getValidAccessToken, fetchActivityDetail } from "@/lib/strava/client";
+import type { StravaSplitMetric } from "@/lib/strava/client";
 
 const USER_ID = "user_maxon";
+
+function computePaceCV(splits: StravaSplitMetric[]): number | null {
+  const complete = splits.filter((s) => s.distance >= 800 && s.moving_time > 0);
+  if (complete.length < 3) return null;
+  const paces = complete.map((s) => s.moving_time / (s.distance / 1000));
+  const mean = paces.reduce((a, b) => a + b, 0) / paces.length;
+  if (mean === 0) return null;
+  const variance = paces.reduce((s, p) => s + (p - mean) ** 2, 0) / paces.length;
+  return Math.sqrt(variance) / mean;
+}
 
 async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number): Promise<StravaSessionMetrics | undefined> {
   const links = await prisma.sessionStravaActivityLink.findMany({
     where: { sessionId },
     include: { activity: true },
+    orderBy: { isPrimary: "desc" },
   });
   if (links.length === 0) return undefined;
-  const acts = links.map((l) => l.activity);
 
-  // Filter implausible HR readings (sensor noise / watch glitch)
+  // Try to enrich rawJson with split data from the Strava detail endpoint (non-fatal)
+  const token = await getValidAccessToken(USER_ID).catch(() => null);
+
+  const enriched = await Promise.all(
+    links.map(async (l) => {
+      const a = l.activity;
+      const rawObj = a.rawJson as Record<string, unknown> | null;
+      if (rawObj && Array.isArray(rawObj.splits_metric)) return { a, detail: rawObj };
+      if (!token) return { a, detail: rawObj };
+      try {
+        const detail = await fetchActivityDetail(token, a.stravaActivityId);
+        await prisma.stravaActivity.update({
+          where: { id: a.id },
+          data: { rawJson: detail as object },
+        });
+        return { a, detail: detail as unknown as Record<string, unknown> };
+      } catch {
+        return { a, detail: rawObj };
+      }
+    })
+  );
+
+  const acts = enriched.map((e) => e.a);
+
+  // HR reliability filter (sensor noise / watch glitch)
   const hrs = acts
     .filter((a) => a.averageHeartrate != null && a.averageHeartrate >= 50 && a.averageHeartrate <= 220)
     .map((a) => a.averageHeartrate!);
@@ -31,10 +67,22 @@ async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number)
   const pauseTime = Math.max(0, totalElapsedTime - totalMovingTime);
   const pauseRatio = totalElapsedTime > 0 ? pauseTime / totalElapsedTime : 0;
   const elevationPerKm = totalDistance > 0 ? totalElevationGain / (totalDistance / 1000) : null;
-  const actualMovingMin = totalMovingTime / 60;
   const actualVsPlannedDurationDeltaMin = plannedDurationMin > 0
-    ? actualMovingMin - plannedDurationMin
+    ? (totalMovingTime / 60) - plannedDurationMin
     : null;
+
+  // Pace CV from the primary (first-ordered) activity splits only
+  const primaryDetail = enriched[0]?.detail;
+  const splitsRaw = primaryDetail?.splits_metric;
+  const paceConsistencyCV = Array.isArray(splitsRaw)
+    ? computePaceCV(splitsRaw as StravaSplitMetric[])
+    : null;
+
+  // Suffer score: sum across all attached activities
+  const sufferScores = enriched
+    .map((e) => (e.detail as Record<string, unknown> | null)?.suffer_score)
+    .filter((s): s is number => typeof s === "number" && s > 0);
+  const sufferScore = sufferScores.length > 0 ? sufferScores.reduce((a, b) => a + b, 0) : null;
 
   return {
     activityCount: acts.length,
@@ -50,6 +98,8 @@ async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number)
     averageSpeedMean: speeds.length > 0 ? speeds.reduce((s, v) => s + v, 0) / speeds.length : null,
     elevationPerKm,
     actualVsPlannedDurationDeltaMin,
+    paceConsistencyCV,
+    sufferScore,
     splitSession: acts.length > 1,
   };
 }

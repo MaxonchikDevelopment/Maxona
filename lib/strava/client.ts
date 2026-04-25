@@ -96,6 +96,34 @@ export async function getValidAccessToken(userId: string): Promise<string | null
   return fresh.access_token;
 }
 
+export interface StravaSplitMetric {
+  split: number;
+  distance: number;
+  elapsed_time: number;
+  moving_time: number;
+  elevation_difference: number;
+  average_speed: number;
+  average_heartrate?: number;
+  pace_zone?: number;
+}
+
+export interface StravaDetailedActivity extends StravaApiActivity {
+  splits_metric?: StravaSplitMetric[];
+  suffer_score?: number;
+  average_cadence?: number;
+}
+
+export async function fetchActivityDetail(
+  accessToken: string,
+  activityId: string
+): Promise<StravaDetailedActivity> {
+  const res = await fetch(`${STRAVA_API}/activities/${activityId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`Strava activity detail fetch failed (${res.status})`);
+  return res.json();
+}
+
 export async function fetchRecentActivities(
   accessToken: string,
   after?: number,
