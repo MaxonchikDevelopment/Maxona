@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp } from "@/components/strava-panel";
+import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
 
 export type CheckInProp = {
   id: string;
@@ -197,6 +198,13 @@ export function SessionCard({
         <div className="space-y-1">
           {checkIn.notes && (
             <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
+          )}
+          {/* Execution summary — factual actual vs plan, when Strava attached */}
+          {(session.stravaLinks?.length ?? 0) > 0 && (
+            <ExecutionSummaryBlock
+              session={{ durationMin: session.durationMin, notes: session.notes }}
+              stravaLinks={session.stravaLinks!}
+            />
           )}
           {/* Coach advice — bad sessions: amber; good sessions: green */}
           {coachAdvice && !isResolved && (

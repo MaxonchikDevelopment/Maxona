@@ -9,6 +9,9 @@ export type StravaActivitySummary = {
   startDate: string;
   distance: number;
   movingTime: number;
+  elapsedTime: number;
+  totalElevationGain: number;
+  averageSpeed: number;
   averageHeartrate: number | null;
   maxHeartrate: number | null;
 };
