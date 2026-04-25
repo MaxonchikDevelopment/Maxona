@@ -14,6 +14,8 @@ export type StravaActivitySummary = {
   averageSpeed: number;
   averageHeartrate: number | null;
   maxHeartrate: number | null;
+  score?: number;
+  suggestionLabel?: string | null;
 };
 
 export type StravaLinkProp = {
@@ -45,14 +47,26 @@ function shortDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+const LABEL_STYLE: Record<string, string> = {
+  "Best match": "text-emerald-600",
+  "Possible match": "text-blue-500",
+  "Same day": "text-gray-400",
+};
+
 export function StravaPanel({
   sessionId,
   sessionDate,
+  sessionDurationMin,
+  sessionNotes,
+  sessionSlot,
   initialLinks,
   stravaConnected,
 }: {
   sessionId: string;
   sessionDate: string;
+  sessionDurationMin: number;
+  sessionNotes: string | null;
+  sessionSlot: string;
   initialLinks: StravaLinkProp[];
   stravaConnected: boolean;
 }) {
@@ -60,7 +74,7 @@ export function StravaPanel({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [available, setAvailable] = useState<StravaActivitySummary[]>([]);
   const [loadingPicker, setLoadingPicker] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null); // activityId being acted on
+  const [busy, setBusy] = useState<string | null>(null);
 
   if (!stravaConnected) return null;
 
@@ -68,9 +82,14 @@ export function StravaPanel({
     setPickerOpen(true);
     setLoadingPicker(true);
     try {
-      const res = await fetch(
-        `/api/strava/activities?sessionDate=${sessionDate}&excludeSessionId=${sessionId}`
-      );
+      const params = new URLSearchParams({
+        sessionDate,
+        excludeSessionId: sessionId,
+        sessionDurationMin: String(sessionDurationMin),
+        sessionSlot,
+      });
+      if (sessionNotes) params.set("sessionNotes", sessionNotes);
+      const res = await fetch(`/api/strava/activities?${params}`);
       const data: StravaActivitySummary[] = await res.json();
       setAvailable(data);
     } finally {
@@ -124,6 +143,37 @@ export function StravaPanel({
       setBusy(null);
     }
   }
+
+  function renderPickerRow(a: StravaActivitySummary, showLabel: boolean) {
+    return (
+      <div key={a.id} className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1 flex-wrap">
+            {showLabel && a.suggestionLabel && (
+              <span className={`text-[9px] font-semibold ${LABEL_STYLE[a.suggestionLabel] ?? "text-gray-400"}`}>
+                {a.suggestionLabel}
+              </span>
+            )}
+            <span className="text-xs font-medium text-gray-700 truncate">{a.name}</span>
+          </div>
+          <p className="text-[10px] text-gray-400">
+            {shortDate(a.startDate)} · {activityLine(a)}
+          </p>
+        </div>
+        <button
+          onClick={() => attach(a.id)}
+          disabled={busy === a.id}
+          className="shrink-0 text-xs text-blue-600 underline disabled:opacity-40"
+        >
+          {busy === a.id ? "…" : "Attach"}
+        </button>
+      </div>
+    );
+  }
+
+  const suggested = available.filter((a) => !!a.suggestionLabel);
+  const other = available.filter((a) => !a.suggestionLabel);
+  const hasSuggestions = suggested.length > 0;
 
   return (
     <div className="border-t pt-2 space-y-1.5">
@@ -181,23 +231,24 @@ export function StravaPanel({
           ) : available.length === 0 ? (
             <p className="text-xs text-gray-400">No unattached activities within ±2 days.</p>
           ) : (
-            available.map((a) => (
-              <div key={a.id} className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-gray-700 truncate">{a.name}</p>
-                  <p className="text-[10px] text-gray-400">
-                    {shortDate(a.startDate)} · {activityLine(a)}
-                  </p>
-                </div>
-                <button
-                  onClick={() => attach(a.id)}
-                  disabled={busy === a.id}
-                  className="shrink-0 text-xs text-blue-600 underline disabled:opacity-40"
-                >
-                  {busy === a.id ? "…" : "Attach"}
-                </button>
-              </div>
-            ))
+            <>
+              {hasSuggestions && (
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">
+                  Suggested
+                </p>
+              )}
+              {suggested.map((a) => renderPickerRow(a, true))}
+              {other.length > 0 && (
+                <>
+                  {hasSuggestions && (
+                    <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mt-1.5 mb-0.5">
+                      Other
+                    </p>
+                  )}
+                  {other.map((a) => renderPickerRow(a, false))}
+                </>
+              )}
+            </>
           )}
         </div>
       )}

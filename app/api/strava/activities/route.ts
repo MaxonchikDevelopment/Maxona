@@ -1,15 +1,23 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { scoreCandidate, labelForScore } from "@/lib/strava/suggest";
 
 const USER_ID = "user_maxon";
 
 // Returns synced Strava activities.
 // ?sessionDate=YYYY-MM-DD  — filter to ±2 days around that date
 // ?excludeSessionId=...    — exclude activities already linked to that session
+// ?sessionDurationMin=N    — planned session duration for scoring
+// ?sessionNotes=...        — session notes for sport-type inference
+// ?sessionSlot=morning|... — preferred slot for time-of-day scoring
+// When session context is present, returns scored+sorted results with suggestionLabel.
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionDate = searchParams.get("sessionDate");
   const excludeSessionId = searchParams.get("excludeSessionId");
+  const sessionDurationMin = searchParams.get("sessionDurationMin");
+  const sessionNotes = searchParams.get("sessionNotes");
+  const sessionSlot = searchParams.get("sessionSlot");
 
   let dateFilter: { gte?: Date; lte?: Date } | undefined;
   if (sessionDate) {
@@ -22,7 +30,6 @@ export async function GET(request: Request) {
     dateFilter = { gte: from, lte: to };
   }
 
-  // IDs already linked to this session — we'll exclude them from the picker
   let excludedIds: string[] = [];
   if (excludeSessionId) {
     const links = await prisma.sessionStravaActivityLink.findMany({
@@ -42,5 +49,37 @@ export async function GET(request: Request) {
     take: 50,
   });
 
-  return NextResponse.json(activities);
+  // Score when session context is available
+  const shouldScore = !!(sessionDate && sessionSlot);
+  if (!shouldScore) {
+    return NextResponse.json(activities);
+  }
+
+  // Check which candidates are already linked to other sessions (soft penalty)
+  const linkedElsewhere = await prisma.sessionStravaActivityLink.findMany({
+    where: { stravaActivityId: { in: activities.map((a) => a.id) } },
+    select: { stravaActivityId: true },
+  });
+  const linkedElsewhereIds = new Set(linkedElsewhere.map((l) => l.stravaActivityId));
+
+  const session = {
+    scheduledDate: sessionDate!,
+    durationMin: sessionDurationMin ? parseInt(sessionDurationMin, 10) : 0,
+    notes: sessionNotes ?? null,
+    preferredSlot: sessionSlot!,
+  };
+
+  const scored = activities
+    .map((a) => ({
+      ...a,
+      score: scoreCandidate(
+        session,
+        { sportType: a.sportType, startDate: a.startDate, movingTime: a.movingTime },
+        linkedElsewhereIds.has(a.id)
+      ),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((a) => ({ ...a, suggestionLabel: labelForScore(a.score) }));
+
+  return NextResponse.json(scored);
 }

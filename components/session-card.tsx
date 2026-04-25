@@ -244,6 +244,9 @@ export function SessionCard({
         <StravaPanel
           sessionId={session.id}
           sessionDate={session.scheduledDate}
+          sessionDurationMin={session.durationMin}
+          sessionNotes={session.notes}
+          sessionSlot={session.preferredSlot}
           initialLinks={session.stravaLinks ?? []}
           stravaConnected={session.stravaConnected}
         />
