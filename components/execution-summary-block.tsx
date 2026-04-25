@@ -1,5 +1,6 @@
 "use client";
 import { deriveExecutionSummary } from "@/lib/execution-summary";
+import type { ExecutionQualityLabel } from "@/lib/execution-summary";
 import type { StravaLinkProp } from "@/components/strava-panel";
 
 function fmtMin(min: number): string {
@@ -14,6 +15,15 @@ function fmtMin(min: number): string {
 function fmtDist(km: number): string {
   return `${km.toFixed(1)} km`;
 }
+
+const QUALITY_COLOR: Record<ExecutionQualityLabel, string> = {
+  "Matched": "text-green-600",
+  "Slightly short": "text-amber-600",
+  "Clearly short": "text-red-500",
+  "Longer than planned": "text-blue-600",
+  "Interrupted": "text-amber-600",
+  "Hilly variant": "text-gray-600",
+};
 
 export function ExecutionSummaryBlock({
   session,
@@ -31,6 +41,8 @@ export function ExecutionSummaryBlock({
       totalElevationGain: l.activity.totalElevationGain,
       averageSpeed: l.activity.averageSpeed,
       sportType: l.activity.sportType,
+      averageHeartrate: l.activity.averageHeartrate,
+      maxHeartrate: l.activity.maxHeartrate,
     }))
   );
   if (!summary) return null;
@@ -49,10 +61,10 @@ export function ExecutionSummaryBlock({
     .join(" · ");
 
   const secondaryParts = [
-    summary.actualElapsedMin
-      ? `${fmtMin(summary.actualElapsedMin)} elapsed`
-      : null,
+    summary.actualElapsedMin ? `${fmtMin(summary.actualElapsedMin)} elapsed` : null,
     summary.elevationGain ? `${summary.elevationGain}m elev` : null,
+    summary.avgHR ? `HR avg ${summary.avgHR}` : null,
+    summary.maxHR ? `HR max ${summary.maxHR}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -75,7 +87,23 @@ export function ExecutionSummaryBlock({
       {secondaryParts && (
         <p className="text-[10px] text-gray-400">{secondaryParts}</p>
       )}
-      <p className="text-[10px] italic text-gray-500">{summary.interpretationLine}</p>
+      <div className="flex flex-wrap items-center gap-1 text-[10px]">
+        <span className={`font-medium ${QUALITY_COLOR[summary.qualityLabel]}`}>
+          {summary.qualityLabel}
+        </span>
+        {summary.splitSession && (
+          <>
+            <span className="text-gray-300">·</span>
+            <span className="text-gray-400">Split session</span>
+          </>
+        )}
+        {summary.hillsIndicator && summary.qualityLabel !== "Hilly variant" && (
+          <>
+            <span className="text-gray-300">·</span>
+            <span className="text-gray-400">Hills</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
