@@ -53,8 +53,8 @@ function buildAnalyticsSummary(a: WorkoutAnalytics): string {
       segs.push(`${Math.floor(sm.totalMovingTime / 60)}min moving`);
       const breakMin = Math.round(sm.pauseTime / 60);
       if (breakMin >= 5) {
-        const pauseFlag = sm.pauseRatio > 0.15 ? ` [HIGH PAUSE: ${Math.round(sm.pauseRatio * 100)}%]` : "";
-        segs.push(`${breakMin}min stopped${pauseFlag}`);
+        const ratioSuffix = sm.pauseRatio > 0.15 ? ` (${Math.round(sm.pauseRatio * 100)}% of elapsed)` : "";
+        segs.push(`${breakMin}min non-moving${ratioSuffix}`);
       }
     }
     if (sm.averageSpeedMean && sm.averageSpeedMean > 0 && sm.totalDistance > 0) {
@@ -150,7 +150,7 @@ Give 2–3 concrete next-step suggestions. Rules:
 - If back-to-back hard load or high weekly minutes: suggest recovery alternatives specifically
 - Reference the specific sport or body part mentioned
 - If Strava data shows distance or pace: reference the actual numbers (e.g. "5.2km at 6:10/km") — skip HR if not in the analytics block
-- If Strava shows "HIGH PAUSE" flag: reference fragmented session pattern specifically
+- If Strava shows "Xmin non-moving (X% of elapsed)": mention the elapsed-vs-moving gap cautiously — it may reflect autopause, traffic lights, or device behavior, not deliberate stopping; do not call it a broken session
 - If Strava shows elevation per km (e.g. "35m/km"): mention hill load if it contributed to difficulty
 - If Strava shows "-Xmin vs plan": briefly acknowledge short execution before giving recovery advice
 - If Strava shows "uneven splits (CV: X%)": note pacing inconsistency as a possible fatigue or pacing control issue
@@ -191,7 +191,7 @@ Give 1–2 short coach observations. Rules:
 - If load is light: lean positive — athlete is pacing well
 - Reference next planned session from analytics if available — does this session position well for it?
 - If Strava data present: briefly note actual distance or pace vs session type; skip HR if not in analytics block
-- If Strava shows "HIGH PAUSE": note the stopping pattern — useful data even at 4/6
+- If Strava shows "Xmin non-moving (X% of elapsed)": note the elapsed-vs-moving gap neutrally — do not imply the athlete was repeatedly stopping
 - If Strava shows elevation per km (Xm/km) and it is ≥ 15: briefly note the hill component
 - If Strava shows "+Xmin vs plan" or "-Xmin vs plan": reference execution vs planned duration
 - If Strava shows "uneven splits (CV: X%)": briefly note pacing variation
@@ -234,7 +234,7 @@ Give 1–2 short coach observations. Rules:
 - If Strava data shows distance or pace: reference the specific number (e.g. "7.1km at 5:05/km"); skip HR commentary if not shown in analytics block
 - If Strava shows elevation per km (Xm/km): credit the hill stimulus explicitly
 - If Strava shows "+Xmin vs plan": note strong execution over target
-- If Strava shows "HIGH PAUSE" despite good feel: still flag the stopping pattern as worth watching
+- If Strava shows "Xmin non-moving (X% of elapsed)": keep mention brief and neutral; avoid implying something went wrong
 - If Strava shows "even splits": credit consistent pacing as a performance quality marker
 - If Strava shows "effort: X" and X > 80: acknowledge meaningful training load alongside good feel
 - Format: "• [observation]"
