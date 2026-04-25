@@ -8,6 +8,9 @@ import type {
   SessionIntensity,
 } from "@prisma/client";
 import type { CheckInCategory } from "@/lib/checkin-utils";
+import type { ExecutionDelta } from "@/lib/planner/execution-delta";
+
+export type { ExecutionDelta };
 
 export interface ParsedTemporalConstraint {
   day: string;
@@ -31,6 +34,7 @@ export interface CurrentWeekDoneSession {
   intensity: SessionIntensity;
   notes: string | null;
   status: string;
+  executionDelta?: ExecutionDelta;
 }
 
 export interface FixedSession {

@@ -172,6 +172,15 @@ CRITICAL — running distances:
 "today" in the prompt is the user's current local date. Only schedule sessions on today or future dates — never in the past.
 If "thisWeekAlreadyDone" is present, those sessions are already completed. Do NOT schedule anything on those dates. Subtract their minutes from your total volume budget.
 
+## Strava execution deltas
+When a done session includes an "executionDelta" field, use it as a light, non-overriding signal:
+- clearly_short or slightly_short: the planned load was not fully absorbed — do not build further on top of it
+- interrupted: split or high pause-ratio session — avoid over-crediting it as a full stimulus
+- hilly_variant: elevation added demand beyond time/distance — treat as slightly more demanding
+- longer_than_planned: athlete delivered more than planned — note the higher accumulated load
+- matched: execution matched plan, no adjustment needed
+Do not invent physiology claims. Do not downgrade sessions dramatically based on this alone — it is context, not a hard rule.
+
 ## Active issues vs resolved issues — CRITICAL distinction
 Check-ins are labeled either ACTIVE or RESOLVED.
 - ACTIVE (resolvedAt is null): treat as a current, live issue. Apply full check-in rules.
@@ -402,7 +411,31 @@ function buildUserPrompt(context: PlanningContext): string {
       thisWeekAlreadyDone: {
         note: "These dates are FROZEN — do not schedule anything on them.",
         totalDoneMinutes: doneMinutes,
-        sessions: context.currentWeekDoneSessions,
+        sessions: context.currentWeekDoneSessions.map((s) => {
+          if (!s.executionDelta || s.executionDelta.quality === "matched") {
+            return { date: s.date, durationMin: s.durationMin, intensity: s.intensity, notes: s.notes, status: s.status };
+          }
+          const delta = s.executionDelta;
+          const distanceNote =
+            delta.actualDistanceM != null && delta.plannedDistanceM != null
+              ? `${(delta.actualDistanceM / 1000).toFixed(1)}km actual vs ${(delta.plannedDistanceM / 1000).toFixed(0)}km planned`
+              : undefined;
+          return {
+            date: s.date,
+            durationMin: s.durationMin,
+            intensity: s.intensity,
+            notes: s.notes,
+            status: s.status,
+            executionDelta: {
+              quality: delta.quality,
+              ...(delta.durationDeltaMin !== 0 && { durationDeltaMin: delta.durationDeltaMin }),
+              ...(distanceNote && { distanceNote }),
+              ...(delta.elevationPerKm != null && delta.elevationPerKm >= 20 && {
+                elevationPerKm: Math.round(delta.elevationPerKm),
+              }),
+            },
+          };
+        }),
       },
     }),
   };

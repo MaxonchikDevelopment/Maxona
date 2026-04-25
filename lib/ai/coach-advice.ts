@@ -357,7 +357,13 @@ No intro. No preamble.`,
 
 export interface ChangeSummaryPayload {
   replanReason?: string;
-  doneSessionsThisWeek: Array<{ date: string; label: string; intensity: string }>;
+  doneSessionsThisWeek: Array<{
+    date: string;
+    label: string;
+    intensity: string;
+    executionQuality?: string;
+    distanceNote?: string;
+  }>;
   latestCheckIn?: { date: string; feelScore: number; notes: string | null; category: string };
   injurySignals: Array<{ date: string; feelScore: number; notes: string | null }>;
   fatigueSignals: Array<{ date: string; feelScore: number; notes: string | null }>;
@@ -419,7 +425,17 @@ export async function renderChangeExplanation(payload: ChangeSummaryPayload): Pr
   try {
     const doneStr =
       payload.doneSessionsThisWeek.length > 0
-        ? payload.doneSessionsThisWeek.map((s) => `${s.date} ${s.label} (${s.intensity})`).join(", ")
+        ? payload.doneSessionsThisWeek
+            .map((s) => {
+              let str = `${s.date} ${s.label} (${s.intensity})`;
+              if (s.executionQuality) {
+                str += ` [execution: ${s.executionQuality}`;
+                if (s.distanceNote) str += ` — ${s.distanceNote}`;
+                str += "]";
+              }
+              return str;
+            })
+            .join(", ")
         : "none yet";
 
     const removed = [
@@ -471,6 +487,8 @@ Rules:
 - Only reference sessions listed above — never invent sessions
 - Anchor tone to the planner stance: protecting → explain what's being avoided; reducing → explain fatigue context; building → explain load increase; maintaining → confirm stability
 - Reference check-in or readiness feel score when relevant; mention tags (poor_sleep, alcohol, etc.) if they drove the change
+- If a done session has execution quality listed (e.g. "slightly_short — 8.5 km vs 10 km planned"), use it as a light grounding signal: clearly_short/slightly_short → do not assume full load absorbed; interrupted → session not fully credited; hilly_variant → treat run as slightly more demanding; longer_than_planned → higher load noted; matched → no adjustment
+- Only mention execution quality when it materially affects remaining week decisions — skip if irrelevant
 - Sound like an experienced coach, not a template
 - Format: "• [bullet]"
 No intro. No preamble.`,

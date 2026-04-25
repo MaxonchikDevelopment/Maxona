@@ -8,6 +8,7 @@ import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { parseFamilyConstraints } from "@/lib/ai/parse-family-constraints";
 import { renderChangeExplanation, type ChangeSummaryPayload } from "@/lib/ai/coach-advice";
+import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
 import type {
   PlanningContext,
   RecentCheckIn,
@@ -160,11 +161,29 @@ function buildChangeSummaryPayload({
         }
       : undefined;
 
-  const doneSessions = doneSessionsThisWeek.map((s) => ({
-    date: s.date,
-    label: friendlyLabel(s.notes, s.intensity as string),
-    intensity: s.intensity as string,
-  }));
+  const doneSessions = doneSessionsThisWeek.map((s) => {
+    const delta = s.executionDelta;
+    let executionQuality: string | undefined;
+    let distanceNote: string | undefined;
+    if (delta && delta.quality !== "matched") {
+      executionQuality = delta.quality;
+      if (delta.actualDistanceM != null && delta.plannedDistanceM != null) {
+        distanceNote = `${(delta.actualDistanceM / 1000).toFixed(1)} km vs ${(delta.plannedDistanceM / 1000).toFixed(0)} km planned`;
+      } else if (Math.abs(delta.durationDeltaMin) >= 5) {
+        distanceNote =
+          delta.durationDeltaMin > 0
+            ? `+${delta.durationDeltaMin}min vs plan`
+            : `${delta.durationDeltaMin}min vs plan`;
+      }
+    }
+    return {
+      date: s.date,
+      label: friendlyLabel(s.notes, s.intensity as string),
+      intensity: s.intensity as string,
+      ...(executionQuality && { executionQuality }),
+      ...(distanceNote && { distanceNote }),
+    };
+  });
 
   const safetyBlockedDates = new Set(safetyBlockedSessions.map((s) => s.date));
   const safetyBlockedPayload = safetyBlockedSessions.map((s) => ({
@@ -348,6 +367,31 @@ export async function generateWeeklyPlan(
     }),
   ]);
 
+  // Strava execution deltas — separate batch query avoids Prisma 6 multi-include type bug
+  const sessionDeltas = new Map<string, ExecutionDelta>();
+  if (currentWeekDoneSessions.length > 0) {
+    const doneStravaLinks = await prisma.sessionStravaActivityLink.findMany({
+      where: { sessionId: { in: currentWeekDoneSessions.map((s) => s.id) } },
+      include: { activity: true },
+      orderBy: { isPrimary: "desc" },
+    });
+    const linksBySession = new Map<string, typeof doneStravaLinks>();
+    for (const l of doneStravaLinks) {
+      const list = linksBySession.get(l.sessionId) ?? [];
+      list.push(l);
+      linksBySession.set(l.sessionId, list);
+    }
+    for (const s of currentWeekDoneSessions) {
+      const links = linksBySession.get(s.id);
+      if (!links?.length) continue;
+      const delta = deriveExecutionDelta(
+        { durationMin: s.durationMin, notes: s.notes, intensity: s.intensity },
+        links.map((l) => l.activity)
+      );
+      if (delta) sessionDeltas.set(s.id, delta);
+    }
+  }
+
   // Previous-week check-ins with category
   const recentCheckIns: RecentCheckIn[] = rawPreviousSessions
     .filter((s) => s.checkIn != null)
@@ -491,6 +535,7 @@ export async function generateWeeklyPlan(
       intensity: s.intensity,
       notes: s.notes,
       status: s.status,
+      ...(sessionDeltas.has(s.id) && { executionDelta: sessionDeltas.get(s.id) }),
     })),
     fixedSessions,
     optionalSlots,
