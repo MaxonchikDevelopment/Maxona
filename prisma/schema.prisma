@@ -29,6 +29,7 @@ enum SessionPlanningType {
   fixed
   preferred
   generated
+  manual
 }
 
 enum SessionStatus {

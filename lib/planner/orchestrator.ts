@@ -317,6 +317,18 @@ export async function generateWeeklyPlan(
       })
     : [];
 
+  // Future manual sessions that are still planned — carried to new plan unchanged.
+  // We move them (same as done sessions) so user-created workouts survive replanning.
+  const currentWeekManualPlannedSessions = activePlan
+    ? await prisma.trainingSession.findMany({
+        where: {
+          planId: activePlan.id,
+          planningType: "manual",
+          status: "planned",
+        },
+      })
+    : [];
+
   const [
     goals,
     availabilityWindows,
@@ -608,6 +620,15 @@ export async function generateWeeklyPlan(
     if (currentWeekDoneSessions.length > 0) {
       await tx.trainingSession.updateMany({
         where: { id: { in: currentWeekDoneSessions.map((s) => s.id) } },
+        data: { planId: newPlan.id },
+      });
+    }
+
+    // Carry forward user-created manual sessions that are still planned.
+    // They survive replanning unchanged — user owns them, LLM doesn't touch them.
+    if (currentWeekManualPlannedSessions.length > 0) {
+      await tx.trainingSession.updateMany({
+        where: { id: { in: currentWeekManualPlannedSessions.map((s) => s.id) } },
         data: { planId: newPlan.id },
       });
     }

@@ -158,6 +158,9 @@ export function SessionCard({
           {session.planningType === "preferred" && (
             <span className="ml-2 rounded bg-blue-50 px-1 text-xs text-blue-500">optional</span>
           )}
+          {session.planningType === "manual" && (
+            <span className="ml-2 rounded bg-purple-50 px-1 text-xs text-purple-500">manual</span>
+          )}
         </div>
         {done ? (
           <div className="flex items-center gap-2">

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { ReplanButton } from "@/components/replan-button";
+import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import type { SessionProp } from "@/components/session-card";
@@ -245,39 +246,19 @@ export default async function WeekPage() {
       {weekDays.map((dateStr, i) => {
         const daySessions = sessionsByDate[dateStr] ?? [];
         const isPast = dateStr < todayStr;
-        const allDone =
-          daySessions.length > 0 &&
-          daySessions.every((s) => s.status === "done" || s.status === "skipped");
-        const showCompact = isPast && allDone;
 
         return (
           <div key={dateStr}>
             <p
-              className={`mb-1 ${
-                showCompact
-                  ? "text-xs text-gray-400"
-                  : "text-sm font-semibold text-gray-400"
+              className={`mb-1 text-sm font-semibold ${
+                isPast ? "text-gray-300" : "text-gray-400"
               }`}
             >
               {DOW[i]} · {dateStr}
+              {isPast && <span className="ml-1.5 text-xs font-normal text-gray-300">past</span>}
             </p>
             {daySessions.length === 0 ? (
-              <p className={showCompact ? "text-xs text-gray-300" : "text-sm text-gray-400"}>
-                Rest
-              </p>
-            ) : showCompact ? (
-              <div className="flex flex-wrap gap-1.5">
-                {daySessions.map((s) => (
-                  <span
-                    key={s.id}
-                    className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
-                  >
-                    {s.intensity} · {s.durationMin}min
-                    {s.checkIn ? ` · ${s.checkIn.feelScore}/6` : ""}
-                    {s.notes ? ` · ${s.notes.split(":")[0]}` : ""}
-                  </span>
-                ))}
-              </div>
+              <p className={isPast ? "text-xs text-gray-300" : "text-sm text-gray-400"}>Rest</p>
             ) : (
               <div className="space-y-2">
                 {daySessions.map((s) => (
@@ -285,6 +266,9 @@ export default async function WeekPage() {
                 ))}
               </div>
             )}
+            <div className="mt-1.5">
+              <ManualSessionForm defaultDate={dateStr} />
+            </div>
           </div>
         );
       })}
@@ -338,21 +322,29 @@ function DraftPreview({
         const daySessions = sessionsByDate[dateStr] ?? [];
         return (
           <div key={dateStr}>
-            <p className="text-xs text-gray-400 mb-0.5">
+            <p className="mb-0.5 text-xs text-gray-400">
               {DOW[i]} · {dateStr}
             </p>
             {daySessions.length === 0 ? (
               <p className="text-xs text-gray-300">Rest</p>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="space-y-1">
                 {daySessions.map((s, idx) => (
-                  <span
+                  <div
                     key={idx}
-                    className="rounded bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-500"
+                    className="rounded border border-gray-100 bg-gray-50 px-2.5 py-1.5"
                   >
-                    {s.intensity} · {s.durationMin}min
-                    {s.notes ? ` · ${s.notes.split(":")[0]}` : ""}
-                  </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-medium capitalize text-gray-600">
+                        {s.intensity}
+                      </span>
+                      <span className="text-xs text-gray-400">{s.durationMin}min</span>
+                      <span className="text-xs text-gray-400 capitalize">{s.preferredSlot}</span>
+                      {s.notes && (
+                        <span className="text-xs text-gray-500">{s.notes.split(":")[0]}</span>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

@@ -4,6 +4,7 @@ import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { DailyReadinessCard } from "@/components/daily-readiness-card";
 import { SignalsHistory } from "@/components/signals-history";
+import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import type { SessionProp } from "@/components/session-card";
@@ -274,12 +275,16 @@ export default async function TodayPage() {
       <h1 className="text-xl font-bold">Today</h1>
       <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
       {props.length === 0 ? (
-        <p className="text-sm text-gray-500">Rest day — nothing scheduled.</p>
+        <div className="space-y-2">
+          <p className="text-sm text-gray-500">Rest day — nothing scheduled.</p>
+          <ManualSessionForm defaultDate={todayStr} />
+        </div>
       ) : (
         <div className="space-y-3">
           {props.map((s) => (
             <SessionCard key={s.id} session={s} todayStr={todayStr} />
           ))}
+          <ManualSessionForm defaultDate={todayStr} />
         </div>
       )}
       <ActiveIssues initialIssues={activeIssues} />
