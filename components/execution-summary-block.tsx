@@ -25,6 +25,43 @@ const QUALITY_COLOR: Record<ExecutionQualityLabel, string> = {
   "Hilly variant": "text-gray-600",
 };
 
+function plannedSportBucket(notes: string | null): string | null {
+  if (!notes) return null;
+  const lower = notes.toLowerCase();
+  if (lower.startsWith("running")) return "running";
+  if (lower.startsWith("cycling")) return "cycling";
+  if (lower.startsWith("swimming")) return "swimming";
+  if (lower.startsWith("hyrox")) return "hyrox";
+  return null;
+}
+
+function normalizeSportType(st: string): string {
+  const l = st.toLowerCase();
+  if (l.includes("run")) return "Running";
+  if (l.includes("ride") || l.includes("cycling") || l.includes("cycle") || l.includes("bike") || l.includes("ebike")) return "Cycling";
+  if (l.includes("swim")) return "Swimming";
+  if (l.includes("weight") || l.includes("crossfit") || l.includes("hyrox")) return "Strength";
+  return st;
+}
+
+function derivedActualSportLabel(sportTypes: string[]): string | null {
+  if (sportTypes.length === 0) return null;
+  const unique = [...new Set(sportTypes.map(normalizeSportType))];
+  return unique.join(" + ");
+}
+
+function actualDiffersFromPlanned(plannedBucket: string | null, sportTypes: string[]): boolean {
+  if (!plannedBucket || sportTypes.length === 0) return false;
+  return !sportTypes.some((st) => {
+    const l = st.toLowerCase();
+    if (plannedBucket === "running") return l.includes("run");
+    if (plannedBucket === "cycling") return l.includes("ride") || l.includes("cycle") || l.includes("bike") || l.includes("ebike");
+    if (plannedBucket === "swimming") return l.includes("swim");
+    if (plannedBucket === "hyrox") return l.includes("weight") || l.includes("crossfit") || l.includes("hyrox");
+    return false;
+  });
+}
+
 export function ExecutionSummaryBlock({
   session,
   stravaLinks,
@@ -47,11 +84,17 @@ export function ExecutionSummaryBlock({
   );
   if (!summary) return null;
 
+  const actualSportTypes = stravaLinks.map((l) => l.activity.sportType);
+  const plannedBucket = plannedSportBucket(session.notes);
+  const sportLabel = derivedActualSportLabel(actualSportTypes);
+  const showSport = !!sportLabel && actualDiffersFromPlanned(plannedBucket, actualSportTypes);
+
   const plannedLabel = `${fmtMin(summary.plannedDurationMin)}${
     summary.plannedDistanceKm ? ` · ~${fmtDist(summary.plannedDistanceKm)}` : ""
   }`;
 
   const actualParts = [
+    showSport ? sportLabel : null,
     `${fmtMin(summary.actualMovingMin)} moving`,
     summary.actualDistanceKm ? fmtDist(summary.actualDistanceKm) : null,
     summary.paceStr,
@@ -81,7 +124,9 @@ export function ExecutionSummaryBlock({
         </div>
         <div>
           <span className="text-[10px] text-gray-400">Actual </span>
-          <span className="font-medium text-gray-700">{actualParts}</span>
+          <span className={`font-medium ${showSport ? "text-blue-700" : "text-gray-700"}`}>
+            {actualParts}
+          </span>
         </div>
       </div>
       {secondaryParts && (

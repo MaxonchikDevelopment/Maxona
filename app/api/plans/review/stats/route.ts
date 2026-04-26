@@ -21,6 +21,7 @@ type SessionResult = {
     qualityLabel: string;
     splitSession: boolean;
     hillsIndicator: boolean;
+    actualSportTypes: string[];
   } | null;
 };
 
@@ -125,6 +126,7 @@ export async function GET() {
           qualityLabel: summary.qualityLabel,
           splitSession: summary.splitSession,
           hillsIndicator: summary.hillsIndicator,
+          actualSportTypes: activities.map((a) => a.sportType),
         };
       }
     }

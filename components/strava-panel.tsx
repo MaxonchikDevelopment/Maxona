@@ -75,11 +75,11 @@ export function StravaPanel({
   const [available, setAvailable] = useState<StravaActivitySummary[]>([]);
   const [loadingPicker, setLoadingPicker] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   if (!stravaConnected) return null;
 
-  async function openPicker() {
-    setPickerOpen(true);
+  async function fetchActivities() {
     setLoadingPicker(true);
     try {
       const params = new URLSearchParams({
@@ -94,6 +94,21 @@ export function StravaPanel({
       setAvailable(data);
     } finally {
       setLoadingPicker(false);
+    }
+  }
+
+  async function openPicker() {
+    setPickerOpen(true);
+    await fetchActivities();
+  }
+
+  async function syncLatest() {
+    setSyncing(true);
+    try {
+      await fetch("/api/strava/sync", { method: "POST" });
+      await fetchActivities();
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -226,6 +241,16 @@ export function StravaPanel({
       {/* Picker */}
       {pickerOpen && (
         <div className="mt-1 space-y-1 border rounded p-2 bg-gray-50">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">Activities</span>
+            <button
+              onClick={syncLatest}
+              disabled={syncing || loadingPicker}
+              className="text-[9px] text-gray-400 underline disabled:opacity-40"
+            >
+              {syncing ? "Syncing…" : "Sync latest"}
+            </button>
+          </div>
           {loadingPicker ? (
             <p className="text-xs text-gray-400">Loading…</p>
           ) : available.length === 0 ? (

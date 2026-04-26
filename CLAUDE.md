@@ -166,3 +166,17 @@ Infrastructure and planning loop are solid. The next gap is **personalization an
 - Do not assume a GitHub remote exists; never push blindly
 - If a push is needed and no remote is configured, report the exact setup commands
   (`git remote add origin <url>` and `git push -u origin main`) instead of running them
+
+## Deployment Checklist (pre-hosting)
+
+Before deploying to production:
+- Rotate all secrets: ANTHROPIC_API_KEY, AUTH_PASSWORD, STRAVA_CLIENT_SECRET
+- Set NEXT_PUBLIC_APP_URL to the deployed domain
+- Update the Strava app callback URL in Strava developer settings
+- Use production secret management (env vars injected by the host, not committed files)
+- Tokens are DB-only — never put Strava access/refresh tokens in env vars
+- env should contain only: STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET,
+  STRAVA_WEBHOOK_VERIFY_TOKEN, NEXT_PUBLIC_APP_URL, DATABASE_URL,
+  DIRECT_URL, ANTHROPIC_API_KEY, AUTH_PASSWORD
+- `lastSyncedAt` throttles Strava sync to ≤ 1×/hour; a hosted cron route
+  `/api/cron/strava-sync` can call `syncStravaActivities(userId)` directly

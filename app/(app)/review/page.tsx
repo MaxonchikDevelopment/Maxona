@@ -8,10 +8,10 @@ const PRIORITY_OPTIONS = [
   "Easy recovery week",
   "Long ride priority",
   "Marathon pace work",
-  "Balanced as usual",
+  "Balanced",
 ];
 
-const DRAFT_KEY = "review_draft_v1";
+const DRAFT_KEY = "review_draft_v2";
 
 const DOW_LABELS: Record<number, string> = {
   0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat",
@@ -23,6 +23,7 @@ type DraftState = {
   recoveryScore: number | null;
   selectedPriorities: string[];
   familyConstraints: string;
+  trainingPreferencesText: string;
 };
 
 type ExistingDraft = {
@@ -46,6 +47,7 @@ type SessionExecution = {
   qualityLabel: string;
   splitSession: boolean;
   hillsIndicator: boolean;
+  actualSportTypes?: string[];
 };
 
 type SessionSummary = {
@@ -93,15 +95,49 @@ type WeeklyStats = {
   carryForward: string[];
 };
 
+type ArchiveSession = {
+  id: string;
+  date: string;
+  intensity: string;
+  durationMin: number;
+  notes: string | null;
+  status: string;
+  checkIn: { feelScore: number } | null;
+  execution: {
+    actualMovingMin: number;
+    actualDistanceKm: number | null;
+    paceStr: string | null;
+    qualityLabel: string;
+    actualSportTypes: string[];
+  } | null;
+};
+
+type ArchivePlan = {
+  planId: string;
+  weekStart: string;
+  weekEnd: string;
+  focusSummary: string | null;
+  planned: number;
+  done: number;
+  skipped: number;
+  sessions: ArchiveSession[];
+} | null;
+
 function loadDraft(): DraftState {
   if (typeof window === "undefined")
-    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "" };
+    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "", trainingPreferencesText: "" };
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return { recoveryScore: null, selectedPriorities: [], familyConstraints: "" };
-    return JSON.parse(raw) as DraftState;
+    if (!raw) return { recoveryScore: null, selectedPriorities: [], familyConstraints: "", trainingPreferencesText: "" };
+    const parsed = JSON.parse(raw) as Partial<DraftState>;
+    return {
+      recoveryScore: parsed.recoveryScore ?? null,
+      selectedPriorities: parsed.selectedPriorities ?? [],
+      familyConstraints: parsed.familyConstraints ?? "",
+      trainingPreferencesText: parsed.trainingPreferencesText ?? "",
+    };
   } catch {
-    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "" };
+    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "", trainingPreferencesText: "" };
   }
 }
 
@@ -115,23 +151,45 @@ function shortDay(dateStr: string): string {
   return DOW_LABELS[d.getUTCDay()];
 }
 
+function fmtMin(min: number): string {
+  if (min >= 60) {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${min}m`;
+}
+
+function normalizeSportType(st: string): string {
+  const l = st.toLowerCase();
+  if (l.includes("run")) return "Running";
+  if (l.includes("ride") || l.includes("cycling") || l.includes("cycle") || l.includes("bike")) return "Cycling";
+  if (l.includes("swim")) return "Swimming";
+  if (l.includes("weight") || l.includes("crossfit") || l.includes("hyrox")) return "Strength";
+  return st;
+}
+
 export default function ReviewPage() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
   const [recoveryScore, setRecoveryScore] = useState<number | null>(null);
   const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [familyConstraints, setFamilyConstraints] = useState("");
+  const [trainingPreferencesText, setTrainingPreferencesText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [existingDraft, setExistingDraft] = useState<ExistingDraft | undefined>(undefined);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null | undefined>(undefined);
+  const [archivePlan, setArchivePlan] = useState<ArchivePlan | undefined>(undefined);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   useEffect(() => {
     const draft = loadDraft();
     setRecoveryScore(draft.recoveryScore);
     setSelectedPriorities(draft.selectedPriorities);
     setFamilyConstraints(draft.familyConstraints);
+    setTrainingPreferencesText(draft.trainingPreferencesText);
     setHydrated(true);
   }, []);
 
@@ -150,10 +208,17 @@ export default function ReviewPage() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/plans/archive/latest")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setArchivePlan(data as ArchivePlan | null))
+      .catch(() => setArchivePlan(null));
+  }, []);
+
+  useEffect(() => {
     if (!hydrated) return;
-    const draft: DraftState = { recoveryScore, selectedPriorities, familyConstraints };
+    const draft: DraftState = { recoveryScore, selectedPriorities, familyConstraints, trainingPreferencesText };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  }, [recoveryScore, selectedPriorities, familyConstraints, hydrated]);
+  }, [recoveryScore, selectedPriorities, familyConstraints, trainingPreferencesText, hydrated]);
 
   function togglePriority(opt: string) {
     setSelectedPriorities((prev) =>
@@ -169,6 +234,7 @@ export default function ReviewPage() {
       ...(recoveryScore !== null && { recoveryScore }),
       ...(selectedPriorities.length > 0 && { priorities: selectedPriorities }),
       ...(familyConstraints.trim() && { familyConstraints: familyConstraints.trim() }),
+      ...(trainingPreferencesText.trim() && { trainingPreferencesText: trainingPreferencesText.trim() }),
     };
 
     try {
@@ -217,22 +283,34 @@ export default function ReviewPage() {
       </div>
 
       {/* ── This week ────────────────────────────── */}
-      {weeklyStats === undefined ? (
-        <p className="text-xs text-gray-400">Loading week summary…</p>
-      ) : weeklyStats !== null ? (
-        <div className="space-y-4">
-          <StatsBlock stats={weeklyStats} />
-          <ExecQualityBlock eq={weeklyStats.executionQuality} />
-          <SignalsBlock signals={weeklyStats.signals} />
-          <SessionDayList stats={weeklyStats} />
-          <CarryForwardBlock bullets={weeklyStats.carryForward} />
-        </div>
-      ) : null}
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">This week</p>
+        {weeklyStats === undefined ? (
+          <p className="text-xs text-gray-400">Loading week summary…</p>
+        ) : weeklyStats !== null ? (
+          <div className="space-y-4">
+            <StatsBlock stats={weeklyStats} />
+            <ExecQualityBlock eq={weeklyStats.executionQuality} />
+            <SignalsBlock signals={weeklyStats.signals} />
+            <SessionDayList stats={weeklyStats} />
+          </div>
+        ) : null}
+      </div>
+
+      {/* ── Carry into next week ─────────────────── */}
+      {weeklyStats && weeklyStats.carryForward.length > 0 && (
+        <CarryForwardBlock bullets={weeklyStats.carryForward} />
+      )}
+
+      {/* ── Previous week (archive) ──────────────── */}
+      {archivePlan && (
+        <PreviousWeekBlock plan={archivePlan} open={archiveOpen} onToggle={() => setArchiveOpen((v) => !v)} />
+      )}
 
       {/* ── Plan next week ───────────────────────── */}
       <div className="border-t pt-4 space-y-6">
         <div>
-          <h2 className="text-base font-semibold">Plan next week</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Plan next week</p>
           <p className="text-xs text-gray-500 mt-0.5">
             Generates a draft for next week only. Your current week is not affected.
           </p>
@@ -278,7 +356,7 @@ export default function ReviewPage() {
         <section className="space-y-2">
           <h2 className="font-semibold text-sm">How are you feeling going into next week?</h2>
           <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map((n) => (
+            {[1, 2, 3, 4, 5, 6].map((n) => (
               <button
                 key={n}
                 onClick={() => setRecoveryScore(recoveryScore === n ? null : n)}
@@ -290,7 +368,7 @@ export default function ReviewPage() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-gray-400">1 = very fatigued / injured · 5 = fresh and ready</p>
+          <p className="text-xs text-gray-400">1 = very fatigued / injured · 6 = fresh and ready</p>
         </section>
 
         <section className="space-y-2">
@@ -317,6 +395,18 @@ export default function ReviewPage() {
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="font-semibold text-sm">Training preferences</h2>
+          <textarea
+            value={trainingPreferencesText}
+            onChange={(e) => setTrainingPreferencesText(e.target.value)}
+            placeholder="e.g. Marathon is close, but if weather is good I'd like one easy bike ride."
+            rows={2}
+            className="w-full rounded border px-3 py-2 text-sm"
+          />
+          <p className="text-xs text-gray-400">Soft guidance — Claude will weigh this alongside recovery and schedule.</p>
         </section>
 
         <section className="space-y-2">
@@ -361,7 +451,7 @@ function StatsBlock({ stats }: { stats: WeeklyStats }) {
   return (
     <div className="rounded border border-gray-200 bg-gray-50 px-3 py-3 space-y-2">
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-        This week · {stats.weekStart}
+        {stats.weekStart}
       </p>
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         <span className="text-xs text-gray-400">Sessions</span>
@@ -528,12 +618,27 @@ function SessionDayList({ stats }: { stats: WeeklyStats }) {
 }
 
 function SessionRow({ session: s }: { session: SessionSummary }) {
-  const noteLabel = s.notes ? s.notes.split(":")[0] : null;
+  const noteLabel = s.notes ? s.notes.split(":")[0].trim() : null;
   const isDone = s.status === "done";
   const isSkipped = s.status === "skipped";
 
+  const actualSportLabel = s.execution?.actualSportTypes?.length
+    ? [...new Set(s.execution.actualSportTypes.map(normalizeSportType))].join(" + ")
+    : null;
+
+  const actualLine = s.execution
+    ? [
+        actualSportLabel,
+        fmtMin(s.execution.actualMovingMin),
+        s.execution.actualDistanceKm != null ? `${s.execution.actualDistanceKm}km` : null,
+        s.execution.paceStr,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
+
   return (
-    <div className="rounded bg-gray-50 px-2.5 py-1.5 space-y-0.5 ml-0">
+    <div className="rounded bg-gray-50 px-2.5 py-1.5 space-y-0.5">
       <div className="flex items-center gap-1.5 flex-wrap">
         <span
           className={`text-xs font-medium ${
@@ -552,40 +657,16 @@ function SessionRow({ session: s }: { session: SessionSummary }) {
         {!isDone && !isSkipped && <span className="text-xs text-gray-400">(planned)</span>}
       </div>
 
-      {isDone && s.checkIn && (
-        <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500">
-          <span>feel {s.checkIn.feelScore}/6</span>
-          {s.execution && (
-            <>
-              <span className="text-gray-300">·</span>
-              <span>{s.execution.qualityLabel}</span>
-              {s.execution.actualDistanceKm != null && (
-                <>
-                  <span className="text-gray-300">·</span>
-                  <span>{s.execution.actualDistanceKm}km</span>
-                </>
-              )}
-              {s.execution.paceStr && (
-                <>
-                  <span className="text-gray-300">·</span>
-                  <span>{s.execution.paceStr}</span>
-                </>
-              )}
-              {s.execution.elevationGain != null && (
-                <>
-                  <span className="text-gray-300">·</span>
-                  <span>{s.execution.elevationGain}m elev</span>
-                </>
-              )}
-              {s.execution.splitSession && (
-                <>
-                  <span className="text-gray-300">·</span>
-                  <span>split</span>
-                </>
-              )}
-            </>
-          )}
+      {isDone && actualLine && (
+        <div className="flex items-baseline gap-1 flex-wrap">
+          <span className="text-[10px] text-gray-400">Actual</span>
+          <span className="text-xs text-gray-600">{actualLine}</span>
+          <span className="text-[10px] text-gray-400">{s.execution!.qualityLabel}</span>
         </div>
+      )}
+
+      {isDone && s.checkIn && (
+        <p className="text-[10px] text-gray-400">feel {s.checkIn.feelScore}/6</p>
       )}
     </div>
   );
@@ -606,6 +687,83 @@ function CarryForwardBlock({ bullets }: { bullets: string[] }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function PreviousWeekBlock({
+  plan,
+  open,
+  onToggle,
+}: {
+  plan: ArchivePlan;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  if (!plan) return null;
+
+  return (
+    <div className="rounded border border-gray-200 px-3 py-2.5">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <span className="text-xs font-semibold text-gray-500">
+          Previous week · {plan.weekStart}
+        </span>
+        <span className="text-xs text-gray-400">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-2">
+          <p className="text-xs text-gray-500">
+            {plan.planned} sessions · {plan.done} done
+            {plan.skipped > 0 ? ` · ${plan.skipped} skipped` : ""}
+          </p>
+          {plan.focusSummary && (
+            <p className="text-xs italic text-gray-400">{plan.focusSummary}</p>
+          )}
+          <div className="space-y-1">
+            {plan.sessions.map((s) => {
+              const noteLabel = s.notes ? s.notes.split(":")[0].trim() : null;
+              const isDone = s.status === "done";
+              const isSkipped = s.status === "skipped";
+              const actualSportLabel = s.execution?.actualSportTypes?.length
+                ? [...new Set(s.execution.actualSportTypes.map(normalizeSportType))].join(" + ")
+                : null;
+              const actualLine = s.execution
+                ? [
+                    actualSportLabel,
+                    fmtMin(s.execution.actualMovingMin),
+                    s.execution.actualDistanceKm != null ? `${s.execution.actualDistanceKm}km` : null,
+                    s.execution.paceStr,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : null;
+
+              return (
+                <div key={s.id} className="rounded bg-gray-50 px-2 py-1 space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[10px] ${isDone ? "text-green-600" : isSkipped ? "text-gray-400" : "text-gray-400"}`}>
+                      {isDone ? "✓" : isSkipped ? "—" : "·"}
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      {s.date.slice(5)} · {s.intensity} · {s.durationMin}min
+                      {noteLabel ? ` · ${noteLabel}` : ""}
+                    </span>
+                  </div>
+                  {isDone && actualLine && (
+                    <p className="text-[10px] text-gray-400">
+                      Actual: {actualLine}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -203,15 +203,16 @@ previousWeek (recentCheckIns) ACTIVE signals apply the same rules at lower weigh
 
 ## Weekly review context
 When weeklyReview is present, treat it as the athlete's direct input for this planning cycle:
-- recoveryScore (1–5): 1–2 = treat like a fatigue signal (reduce load, no hard sessions); 4–5 = can maintain or slightly increase
+- recoveryScore (1–6): 1–2 = treat like a fatigue signal (reduce load, no hard sessions); 5–6 = can maintain or slightly increase; 3–4 = neutral, no special adjustment
 - priorities: focus areas the athlete selected — apply ALL of them:
   - "More HYROX this week" → include ≥ 2 HYROX sessions if schedule allows
   - "Easy recovery week" → max 4 sessions total, all easy or moderate, reduce volume ~15%
   - "Focus on running volume" → include ≥ 3 runs; long run is non-negotiable
   - "Marathon pace work" → include ≥ 1 tempo or interval run at moderate/hard
   - "Long ride priority" → include ≥ 1 cycling session ≥ 90 min
-  - "Balanced as usual" → follow default weekly structure
-- familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly`;
+  - "Balanced" → follow default weekly structure
+- familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly
+- trainingPreferencesText: athlete's free-form preferences for next week — treat as soft guidance, not a hard constraint; weigh it alongside other signals`;
 
 const SUBMIT_PLAN_TOOL = {
   name: "submit_plan",

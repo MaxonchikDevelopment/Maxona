@@ -57,6 +57,7 @@ export interface WeeklyReview {
   recoveryScore?: number;
   priorities?: string[];
   familyConstraints?: string;
+  trainingPreferencesText?: string;
   parsedConstraints?: ParsedTemporalConstraint[];
 }
 
