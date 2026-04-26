@@ -8,6 +8,7 @@ import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { parseFamilyConstraints } from "@/lib/ai/parse-family-constraints";
 import { renderChangeExplanation, type ChangeSummaryPayload } from "@/lib/ai/coach-advice";
+import { parseTrainingPreferences, enforceExplicitPreferences } from "@/lib/planner/preference-constraints";
 import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
 import type {
   PlanningContext,
@@ -803,6 +804,9 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
     weeklyReview: parsedWeeklyReview,
     replanReason: "weekly review — planning next week",
+    parsedPreferences: parsedWeeklyReview?.trainingPreferencesText
+      ? parseTrainingPreferences(parsedWeeklyReview.trainingPreferencesText)
+      : undefined,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -814,10 +818,29 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
   const injuryActiveNext = activeRecentCIs.some((c) => c.category === "injury");
   const recoveryOkNext =
     activeRecentCIs.length === 0 || activeRecentCIs.every((c) => c.feelScore >= 5);
-  const validSessions = deduplicateSessions(rawValidNext, {
+  const dedupedSessions = deduplicateSessions(rawValidNext, {
     injuryActive: injuryActiveNext,
     recoveryOk: recoveryOkNext,
   });
+
+  // Deterministically enforce explicit day+modality requests from trainingPreferencesText.
+  // Re-run deduplication after insertion to preserve two-a-day rules.
+  const prefs = planningCtx.parsedPreferences;
+  const validSessions =
+    prefs &&
+    (prefs.explicitDayRequests.length > 0 || prefs.sacrificedModalities.length > 0)
+      ? deduplicateSessions(
+          enforceExplicitPreferences(
+            dedupedSessions,
+            prefs,
+            nextWeekStart,
+            scheduleEvents,
+            constraints.blockedHardSessionDates,
+            user.constraints as Record<string, unknown>
+          ),
+          { injuryActive: injuryActiveNext, recoveryOk: recoveryOkNext }
+        )
+      : dedupedSessions;
 
   // Archive any existing draft plans, then create the new draft
   await prisma.trainingPlan.updateMany({

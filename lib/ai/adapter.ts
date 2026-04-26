@@ -61,6 +61,12 @@ export interface WeeklyReview {
   parsedConstraints?: ParsedTemporalConstraint[];
 }
 
+export interface ParsedPreferences {
+  explicitDayRequests: Array<{ day: string; modality: string }>;
+  desiredModalities: Array<{ modality: string; minCount: number; intensityHint?: string }>;
+  sacrificedModalities: string[];
+}
+
 export interface ReadinessEntry {
   date: string;
   feelScore: number;
@@ -97,6 +103,7 @@ export interface PlanningContext {
   weeklyReview?: WeeklyReview;
   replanReason?: string;
   readinessSummary?: ReadinessSummary;
+  parsedPreferences?: ParsedPreferences;
 }
 
 export interface PlannedSession {

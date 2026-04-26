@@ -361,6 +361,28 @@ function buildUserPrompt(context: PlanningContext): string {
         ...context.weeklyReview,
       },
     }),
+    ...(context.parsedPreferences &&
+      (context.parsedPreferences.explicitDayRequests.length > 0 ||
+        context.parsedPreferences.desiredModalities.length > 0 ||
+        context.parsedPreferences.sacrificedModalities.length > 0) && {
+      explicitPreferenceConstraints: {
+        note: "Deterministically parsed from the athlete's free-text preferences. Day+modality pairs are STRONG scheduling requests — treat them like near-fixed sessions. Only skip if safety or a hard schedule block prevents it.",
+        ...(context.parsedPreferences.explicitDayRequests.length > 0 && {
+          dayRequests: context.parsedPreferences.explicitDayRequests.map((r) => ({
+            day: r.day,
+            modality: r.modality,
+            instruction: `Schedule ${r.modality.toUpperCase()} on ${r.day}`,
+          })),
+        }),
+        ...(context.parsedPreferences.desiredModalities.length > 0 && {
+          desiredModalities: context.parsedPreferences.desiredModalities,
+        }),
+        ...(context.parsedPreferences.sacrificedModalities.length > 0 && {
+          sacrificedModalities: context.parsedPreferences.sacrificedModalities,
+          sacrificeNote: "These modalities may be dropped or deprioritized if load or schedule requires it.",
+        }),
+      },
+    }),
     ...(context.weeklyReview?.parsedConstraints && context.weeklyReview.parsedConstraints.length > 0 && {
       familyConstraintsParsed: {
         note: "Structured constraints parsed from familyConstraints text. Apply as hard schedule rules.",

@@ -5,31 +5,35 @@ import { deriveExecutionSummary } from "@/lib/execution-summary";
 const USER_ID = "user_maxon";
 
 export async function GET() {
-  // Use the active plan's startsAt as upper bound so we never return a future-week draft
   const activePlan = await prisma.trainingPlan.findFirst({
     where: { userId: USER_ID, status: "active" },
     orderBy: { startsAt: "desc" },
   });
 
-  // If no active plan, fall back to today as the reference point
   const refDate = activePlan
     ? activePlan.startsAt
     : new Date(new Date().toISOString().split("T")[0] + "T00:00:00Z");
 
+  // Both startsAt AND endsAt must be strictly before the active week start.
+  // This prevents a plan starting e.g. 2026-04-19 (with endsAt 2026-04-25)
+  // from being returned when the active week is 2026-04-20.
   const archivedPlan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "archived", startsAt: { lt: refDate } },
+    where: {
+      userId: USER_ID,
+      status: "archived",
+      startsAt: { lt: refDate },
+      endsAt: { lt: refDate },
+    },
     orderBy: { startsAt: "desc" },
   });
 
   if (!archivedPlan) return NextResponse.json(null);
 
-  // Done sessions may have been moved to newer plans on rollover — query by date range.
-  // Deduplicate aggressively to handle repeated draft generations creating ghost sessions.
-  const weekSessions = await prisma.trainingSession.findMany({
-    where: {
-      userId: USER_ID,
-      scheduledDate: { gte: archivedPlan.startsAt, lte: archivedPlan.endsAt },
-    },
+  // Prefer sessions belonging to the archived plan directly.
+  // Done sessions may have been moved to newer plans on rollover, so we fall
+  // back to a date-range query with strict bounds when the plan owns none.
+  let rawSessions = await prisma.trainingSession.findMany({
+    where: { planId: archivedPlan.id },
     include: {
       checkIn: true,
       stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
@@ -37,22 +41,52 @@ export async function GET() {
     orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
   });
 
-  // Per date: prefer done/skipped over planned, max 2 per day
-  const byDate = new Map<string, typeof weekSessions>();
-  for (const s of weekSessions) {
+  if (rawSessions.length === 0) {
+    rawSessions = await prisma.trainingSession.findMany({
+      where: {
+        userId: USER_ID,
+        AND: [
+          { scheduledDate: { gte: archivedPlan.startsAt } },
+          { scheduledDate: { lte: archivedPlan.endsAt } },
+          { scheduledDate: { lt: refDate } },
+        ],
+        plan: { status: { not: "draft" } },
+      },
+      include: {
+        checkIn: true,
+        stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
+      },
+      orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
+    });
+  }
+
+  // Content-based dedup: repeated draft generations create ghost sessions with
+  // identical date + notes + duration + intensity + status.
+  const seenKeys = new Set<string>();
+  const deduped = rawSessions.filter((s) => {
+    const key = `${s.scheduledDate.toISOString().split("T")[0]}|${s.notes ?? ""}|${s.durationMin}|${s.intensity}|${s.status}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
+
+  // Per-day: prefer done/skipped over planned, max 2 per day, hard cap at 14.
+  const byDate = new Map<string, typeof deduped>();
+  for (const s of deduped) {
     const key = s.scheduledDate.toISOString().split("T")[0];
     if (!byDate.has(key)) byDate.set(key, []);
     byDate.get(key)!.push(s);
   }
 
-  const deduped: (typeof weekSessions)[number][] = [];
+  const selected: (typeof deduped)[number][] = [];
   for (const [, daySessions] of byDate) {
+    if (selected.length >= 14) break;
     const nonPlanned = daySessions.filter((s) => s.status !== "planned");
     const toAdd = nonPlanned.length > 0 ? nonPlanned : [daySessions[0]];
-    deduped.push(...toAdd.slice(0, 2));
+    selected.push(...toAdd.slice(0, 2));
   }
 
-  const sessions = deduped.map((s) => {
+  const sessions = selected.map((s) => {
     const activities = s.stravaLinks.map((l) => l.activity);
     let execution: {
       actualMovingMin: number;
