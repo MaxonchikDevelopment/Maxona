@@ -8,7 +8,8 @@ import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { parseFamilyConstraints } from "@/lib/ai/parse-family-constraints";
 import { renderChangeExplanation, type ChangeSummaryPayload } from "@/lib/ai/coach-advice";
-import { parseTrainingPreferences, enforceExplicitPreferences } from "@/lib/planner/preference-constraints";
+import { enforceExplicitPreferences } from "@/lib/planner/preference-constraints";
+import { parseLLMPreferences } from "@/lib/ai/parse-training-preferences";
 import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
 import type {
   PlanningContext,
@@ -712,13 +713,22 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
       category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
     }));
 
-  // Parse family constraints if present
+  // Parse family constraints and training preferences (both async, run in parallel)
   let parsedWeeklyReview = weeklyReview;
-  if (weeklyReview?.familyConstraints) {
-    const parsed = await parseFamilyConstraints(weeklyReview.familyConstraints, todayStr);
-    if (parsed.length > 0) {
-      parsedWeeklyReview = { ...weeklyReview, parsedConstraints: parsed };
-    }
+  const [familyParsed, parsedPreferences] = await Promise.all([
+    weeklyReview?.familyConstraints
+      ? parseFamilyConstraints(weeklyReview.familyConstraints, todayStr)
+      : Promise.resolve([] as import("@/lib/ai/adapter").ParsedTemporalConstraint[]),
+    weeklyReview?.trainingPreferencesText
+      ? parseLLMPreferences(weeklyReview.trainingPreferencesText)
+      : Promise.resolve(undefined),
+  ]);
+  if (familyParsed.length > 0) {
+    parsedWeeklyReview = { ...weeklyReview, parsedConstraints: familyParsed };
+  }
+
+  if (process.env.NODE_ENV !== "production" && parsedPreferences) {
+    console.log("[orchestrator] parsedPreferences:", JSON.stringify(parsedPreferences));
   }
 
   // Build fixed / optional slots for next week
@@ -804,9 +814,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
     weeklyReview: parsedWeeklyReview,
     replanReason: "weekly review — planning next week",
-    parsedPreferences: parsedWeeklyReview?.trainingPreferencesText
-      ? parseTrainingPreferences(parsedWeeklyReview.trainingPreferencesText)
-      : undefined,
+    parsedPreferences,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -823,24 +831,35 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     recoveryOk: recoveryOkNext,
   });
 
-  // Deterministically enforce explicit day+modality requests from trainingPreferencesText.
-  // Re-run deduplication after insertion to preserve two-a-day rules.
-  const prefs = planningCtx.parsedPreferences;
-  const validSessions =
-    prefs &&
-    (prefs.explicitDayRequests.length > 0 || prefs.sacrificedModalities.length > 0)
-      ? deduplicateSessions(
-          enforceExplicitPreferences(
-            dedupedSessions,
-            prefs,
-            nextWeekStart,
-            scheduleEvents,
-            constraints.blockedHardSessionDates,
-            user.constraints as Record<string, unknown>
-          ),
-          { injuryActive: injuryActiveNext, recoveryOk: recoveryOkNext }
-        )
-      : dedupedSessions;
+  // Deterministically enforce preference constraints after Claude generation.
+  const prefs = parsedPreferences;
+  let enforcedSessions = dedupedSessions;
+  let unmetPreferences: string[] = [];
+
+  const hasPrefs = prefs && (
+    prefs.explicitDayRequests.length > 0 ||
+    prefs.sacrificedModalities.length > 0 ||
+    prefs.desiredModalities.length > 0 ||
+    (prefs.availabilityHints?.length ?? 0) > 0
+  );
+
+  if (hasPrefs && prefs) {
+    const enforced = enforceExplicitPreferences(
+      dedupedSessions,
+      prefs,
+      nextWeekStart,
+      scheduleEvents,
+      constraints.blockedHardSessionDates,
+      user.constraints as Record<string, unknown>
+    );
+    enforcedSessions = enforced.sessions;
+    unmetPreferences = enforced.unmetPreferences;
+  }
+
+  const validSessions = deduplicateSessions(enforcedSessions, {
+    injuryActive: injuryActiveNext,
+    recoveryOk: recoveryOkNext,
+  });
 
   // Archive any existing draft plans, then create the new draft
   await prisma.trainingPlan.updateMany({
@@ -856,7 +875,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
       status: "draft",
       revision: 1,
       replanReason: "weekly review",
-      focusSummary: buildDeterministicFocusSummary(validSessions),
+      focusSummary: buildDeterministicFocusSummary(validSessions, unmetPreferences),
       goals: {
         create: goals.map((g) => ({ goalId: g.id })),
       },
@@ -875,7 +894,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
   });
 }
 
-function buildDeterministicFocusSummary(sessions: PlannedSession[]): string {
+function buildDeterministicFocusSummary(sessions: PlannedSession[], unmetPreferences?: string[]): string {
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const counts = { running: 0, hyrox: 0, cycling: 0, swimming: 0 };
   const hyroxDays: string[] = [];
@@ -916,12 +935,18 @@ function buildDeterministicFocusSummary(sessions: PlannedSession[]): string {
     parts.push(counts.swimming === 1 ? "swimming" : `${counts.swimming}× swimming`);
   }
 
+  const unmetNote =
+    unmetPreferences && unmetPreferences.length > 0
+      ? " Note: " + unmetPreferences.join("; ") + "."
+      : "";
+
   if (parts.length === 0) {
-    return sessions.length > 0
+    const base = sessions.length > 0
       ? `${sessions.length} session${sessions.length !== 1 ? "s" : ""} scheduled`
       : "Rest week";
+    return base + unmetNote;
   }
-  return parts.join(", ") + ".";
+  return parts.join(", ") + "." + unmetNote;
 }
 
 function localDateStr(tz: string): string {

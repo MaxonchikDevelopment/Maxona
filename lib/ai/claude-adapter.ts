@@ -212,7 +212,17 @@ When weeklyReview is present, treat it as the athlete's direct input for this pl
   - "Long ride priority" → include ≥ 1 cycling session ≥ 90 min
   - "Balanced" → follow default weekly structure
 - familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly
-- trainingPreferencesText: athlete's free-form preferences for next week — treat as soft guidance, not a hard constraint; weigh it alongside other signals`;
+- trainingPreferencesText: athlete's raw free-form text — the structured interpretation is in explicitPreferenceConstraints; use the raw text only for context not captured by the structured fields
+
+## Explicit preference constraints (explicitPreferenceConstraints)
+When this object appears in the prompt, it contains preferences parsed deterministically from the athlete's free text (in any language).
+
+- dayRequests: STRONG scheduling requests — treat as near-fixed sessions. Only skip if a safety rule or hard schedule block prevents it. If you cannot satisfy one, state the reason explicitly in your focusSummary.
+- desiredModalities: include at least minCount sessions of that modality this week. If maxCount is set, do not exceed it.
+- sacrificedModalities: these are the lowest-priority modalities — omit them first if you need to reduce total load or cannot fit everything.
+- availabilityHints: additional slot-level blocks. Do not schedule sessions in those slots on the specified days.
+
+These constraints are also enforced deterministically after your response. Your initial plan should already satisfy them — the post-processor corrects only genuine misses.`;
 
 const SUBMIT_PLAN_TOOL = {
   name: "submit_plan",
@@ -364,22 +374,40 @@ function buildUserPrompt(context: PlanningContext): string {
     ...(context.parsedPreferences &&
       (context.parsedPreferences.explicitDayRequests.length > 0 ||
         context.parsedPreferences.desiredModalities.length > 0 ||
-        context.parsedPreferences.sacrificedModalities.length > 0) && {
+        context.parsedPreferences.sacrificedModalities.length > 0 ||
+        (context.parsedPreferences.availabilityHints?.length ?? 0) > 0) && {
       explicitPreferenceConstraints: {
-        note: "Deterministically parsed from the athlete's free-text preferences. Day+modality pairs are STRONG scheduling requests — treat them like near-fixed sessions. Only skip if safety or a hard schedule block prevents it.",
+        note: "Parsed from the athlete's free-text preferences (language-agnostic). Day+modality pairs are STRONG scheduling requests — treat like near-fixed sessions. Only skip if safety or a hard schedule block prevents it. If you skip one, state why in focusSummary.",
         ...(context.parsedPreferences.explicitDayRequests.length > 0 && {
           dayRequests: context.parsedPreferences.explicitDayRequests.map((r) => ({
             day: r.day,
             modality: r.modality,
-            instruction: `Schedule ${r.modality.toUpperCase()} on ${r.day}`,
+            ...(r.intensityHint && { intensityHint: r.intensityHint }),
+            ...(r.slotHint && { slotHint: r.slotHint }),
+            instruction: `Schedule ${r.modality.toUpperCase()} on ${r.day}${r.slotHint ? ` (${r.slotHint})` : ""}`,
           })),
         }),
         ...(context.parsedPreferences.desiredModalities.length > 0 && {
-          desiredModalities: context.parsedPreferences.desiredModalities,
+          desiredModalities: context.parsedPreferences.desiredModalities.map((d) => ({
+            modality: d.modality,
+            minCount: d.minCount,
+            ...(d.maxCount && { maxCount: d.maxCount }),
+            ...(d.intensityHint && { intensityHint: d.intensityHint }),
+            ...(d.preferredSlot && { preferredSlot: d.preferredSlot }),
+            ...(d.preferredDays?.length && { preferredDays: d.preferredDays }),
+            instruction: `Include at least ${d.minCount}${d.maxCount ? ` (max ${d.maxCount})` : ""} ${d.modality} session${d.minCount !== 1 ? "s" : ""}${d.intensityHint ? ` at ${d.intensityHint} intensity` : ""}`,
+          })),
         }),
         ...(context.parsedPreferences.sacrificedModalities.length > 0 && {
           sacrificedModalities: context.parsedPreferences.sacrificedModalities,
-          sacrificeNote: "These modalities may be dropped or deprioritized if load or schedule requires it.",
+          sacrificeNote: "These are lowest priority — omit them first if total load needs to be reduced.",
+        }),
+        ...(context.parsedPreferences.availabilityHints?.length && {
+          availabilityHints: context.parsedPreferences.availabilityHints.map((h) => ({
+            day: h.day,
+            blockedSlots: h.blockedSlots,
+            note: `On ${h.day}, do not schedule sessions in: ${h.blockedSlots.join(", ")}`,
+          })),
         }),
       },
     }),

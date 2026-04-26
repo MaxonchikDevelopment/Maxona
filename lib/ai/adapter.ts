@@ -62,9 +62,10 @@ export interface WeeklyReview {
 }
 
 export interface ParsedPreferences {
-  explicitDayRequests: Array<{ day: string; modality: string }>;
-  desiredModalities: Array<{ modality: string; minCount: number; intensityHint?: string }>;
+  explicitDayRequests: Array<{ day: string; modality: string; intensityHint?: string; slotHint?: string }>;
+  desiredModalities: Array<{ modality: string; minCount: number; maxCount?: number; intensityHint?: string; preferredDays?: string[]; preferredSlot?: string }>;
   sacrificedModalities: string[];
+  availabilityHints?: Array<{ day: string; blockedSlots: string[] }>;
 }
 
 export interface ReadinessEntry {
