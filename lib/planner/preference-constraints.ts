@@ -210,6 +210,11 @@ export function enforceExplicitPreferences(
   const blockedHardSet = new Set(blockedHardDates);
   const maxHyrox = (userConstraints.maxHyroxPerWeek as number | undefined) ?? 3;
 
+  // Effective HYROX cap: at least the number of explicitly requested HYROX days.
+  // Explicit requests are near-hard constraints and must not be silently blocked by the cap.
+  const explicitHyroxCount = prefs.explicitDayRequests.filter(r => r.modality === "hyrox").length;
+  const effectiveHyroxCap = Math.max(maxHyrox, explicitHyroxCount);
+
   // Build day→date map for the week
   const dayToDate: Record<string, string> = {};
   for (const [dayName, offset] of Object.entries(DAY_OFFSET) as Array<[DayName, number]>) {
@@ -240,16 +245,21 @@ export function enforceExplicitPreferences(
   }
 
   // Track which date|modality keys were satisfied via explicit day requests
-  // so we don't remove them in the maxCount pass later
+  // so we don't remove them in the cap trim or maxCount pass later
   const explicitDayKeys = new Set<string>();
 
   // ── Step 2: Enforce explicit day requests ─────────────────────────────────
+  // HYROX cap is NOT checked per-request here — it is applied as a post-trim
+  // after all explicit sessions are placed (see below). This prevents the cap
+  // from silently blocking a second explicit HYROX when the first was already inserted.
   for (const req of prefs.explicitDayRequests) {
     const date = dayToDate[req.day as DayName];
     if (!date) continue;
 
     const reqModality = req.modality as Modality;
     if (!MODALITY_DEFAULTS[reqModality]) continue;
+
+    const dayLabel = req.day.charAt(0).toUpperCase() + req.day.slice(1);
 
     // Already satisfied?
     if (result.some(s => toDateStr(s.scheduledDate) === date && getNotesModality(s.notes) === reqModality)) {
@@ -259,17 +269,10 @@ export function enforceExplicitPreferences(
 
     // All-day schedule block?
     if (isScheduleBlockedAllDay(date, scheduleEvents)) {
-      unmetPreferences.push(`${reqModality} on ${req.day} skipped — day is schedule-blocked`);
+      unmetPreferences.push(
+        `${dayLabel} ${reqModality.toUpperCase()} could not be placed — the day is blocked by a schedule event.`
+      );
       continue;
-    }
-
-    // HYROX weekly cap
-    if (reqModality === "hyrox") {
-      const hyroxCount = result.filter(s => getNotesModality(s.notes) === "hyrox").length;
-      if (hyroxCount >= maxHyrox) {
-        unmetPreferences.push(`${reqModality} on ${req.day} skipped — weekly HYROX cap (${maxHyrox})`);
-        continue;
-      }
     }
 
     // Two-a-day cap: try removing a sacrificed session first
@@ -283,7 +286,9 @@ export function enforceExplicitPreferences(
       if (sacrificeIdx >= 0) {
         result.splice(sacrificeIdx, 1);
       } else {
-        unmetPreferences.push(`${reqModality} on ${req.day} skipped — two-a-day conflict`);
+        unmetPreferences.push(
+          `${dayLabel} ${reqModality.toUpperCase()} could not be placed — the day already has two sessions and none can be moved.`
+        );
         continue;
       }
     }
@@ -319,6 +324,26 @@ export function enforceExplicitPreferences(
       notes: defaults.notes,
     });
     explicitDayKeys.add(`${date}|${reqModality}`);
+  }
+
+  // ── Post-explicit HYROX cap trim ──────────────────────────────────────────
+  // After all explicit sessions are placed, trim excess non-explicit generated
+  // HYROX sessions if total exceeds the effective cap. Explicit and fixed sessions
+  // are always protected.
+  {
+    const hyroxTotal = result.filter(s => getNotesModality(s.notes) === "hyrox").length;
+    if (hyroxTotal > effectiveHyroxCap) {
+      let excess = hyroxTotal - effectiveHyroxCap;
+      for (let i = result.length - 1; i >= 0 && excess > 0; i--) {
+        const s = result[i];
+        if (getNotesModality(s.notes) !== "hyrox") continue;
+        if (s.planningType === "fixed") continue;
+        const key = `${toDateStr(s.scheduledDate)}|hyrox`;
+        if (explicitDayKeys.has(key)) continue;
+        result.splice(i, 1);
+        excess--;
+      }
+    }
   }
 
   // ── Step 3: Enforce desiredModalities minCount ────────────────────────────
@@ -384,7 +409,9 @@ export function enforceExplicitPreferences(
     }
 
     if (inserted < needed) {
-      unmetPreferences.push(`Could not place all requested ${mod} sessions (needed ${needed}, placed ${inserted})`);
+      unmetPreferences.push(
+        `Could not place all requested ${mod} sessions (needed ${needed}, placed ${inserted}).`
+      );
     }
   }
 
@@ -410,15 +437,41 @@ export function enforceExplicitPreferences(
     }
   }
 
+  // ── Cleanup: downgrade hard/moderate run immediately before hard HYROX ────
+  // Avoids placing a taxing run the day before a hard functional fitness session.
+  // Only applies to non-fixed runs; explicit HYROX days are preserved as-is.
+  {
+    const hardHyroxDates = new Set(
+      result
+        .filter(s => getNotesModality(s.notes) === "hyrox" && s.intensity === "hard")
+        .map(s => toDateStr(s.scheduledDate))
+    );
+    for (let i = 0; i < result.length; i++) {
+      const s = result[i];
+      if (getNotesModality(s.notes) !== "running") continue;
+      if (s.intensity !== "hard" && s.intensity !== "moderate") continue;
+      if (s.planningType === "fixed") continue;
+      const dateStr = toDateStr(s.scheduledDate);
+      const d = new Date(dateStr + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + 1);
+      const nextDay = d.toISOString().split("T")[0];
+      if (hardHyroxDates.has(nextDay)) {
+        result[i] = { ...s, intensity: "easy" as PlannedSession["intensity"] };
+      }
+    }
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const summary = result.reduce((acc: Record<string, string[]>, s) => {
       const d = toDateStr(s.scheduledDate);
       if (!acc[d]) acc[d] = [];
-      acc[d].push(`${getNotesModality(s.notes) ?? s.intensity}(${s.preferredSlot})`);
+      acc[d].push(`${getNotesModality(s.notes) ?? s.intensity}(${s.preferredSlot},${s.intensity})`);
       return acc;
     }, {});
-    console.log("[preference-enforcement] sessions:", JSON.stringify(summary));
-    if (unmetPreferences.length > 0) console.log("[preference-enforcement] unmet:", unmetPreferences);
+    console.log("[preference-enforcement] sessions after enforcement:", JSON.stringify(summary, null, 2));
+    if (unmetPreferences.length > 0) {
+      console.log("[preference-enforcement] unmet preferences:", unmetPreferences);
+    }
   }
 
   return { sessions: result, unmetPreferences };

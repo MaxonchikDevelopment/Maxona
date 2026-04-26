@@ -727,8 +727,13 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     parsedWeeklyReview = { ...weeklyReview, parsedConstraints: familyParsed };
   }
 
-  if (process.env.NODE_ENV !== "production" && parsedPreferences) {
-    console.log("[orchestrator] parsedPreferences:", JSON.stringify(parsedPreferences));
+  if (process.env.NODE_ENV !== "production") {
+    if (weeklyReview?.trainingPreferencesText) {
+      console.log("[orchestrator] raw trainingPreferencesText:", weeklyReview.trainingPreferencesText);
+    }
+    if (parsedPreferences) {
+      console.log("[orchestrator] parsedPreferences:", JSON.stringify(parsedPreferences, null, 2));
+    }
   }
 
   // Build fixed / optional slots for next week
@@ -843,6 +848,18 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     (prefs.availabilityHints?.length ?? 0) > 0
   );
 
+  if (process.env.NODE_ENV !== "production") {
+    console.log(
+      "[orchestrator] sessions before enforcement:",
+      dedupedSessions.map(s => ({
+        date: toDateStr(s.scheduledDate),
+        modality: modalityKey(s.notes, s.intensity),
+        intensity: s.intensity,
+        slot: s.preferredSlot,
+      }))
+    );
+  }
+
   if (hasPrefs && prefs) {
     const enforced = enforceExplicitPreferences(
       dedupedSessions,
@@ -854,6 +871,10 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     );
     enforcedSessions = enforced.sessions;
     unmetPreferences = enforced.unmetPreferences;
+  }
+
+  if (process.env.NODE_ENV !== "production" && unmetPreferences.length > 0) {
+    console.log("[orchestrator] unmet preferences:", unmetPreferences);
   }
 
   const validSessions = deduplicateSessions(enforcedSessions, {
@@ -895,6 +916,11 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
 }
 
 function buildDeterministicFocusSummary(sessions: PlannedSession[], unmetPreferences?: string[]): string {
+  if (sessions.length === 0) {
+    const unmetNote = unmetPreferences?.length ? " " + unmetPreferences.join(" ") : "";
+    return "Rest week." + unmetNote;
+  }
+
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const counts = { running: 0, hyrox: 0, cycling: 0, swimming: 0 };
   const hyroxDays: string[] = [];
@@ -903,12 +929,9 @@ function buildDeterministicFocusSummary(sessions: PlannedSession[], unmetPrefere
   for (const s of sessions) {
     const notes = (s.notes ?? "").toLowerCase();
     const dayName = DAY_NAMES[new Date(s.scheduledDate).getUTCDay()];
-
     if (notes.startsWith("running")) {
       counts.running++;
-      if (notes.includes("long run") || s.durationMin >= 90) {
-        longRunDay = dayName;
-      }
+      if (notes.includes("long run") || s.durationMin >= 90) longRunDay = dayName;
     } else if (notes.startsWith("hyrox")) {
       counts.hyrox++;
       hyroxDays.push(dayName);
@@ -919,34 +942,59 @@ function buildDeterministicFocusSummary(sessions: PlannedSession[], unmetPrefere
     }
   }
 
-  const parts: string[] = [];
-  if (counts.running > 0) {
-    const runStr = counts.running === 1 ? "1 run" : `${counts.running} runs`;
-    parts.push(longRunDay ? `${runStr} (long ${longRunDay})` : runStr);
-  }
-  if (counts.hyrox > 0) {
-    const hyroxStr = counts.hyrox === 1 ? "1 HYROX" : `${counts.hyrox} HYROX`;
-    parts.push(hyroxDays.length > 0 ? `${hyroxStr} (${hyroxDays.join(" + ")})` : hyroxStr);
-  }
-  if (counts.cycling > 0) {
-    parts.push(counts.cycling === 1 ? "cycling" : `${counts.cycling}× cycling`);
-  }
-  if (counts.swimming > 0) {
-    parts.push(counts.swimming === 1 ? "swimming" : `${counts.swimming}× swimming`);
+  const sentences: string[] = [];
+
+  // Lead: describe the week's structural focus
+  if (counts.hyrox >= 2 && counts.running >= 1) {
+    const runStr = counts.running === 1 ? "one run" : `${counts.running} runs`;
+    const longNote = longRunDay ? `, including a long run on ${longRunDay}` : "";
+    sentences.push(
+      `HYROX is on ${hyroxDays.join(" and ")}, with ${runStr} spread around it${longNote}.`
+    );
+  } else if (counts.hyrox === 1 && counts.running >= 2) {
+    const longNote = longRunDay ? ` with the long run on ${longRunDay}` : "";
+    sentences.push(
+      `Running is the main focus this week (${counts.running} sessions${longNote}), with one HYROX session on ${hyroxDays[0]}.`
+    );
+  } else if (counts.running >= 3 && counts.hyrox === 0) {
+    const longNote = longRunDay ? `, long run on ${longRunDay}` : "";
+    sentences.push(`Running-focused week with ${counts.running} sessions${longNote}.`);
+  } else if (counts.hyrox >= 2 && counts.running === 0) {
+    sentences.push(`HYROX-focused week with sessions on ${hyroxDays.join(" and ")}.`);
+  } else {
+    // Fallback compact list
+    const parts: string[] = [];
+    if (counts.running > 0)
+      parts.push(`${counts.running} run${counts.running !== 1 ? "s" : ""}${longRunDay ? ` (long ${longRunDay})` : ""}`);
+    if (counts.hyrox > 0)
+      parts.push(`${counts.hyrox} HYROX${hyroxDays.length ? ` (${hyroxDays.join(", ")})` : ""}`);
+    if (counts.cycling > 0)
+      parts.push(counts.cycling === 1 ? "cycling" : `${counts.cycling}× cycling`);
+    if (counts.swimming > 0)
+      parts.push(counts.swimming === 1 ? "swimming" : `${counts.swimming}× swimming`);
+    sentences.push(parts.join(", ") + ".");
   }
 
-  const unmetNote =
-    unmetPreferences && unmetPreferences.length > 0
-      ? " Note: " + unmetPreferences.join("; ") + "."
-      : "";
-
-  if (parts.length === 0) {
-    const base = sessions.length > 0
-      ? `${sessions.length} session${sessions.length !== 1 ? "s" : ""} scheduled`
-      : "Rest week";
-    return base + unmetNote;
+  // Cycling / swimming addendum
+  if (counts.cycling === 1) {
+    sentences.push("One easy cycling session adds low-impact aerobic volume.");
+  } else if (counts.cycling > 1) {
+    sentences.push(`${counts.cycling} cycling sessions for aerobic volume.`);
   }
-  return parts.join(", ") + "." + unmetNote;
+  if (counts.swimming === 1) {
+    sentences.push("Swimming is included for active recovery.");
+  } else if (counts.swimming > 1) {
+    sentences.push(`${counts.swimming} swimming sessions for active recovery.`);
+  }
+
+  // Unmet preferences: only real blocks, not false cap claims
+  if (unmetPreferences && unmetPreferences.length > 0) {
+    for (const msg of unmetPreferences) {
+      sentences.push(msg.endsWith(".") ? msg : msg + ".");
+    }
+  }
+
+  return sentences.join(" ");
 }
 
 function localDateStr(tz: string): string {
