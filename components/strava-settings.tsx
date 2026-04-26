@@ -37,7 +37,7 @@ export function StravaSettings({ initialConnection }: { initialConnection: Strav
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/api/strava/sync", { method: "POST" });
+      const res = await fetch("/api/strava/sync?force=1", { method: "POST" });
       const data = await res.json();
       setSyncResult(data);
     } finally {

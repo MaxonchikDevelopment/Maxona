@@ -183,6 +183,7 @@ export default function ReviewPage() {
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null | undefined>(undefined);
   const [archivePlan, setArchivePlan] = useState<ArchivePlan | undefined>(undefined);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
 
   useEffect(() => {
     const draft = loadDraft();
@@ -279,7 +280,7 @@ export default function ReviewPage() {
   return (
     <main className="p-4 space-y-6">
       <div>
-        <h1 className="text-xl font-bold">Weekly Review</h1>
+        <h1 className="text-xl font-bold">Review &amp; Plan</h1>
       </div>
 
       {/* ── This week ────────────────────────────── */}
@@ -292,7 +293,15 @@ export default function ReviewPage() {
             <StatsBlock stats={weeklyStats} />
             <ExecQualityBlock eq={weeklyStats.executionQuality} />
             <SignalsBlock signals={weeklyStats.signals} />
-            <SessionDayList stats={weeklyStats} />
+            <div>
+              <button
+                onClick={() => setSessionDetailOpen((v) => !v)}
+                className="text-xs text-gray-400 underline"
+              >
+                {sessionDetailOpen ? "Hide session details" : "Show session details"}
+              </button>
+              {sessionDetailOpen && <div className="mt-2"><SessionDayList stats={weeklyStats} /></div>}
+            </div>
           </div>
         ) : null}
       </div>

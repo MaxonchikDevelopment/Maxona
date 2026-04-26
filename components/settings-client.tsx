@@ -5,6 +5,9 @@ import { StravaSettings } from "@/components/strava-settings";
 import type { StravaConnectionProp } from "@/components/strava-settings";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+const DAY_LABELS: Record<string, string> = {
+  mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
+};
 const SLOTS = ["morning", "daytime", "afternoon", "evening"] as const;
 const INTENSITIES = ["easy", "moderate", "hard"] as const;
 const EVENT_KINDS = ["blocked", "household", "calendar_busy", "travel"] as const;
@@ -376,7 +379,7 @@ export function SettingsClient({
                     checked={hyroxDays.includes(d)}
                     onChange={() => toggleHyroxDay(d)}
                   />
-                  {d}
+                  {DAY_LABELS[d]}
                 </label>
               ))}
             </div>
@@ -408,7 +411,7 @@ export function SettingsClient({
         <div className="space-y-1">
           {windows.map((w) => (
             <div key={w.id} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
-              <span className="font-mono uppercase">{w.dayOfWeek}</span>
+              <span className="font-mono">{DAY_LABELS[w.dayOfWeek] ?? w.dayOfWeek}</span>
               <span className="text-gray-500">{minsToTime(w.timeStartMin)}–{minsToTime(w.timeEndMin)}</span>
               <button
                 onClick={() => delWindow.mutate(w.id)}
@@ -422,7 +425,7 @@ export function SettingsClient({
         <div className="flex gap-2 items-end flex-wrap">
           <select value={newDay} onChange={(e) => setNewDay(e.target.value)}
             className="rounded border px-2 py-1.5 text-sm">
-            {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+            {DAYS.map((d) => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
           </select>
           <input type="time" value={newStart} onChange={(e) => setNewStart(e.target.value)}
             className="rounded border px-2 py-1.5 text-sm" />
@@ -503,7 +506,7 @@ export function SettingsClient({
           {recSessions.map((rs) => (
             <div key={rs.id} className="flex items-start justify-between rounded border px-3 py-2 text-sm">
               <div>
-                <span className="font-mono uppercase">{rs.dayOfWeek}</span>
+                <span className="font-mono">{DAY_LABELS[rs.dayOfWeek] ?? rs.dayOfWeek}</span>
                 <span className="mx-1 text-gray-400">·</span>
                 <span>{rs.preferredSlot}</span>
                 <span className="mx-1 text-gray-400">·</span>
@@ -528,7 +531,7 @@ export function SettingsClient({
           <div className="flex gap-2 items-end flex-wrap">
             <select value={rsDay} onChange={(e) => setRsDay(e.target.value)}
               className="rounded border px-2 py-1.5 text-sm">
-              {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+              {DAYS.map((d) => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
             </select>
             <select value={rsSlot} onChange={(e) => setRsSlot(e.target.value)}
               className="rounded border px-2 py-1.5 text-sm">

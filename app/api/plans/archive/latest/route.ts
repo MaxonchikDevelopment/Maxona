@@ -5,15 +5,26 @@ import { deriveExecutionSummary } from "@/lib/execution-summary";
 const USER_ID = "user_maxon";
 
 export async function GET() {
+  // Use the active plan's startsAt as upper bound so we never return a future-week draft
+  const activePlan = await prisma.trainingPlan.findFirst({
+    where: { userId: USER_ID, status: "active" },
+    orderBy: { startsAt: "desc" },
+  });
+
+  // If no active plan, fall back to today as the reference point
+  const refDate = activePlan
+    ? activePlan.startsAt
+    : new Date(new Date().toISOString().split("T")[0] + "T00:00:00Z");
+
   const archivedPlan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "archived" },
+    where: { userId: USER_ID, status: "archived", startsAt: { lt: refDate } },
     orderBy: { startsAt: "desc" },
   });
 
   if (!archivedPlan) return NextResponse.json(null);
 
-  // Fetch all sessions for this week range regardless of current planId —
-  // done/skipped sessions are moved to the new plan on rollover, so we query by date range.
+  // Done sessions may have been moved to newer plans on rollover — query by date range.
+  // Deduplicate aggressively to handle repeated draft generations creating ghost sessions.
   const weekSessions = await prisma.trainingSession.findMany({
     where: {
       userId: USER_ID,
@@ -26,7 +37,22 @@ export async function GET() {
     orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
   });
 
-  const sessions = weekSessions.map((s) => {
+  // Per date: prefer done/skipped over planned, max 2 per day
+  const byDate = new Map<string, typeof weekSessions>();
+  for (const s of weekSessions) {
+    const key = s.scheduledDate.toISOString().split("T")[0];
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key)!.push(s);
+  }
+
+  const deduped: (typeof weekSessions)[number][] = [];
+  for (const [, daySessions] of byDate) {
+    const nonPlanned = daySessions.filter((s) => s.status !== "planned");
+    const toAdd = nonPlanned.length > 0 ? nonPlanned : [daySessions[0]];
+    deduped.push(...toAdd.slice(0, 2));
+  }
+
+  const sessions = deduped.map((s) => {
     const activities = s.stravaLinks.map((l) => l.activity);
     let execution: {
       actualMovingMin: number;

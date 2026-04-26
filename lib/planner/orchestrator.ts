@@ -607,7 +607,7 @@ export async function generateWeeklyPlan(
         revision: activePlan ? activePlan.revision + 1 : 1,
         parentPlanId: activePlan?.id ?? null,
         replanReason: replanReason ?? null,
-        focusSummary: planResult.focusSummary,
+        focusSummary: buildDeterministicFocusSummary(validSessions),
         changeExplanation,
         goals: {
           create: goals.map((g) => ({ goalId: g.id })),
@@ -833,7 +833,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
       status: "draft",
       revision: 1,
       replanReason: "weekly review",
-      focusSummary: planResult.focusSummary,
+      focusSummary: buildDeterministicFocusSummary(validSessions),
       goals: {
         create: goals.map((g) => ({ goalId: g.id })),
       },
@@ -850,6 +850,55 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
       },
     },
   });
+}
+
+function buildDeterministicFocusSummary(sessions: PlannedSession[]): string {
+  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const counts = { running: 0, hyrox: 0, cycling: 0, swimming: 0 };
+  const hyroxDays: string[] = [];
+  let longRunDay: string | null = null;
+
+  for (const s of sessions) {
+    const notes = (s.notes ?? "").toLowerCase();
+    const dayName = DAY_NAMES[new Date(s.scheduledDate).getUTCDay()];
+
+    if (notes.startsWith("running")) {
+      counts.running++;
+      if (notes.includes("long run") || s.durationMin >= 90) {
+        longRunDay = dayName;
+      }
+    } else if (notes.startsWith("hyrox")) {
+      counts.hyrox++;
+      hyroxDays.push(dayName);
+    } else if (notes.startsWith("cycling")) {
+      counts.cycling++;
+    } else if (notes.startsWith("swimming")) {
+      counts.swimming++;
+    }
+  }
+
+  const parts: string[] = [];
+  if (counts.running > 0) {
+    const runStr = counts.running === 1 ? "1 run" : `${counts.running} runs`;
+    parts.push(longRunDay ? `${runStr} (long ${longRunDay})` : runStr);
+  }
+  if (counts.hyrox > 0) {
+    const hyroxStr = counts.hyrox === 1 ? "1 HYROX" : `${counts.hyrox} HYROX`;
+    parts.push(hyroxDays.length > 0 ? `${hyroxStr} (${hyroxDays.join(" + ")})` : hyroxStr);
+  }
+  if (counts.cycling > 0) {
+    parts.push(counts.cycling === 1 ? "cycling" : `${counts.cycling}× cycling`);
+  }
+  if (counts.swimming > 0) {
+    parts.push(counts.swimming === 1 ? "swimming" : `${counts.swimming}× swimming`);
+  }
+
+  if (parts.length === 0) {
+    return sessions.length > 0
+      ? `${sessions.length} session${sessions.length !== 1 ? "s" : ""} scheduled`
+      : "Rest week";
+  }
+  return parts.join(", ") + ".";
 }
 
 function localDateStr(tz: string): string {

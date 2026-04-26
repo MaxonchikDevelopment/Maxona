@@ -83,11 +83,16 @@ export function deriveExecutionSummary(
   const reliableMaxHRs = activities
     .map((a) => a.maxHeartrate)
     .filter((h): h is number => h != null && h >= 50 && h <= 220);
-  const avgHR =
+  const avgHRRaw =
     reliableAvgHRs.length > 0
       ? Math.round(reliableAvgHRs.reduce((s, h) => s + h, 0) / reliableAvgHRs.length)
       : null;
   const maxHR = reliableMaxHRs.length > 0 ? Math.max(...reliableMaxHRs) : null;
+  // Suspicious pattern: avgHR < 100 while maxHR >= 140 likely indicates sensor dropout
+  const avgHR =
+    avgHRRaw !== null && maxHR !== null && avgHRRaw < 100 && maxHR >= 140
+      ? null
+      : avgHRRaw;
 
   // Execution quality — mirrors classification logic in lib/planner/execution-delta.ts
   const pauseRatio =

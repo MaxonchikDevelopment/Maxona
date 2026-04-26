@@ -130,6 +130,19 @@ export function SessionCard({
     router.refresh();
   }
 
+  async function reanalyzeAdvice() {
+    if (!checkIn) return;
+    setSubmitting(true);
+    const res = await fetch(`/api/sessions/${session.id}/checkin`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feelScore: checkIn.feelScore, notes: checkIn.notes }),
+    });
+    const data = await res.json();
+    setCheckIn(data);
+    setSubmitting(false);
+  }
+
   function startEdit() {
     setFeelScore(checkIn?.feelScore ?? 4);
     setNotes(checkIn?.notes ?? "");
@@ -219,6 +232,16 @@ export function SessionCard({
           {/* Fallback static hint */}
           {hint && (
             <p className="text-xs text-amber-600">{hint}</p>
+          )}
+          {/* Re-analyze coach advice */}
+          {!editing && (session.stravaLinks?.length ?? 0) > 0 && (
+            <button
+              onClick={reanalyzeAdvice}
+              disabled={submitting}
+              className="text-[10px] text-gray-400 underline disabled:opacity-50"
+            >
+              {submitting ? "Re-analyzing…" : "Re-analyze"}
+            </button>
           )}
           {/* Resolve/reopen — injury ONLY, not fatigue */}
           {isInjury && !isResolved && (

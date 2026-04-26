@@ -99,13 +99,19 @@ export function StravaPanel({
 
   async function openPicker() {
     setPickerOpen(true);
+    // Throttled sync before loading — ignored quietly if recently synced
+    try {
+      await fetch("/api/strava/sync", { method: "POST" });
+    } catch {
+      // non-fatal
+    }
     await fetchActivities();
   }
 
   async function syncLatest() {
     setSyncing(true);
     try {
-      await fetch("/api/strava/sync", { method: "POST" });
+      await fetch("/api/strava/sync?force=1", { method: "POST" });
       await fetchActivities();
     } finally {
       setSyncing(false);

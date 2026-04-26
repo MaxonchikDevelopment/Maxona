@@ -35,6 +35,15 @@ function plannedSportBucket(notes: string | null): string | null {
   return null;
 }
 
+function plannedSportDisplayLabel(notes: string | null): string | null {
+  const bucket = plannedSportBucket(notes);
+  if (bucket === "running") return "Running";
+  if (bucket === "cycling") return "Cycling";
+  if (bucket === "swimming") return "Swimming";
+  if (bucket === "hyrox") return "HYROX";
+  return null;
+}
+
 function normalizeSportType(st: string): string {
   const l = st.toLowerCase();
   if (l.includes("run")) return "Running";
@@ -89,9 +98,14 @@ export function ExecutionSummaryBlock({
   const sportLabel = derivedActualSportLabel(actualSportTypes);
   const showSport = !!sportLabel && actualDiffersFromPlanned(plannedBucket, actualSportTypes);
 
-  const plannedLabel = `${fmtMin(summary.plannedDurationMin)}${
-    summary.plannedDistanceKm ? ` · ~${fmtDist(summary.plannedDistanceKm)}` : ""
-  }`;
+  const plannedSportLabel = showSport ? plannedSportDisplayLabel(session.notes) : null;
+  const plannedLabel = [
+    plannedSportLabel,
+    fmtMin(summary.plannedDurationMin),
+    summary.plannedDistanceKm ? `~${fmtDist(summary.plannedDistanceKm)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const actualParts = [
     showSport ? sportLabel : null,
