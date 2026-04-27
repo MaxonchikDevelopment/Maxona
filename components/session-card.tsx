@@ -5,6 +5,7 @@ import Link from "next/link";
 import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp } from "@/components/strava-panel";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
+import { ADHERENCE_LABEL } from "@/components/workout-feedback-section";
 
 export type CheckInProp = {
   id: string;
@@ -38,6 +39,10 @@ export type WorkoutPlanProp = {
   summary: string | null;
 };
 
+export type WorkoutFeedbackChipProp = {
+  adherenceLabel: string;
+};
+
 export type SessionProp = {
   id: string;
   scheduledDate: string;
@@ -51,6 +56,7 @@ export type SessionProp = {
   stravaLinks?: StravaLinkProp[];
   stravaConnected?: boolean;
   workoutPlan?: WorkoutPlanProp | null;
+  workoutFeedback?: WorkoutFeedbackChipProp | null;
 };
 
 // Keyword list mirrors lib/checkin-utils.ts — kept inline to avoid server-only imports in client bundle
@@ -372,6 +378,19 @@ export function SessionCard({
           >
             {planGenerating ? "Generating plan…" : "Plan workout"}
           </button>
+        </div>
+      )}
+
+      {/* Workout feedback chip */}
+      {session.workoutFeedback && (
+        <div className="border-t pt-2">
+          <p className="text-[10px] text-gray-400">
+            Feedback:{" "}
+            <span className="font-medium text-gray-500">
+              {ADHERENCE_LABEL[session.workoutFeedback.adherenceLabel] ??
+                session.workoutFeedback.adherenceLabel}
+            </span>
+          </p>
         </div>
       )}
 

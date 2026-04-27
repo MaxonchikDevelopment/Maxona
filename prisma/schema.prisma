@@ -91,6 +91,7 @@ model User {
   trainingProfile     UserTrainingProfile?
   hybridRaceProfile   HybridRaceProfile?
   workoutPlans        SessionWorkoutPlan[]
+  workoutFeedbacks    SessionWorkoutFeedback[]
 }
 
 model AvailabilityWindow {
@@ -196,11 +197,12 @@ model TrainingSession {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  plan        TrainingPlan              @relation(fields: [planId], references: [id])
-  user        User                      @relation(fields: [userId], references: [id])
-  checkIn     CheckIn?
-  stravaLinks SessionStravaActivityLink[]
-  workoutPlan SessionWorkoutPlan?
+  plan            TrainingPlan                @relation(fields: [planId], references: [id])
+  user            User                        @relation(fields: [userId], references: [id])
+  checkIn         CheckIn?
+  stravaLinks     SessionStravaActivityLink[]
+  workoutPlan     SessionWorkoutPlan?
+  workoutFeedback SessionWorkoutFeedback?
 }
 
 model CheckIn {
@@ -354,4 +356,19 @@ model HybridRaceProfile {
   updatedAt              DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
+}
+
+model SessionWorkoutFeedback {
+  id             String   @id @default(cuid())
+  sessionId      String   @unique
+  userId         String
+  adherenceLabel String
+  summary        String
+  bullets        Json
+  nextAdjustment String?
+  generatedAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  session TrainingSession @relation(fields: [sessionId], references: [id])
+  user    User            @relation(fields: [userId], references: [id])
 }

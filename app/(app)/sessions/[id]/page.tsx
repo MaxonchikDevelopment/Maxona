@@ -5,6 +5,8 @@ import { buildHrZones } from "@/lib/training/zones";
 import { deriveWorkoutIntent } from "@/lib/ai/workout-plan";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
 import { CoachViewActions } from "@/components/coach-view-actions";
+import { WorkoutFeedbackSection } from "@/components/workout-feedback-section";
+import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
 import type { WorkoutBlock } from "@/components/session-card";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +63,7 @@ export default async function SessionCoachViewPage({
     include: {
       checkIn: true,
       workoutPlan: true,
+      workoutFeedback: true,
       stravaLinks: {
         include: { activity: true },
         orderBy: { createdAt: "asc" },
@@ -85,6 +88,20 @@ export default async function SessionCoachViewPage({
   const intentLabel = INTENT_LABEL[workoutIntent];
 
   const zones = trainingProfile ? buildHrZones(trainingProfile) : null;
+
+  const rawFeedback = session.workoutFeedback;
+  const initialFeedback: WorkoutFeedbackProp | null = rawFeedback
+    ? {
+        id: rawFeedback.id,
+        adherenceLabel: rawFeedback.adherenceLabel,
+        summary: rawFeedback.summary,
+        bullets: Array.isArray(rawFeedback.bullets)
+          ? (rawFeedback.bullets as string[])
+          : [],
+        nextAdjustment: rawFeedback.nextAdjustment,
+        generatedAt: rawFeedback.generatedAt.toISOString(),
+      }
+    : null;
 
   const stravaLinks = session.stravaLinks.map((l) => ({
     id: l.id,
@@ -276,7 +293,15 @@ export default async function SessionCoachViewPage({
         />
       )}
 
-      {/* F: Actions */}
+      {/* G: After workout / Workout feedback */}
+      <WorkoutFeedbackSection
+        sessionId={id}
+        initialFeedback={initialFeedback}
+        sessionIsDone={session.status === "done"}
+        hasCheckIn={!!session.checkIn}
+      />
+
+      {/* H: Actions */}
       <CoachViewActions sessionId={id} hasPlan={!!plan} />
     </main>
   );
