@@ -343,7 +343,7 @@ export default function ReviewPage() {
                   .split("\n\n")
                   .filter((l) => l.trim())
                   .map((line, i) => (
-                    <p key={i} className="text-xs italic text-blue-800">{line}</p>
+                    <p key={i} className="text-xs text-blue-800">{line}</p>
                   ))}
               </div>
             )}
@@ -743,7 +743,7 @@ function PreviousWeekBlock({
                 .split("\n\n")
                 .filter((l) => l.trim())
                 .map((line, i) => (
-                  <p key={i} className="text-xs italic text-gray-400">{line}</p>
+                  <p key={i} className="text-xs text-gray-400">{line}</p>
                 ))}
             </div>
           )}

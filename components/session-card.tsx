@@ -103,18 +103,14 @@ function WorkoutPlanBlock({
       {/* Always visible: goal + target + block labels preview */}
       <p className="text-xs font-medium text-gray-700">{plan.goal}</p>
       {plan.target && (
-        <p className="text-[11px] text-indigo-600">{plan.target}</p>
+        <p className="text-xs font-medium text-indigo-600">{plan.target}</p>
       )}
-      <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[10px] text-gray-400">
-        {previewBlocks.map((b, i) => (
-          <span key={i}>
-            {b.label} {b.durationMin}m{i < previewBlocks.length - 1 ? " ·" : ""}
-          </span>
-        ))}
-        {plan.blocks.length > 3 && (
-          <span>· +{plan.blocks.length - 3} more</span>
-        )}
-      </div>
+      <p className="text-[10px] text-gray-400 leading-relaxed">
+        {[
+          ...previewBlocks.map((b) => `${b.label} ${b.durationMin}m`),
+          ...(plan.blocks.length > 3 ? [`+${plan.blocks.length - 3} more`] : []),
+        ].join(" · ")}
+      </p>
 
       <button
         onClick={() => setOpen((v) => !v)}

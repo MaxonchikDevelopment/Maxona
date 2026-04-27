@@ -239,13 +239,16 @@ export default async function TodayPage() {
           {props.map((s) => (
             <SessionCard key={s.id} session={s} todayStr={todayStr} />
           ))}
+          {implicationLine && (
+            <div className="flex items-start gap-1.5 rounded bg-amber-50 px-2.5 py-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-500 shrink-0 mt-0.5">Recovery</span>
+              <p className="text-xs text-amber-700">{implicationLine}</p>
+            </div>
+          )}
           <ManualSessionForm defaultDate={todayStr} />
         </div>
       )}
       <ActiveIssues initialIssues={activeIssues} />
-      {implicationLine && (
-        <p className="text-xs text-gray-500 px-1">{implicationLine}</p>
-      )}
     </main>
   );
 }

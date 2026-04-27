@@ -262,12 +262,13 @@ export default async function WeekPage() {
       <ActiveIssues initialIssues={activeIssues} />
 
       {plan.focusSummary && (
-        <div className="space-y-1">
+        <div className="rounded border border-blue-100 bg-blue-50 px-3 py-3 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">Coach focus</p>
           {normalizeCoachBullets(plan.focusSummary)
             .split("\n\n")
             .filter((l) => l.trim())
             .map((line, i) => (
-              <p key={i} className="text-sm italic text-gray-600">{line}</p>
+              <p key={i} className="text-sm text-blue-800">{line}</p>
             ))}
         </div>
       )}
@@ -363,7 +364,7 @@ function DraftPreview({
             .split("\n\n")
             .filter((l) => l.trim())
             .map((line, i) => (
-              <p key={i} className="text-xs italic text-gray-400">{line}</p>
+              <p key={i} className="text-xs text-gray-400">{line}</p>
             ))}
         </div>
       )}
