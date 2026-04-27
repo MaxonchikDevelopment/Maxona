@@ -88,6 +88,9 @@ model User {
   dailyReadiness      DailyReadiness[]
   stravaConnection    StravaConnection?
   stravaActivities    StravaActivity[]
+  trainingProfile     UserTrainingProfile?
+  hybridRaceProfile   HybridRaceProfile?
+  workoutPlans        SessionWorkoutPlan[]
 }
 
 model AvailabilityWindow {
@@ -197,6 +200,7 @@ model TrainingSession {
   user        User                      @relation(fields: [userId], references: [id])
   checkIn     CheckIn?
   stravaLinks SessionStravaActivityLink[]
+  workoutPlan SessionWorkoutPlan?
 }
 
 model CheckIn {
@@ -297,4 +301,57 @@ model StravaWebhookEvent {
   eventTime  DateTime
   raw        Json
   createdAt  DateTime @default(now())
+}
+
+model SessionWorkoutPlan {
+  id           String   @id @default(cuid())
+  sessionId    String   @unique
+  userId       String
+  planType     String
+  goal         String
+  target       String?
+  blocks       Json
+  rules        Json
+  alternatives Json?
+  summary      String?
+  generatedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  session TrainingSession @relation(fields: [sessionId], references: [id])
+  user    User            @relation(fields: [userId], references: [id])
+}
+
+model UserTrainingProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  restingHr   Int?
+  maxHr       Int?
+  easyHrMin   Int?
+  easyHrMax   Int?
+  tempoHrMin  Int?
+  tempoHrMax  Int?
+  thresholdHr Int?
+  zoneMethod  String   @default("estimated")
+  zonesJson   Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model HybridRaceProfile {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  defaultFormat          String   @default("station_circuit")
+  includesRunningDefault Boolean  @default(false)
+  stationWorkSec         Int      @default(60)
+  stationRestSec         Int      @default(20)
+  defaultRounds          Int      @default(3)
+  availableEquipmentJson Json?
+  stationBenchmarksJson  Json?
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
 }

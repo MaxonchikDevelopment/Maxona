@@ -13,6 +13,25 @@ export type CheckInProp = {
   resolvedAt: string | null;
 };
 
+export type WorkoutBlock = {
+  label: string;
+  durationMin: number;
+  description: string;
+  intensity: string;
+  zone?: string | null;
+};
+
+export type WorkoutPlanProp = {
+  id: string;
+  planType: string;
+  goal: string;
+  target: string | null;
+  blocks: WorkoutBlock[];
+  rules: string[];
+  alternatives: string[] | null;
+  summary: string | null;
+};
+
 export type SessionProp = {
   id: string;
   scheduledDate: string;
@@ -25,6 +44,7 @@ export type SessionProp = {
   checkIn: CheckInProp | null;
   stravaLinks?: StravaLinkProp[];
   stravaConnected?: boolean;
+  workoutPlan?: WorkoutPlanProp | null;
 };
 
 // Keyword list mirrors lib/checkin-utils.ts — kept inline to avoid server-only imports in client bundle
@@ -53,6 +73,82 @@ function staticHint(
   return null;
 }
 
+function WorkoutPlanBlock({
+  plan,
+  onRegenerate,
+  regenerating,
+}: {
+  plan: WorkoutPlanProp;
+  onRegenerate: () => void;
+  regenerating: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-t pt-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 flex items-center gap-1"
+        >
+          <span>Workout plan</span>
+          <span className="text-gray-300">{open ? "▲" : "▼"}</span>
+        </button>
+        <button
+          onClick={onRegenerate}
+          disabled={regenerating}
+          className="text-[10px] text-gray-400 underline disabled:opacity-40"
+        >
+          {regenerating ? "Generating…" : "Regenerate"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-gray-700">Goal: {plan.goal}</p>
+          {plan.target && (
+            <p className="text-[11px] text-indigo-600">Target: {plan.target}</p>
+          )}
+          <div className="space-y-1.5">
+            {plan.blocks.map((block, i) => (
+              <div key={i} className="rounded bg-gray-50 px-2 py-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-medium text-gray-700">{block.label}</span>
+                  <span className="text-[10px] text-gray-400">— {block.durationMin}m</span>
+                  {block.zone && (
+                    <span className="text-[10px] text-indigo-400">{block.zone}</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500 mt-0.5">{block.description}</p>
+              </div>
+            ))}
+          </div>
+          {plan.rules.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Rules</p>
+              {plan.rules.map((r, i) => (
+                <p key={i} className="text-[11px] text-gray-500">• {r}</p>
+              ))}
+            </div>
+          )}
+          {plan.alternatives && plan.alternatives.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Alternatives</p>
+              {plan.alternatives.map((a, i) => (
+                <p key={i} className="text-[11px] text-gray-500">• {a}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!open && plan.summary && (
+        <p className="text-[11px] text-gray-400 italic">{plan.summary}</p>
+      )}
+    </div>
+  );
+}
+
 export function SessionCard({
   session,
   todayStr,
@@ -68,6 +164,8 @@ export function SessionCard({
   const [notes, setNotes] = useState(session.checkIn?.notes ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(session.status === "done" || !!session.checkIn);
+  const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlanProp | null>(session.workoutPlan ?? null);
+  const [planGenerating, setPlanGenerating] = useState(false);
   const isFuture = todayStr ? session.scheduledDate > todayStr : false;
 
   async function submitCheckIn() {
@@ -143,6 +241,30 @@ export function SessionCard({
     setSubmitting(false);
   }
 
+  async function generatePlan() {
+    setPlanGenerating(true);
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/workout-plan`, { method: "POST" });
+      const data = await res.json();
+      if (data && data.id) {
+        setWorkoutPlan({
+          id: data.id,
+          planType: data.planType,
+          goal: data.goal,
+          target: data.target,
+          blocks: data.blocks as WorkoutBlock[],
+          rules: data.rules as string[],
+          alternatives: data.alternatives as string[] | null,
+          summary: data.summary,
+        });
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setPlanGenerating(false);
+    }
+  }
+
   function startEdit() {
     setFeelScore(checkIn?.feelScore ?? 4);
     setNotes(checkIn?.notes ?? "");
@@ -207,6 +329,25 @@ export function SessionCard({
 
       {session.notes && (
         <p className="text-sm text-gray-600">{session.notes}</p>
+      )}
+
+      {/* Workout plan — generated on demand, collapsed by default */}
+      {workoutPlan ? (
+        <WorkoutPlanBlock
+          plan={workoutPlan}
+          onRegenerate={generatePlan}
+          regenerating={planGenerating}
+        />
+      ) : (
+        <div className="border-t pt-2">
+          <button
+            onClick={generatePlan}
+            disabled={planGenerating}
+            className="text-xs text-indigo-500 underline disabled:opacity-40"
+          >
+            {planGenerating ? "Generating plan…" : "Plan workout"}
+          </button>
+        </div>
       )}
 
       {/* Existing check-in summary (when not editing) */}

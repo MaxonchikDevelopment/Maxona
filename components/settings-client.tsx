@@ -4,6 +4,26 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StravaSettings } from "@/components/strava-settings";
 import type { StravaConnectionProp } from "@/components/strava-settings";
 
+export type TrainingProfileProp = {
+  restingHr: number | null;
+  maxHr: number | null;
+  easyHrMin: number | null;
+  easyHrMax: number | null;
+  tempoHrMin: number | null;
+  tempoHrMax: number | null;
+  thresholdHr: number | null;
+  zoneMethod: string;
+};
+
+export type HybridProfileProp = {
+  defaultFormat: string;
+  includesRunningDefault: boolean;
+  stationWorkSec: number;
+  stationRestSec: number;
+  defaultRounds: number;
+  notes: string | null;
+};
+
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LABELS: Record<string, string> = {
   mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
@@ -49,16 +69,29 @@ type Constraints = {
   preferredLongRunKm?: number;
 };
 
+const HYBRID_FORMATS = [
+  { value: "station_circuit", label: "Station circuit" },
+  { value: "run_station_intervals", label: "Run + station intervals" },
+  { value: "race_simulation", label: "Race simulation" },
+  { value: "strength_focus", label: "Strength focus" },
+  { value: "engine_focus", label: "Engine focus" },
+  { value: "technique", label: "Technique" },
+] as const;
+
 export function SettingsClient({
   initialConstraints,
   userName,
   userTimezone,
   initialStravaConnection,
+  initialTrainingProfile,
+  initialHybridProfile,
 }: {
   initialConstraints: Constraints;
   userName: string;
   userTimezone: string;
   initialStravaConnection: StravaConnectionProp;
+  initialTrainingProfile?: TrainingProfileProp | null;
+  initialHybridProfile?: HybridProfileProp | null;
 }) {
   const qc = useQueryClient();
 
@@ -92,6 +125,70 @@ export function SettingsClient({
   const [longRunKm, setLongRunKm] = useState(String(initialConstraints.preferredLongRunKm ?? ""));
 
   const [constraintsSaved, setConstraintsSaved] = useState(false);
+
+  // --- Training Profile ---
+  const ip = initialTrainingProfile;
+  const [restingHr, setRestingHr] = useState(String(ip?.restingHr ?? ""));
+  const [maxHr, setMaxHr] = useState(String(ip?.maxHr ?? ""));
+  const [easyHrMin, setEasyHrMin] = useState(String(ip?.easyHrMin ?? ""));
+  const [easyHrMax, setEasyHrMax] = useState(String(ip?.easyHrMax ?? ""));
+  const [tempoHrMin, setTempoHrMin] = useState(String(ip?.tempoHrMin ?? ""));
+  const [tempoHrMax, setTempoHrMax] = useState(String(ip?.tempoHrMax ?? ""));
+  const [thresholdHr, setThresholdHr] = useState(String(ip?.thresholdHr ?? ""));
+  const [zoneMethod, setZoneMethod] = useState(ip?.zoneMethod ?? "estimated");
+  const [trainingProfileSaved, setTrainingProfileSaved] = useState(false);
+
+  const saveTrainingProfile = useMutation({
+    mutationFn: () =>
+      fetch("/api/settings/training-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restingHr: restingHr || undefined,
+          maxHr: maxHr || undefined,
+          easyHrMin: easyHrMin || undefined,
+          easyHrMax: easyHrMax || undefined,
+          tempoHrMin: tempoHrMin || undefined,
+          tempoHrMax: tempoHrMax || undefined,
+          thresholdHr: thresholdHr || undefined,
+          zoneMethod,
+        }),
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      setTrainingProfileSaved(true);
+      setTimeout(() => setTrainingProfileSaved(false), 2000);
+    },
+  });
+
+  // --- Hybrid Race Profile ---
+  const ih = initialHybridProfile;
+  const [hybridFormat, setHybridFormat] = useState(ih?.defaultFormat ?? "station_circuit");
+  const [hybridInclRun, setHybridInclRun] = useState(ih?.includesRunningDefault ?? false);
+  const [hybridWorkSec, setHybridWorkSec] = useState(String(ih?.stationWorkSec ?? 60));
+  const [hybridRestSec, setHybridRestSec] = useState(String(ih?.stationRestSec ?? 20));
+  const [hybridRounds, setHybridRounds] = useState(String(ih?.defaultRounds ?? 3));
+  const [hybridNotes, setHybridNotes] = useState(ih?.notes ?? "");
+  const [hybridProfileSaved, setHybridProfileSaved] = useState(false);
+
+  const saveHybridProfile = useMutation({
+    mutationFn: () =>
+      fetch("/api/settings/hybrid-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defaultFormat: hybridFormat,
+          includesRunningDefault: hybridInclRun,
+          stationWorkSec: Number(hybridWorkSec) || 60,
+          stationRestSec: Number(hybridRestSec) || 20,
+          defaultRounds: Number(hybridRounds) || 3,
+          notes: hybridNotes || undefined,
+        }),
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      setHybridProfileSaved(true);
+      setTimeout(() => setHybridProfileSaved(false), 2000);
+    },
+  });
 
   const saveConstraints = useMutation({
     mutationFn: () =>
@@ -563,6 +660,114 @@ export function SettingsClient({
             {addRecSession.isPending ? "Adding..." : "Add session"}
           </button>
         </div>
+      </section>
+
+      {/* Training Profile */}
+      <section className="space-y-3">
+        <h2 className="font-semibold">Training Profile</h2>
+        <p className="text-xs text-gray-400">Used to personalise HR zones in generated workout plans.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-sm">
+            Resting HR
+            <input type="number" value={restingHr} onChange={(e) => setRestingHr(e.target.value)}
+              placeholder="e.g. 52" className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Max HR
+            <input type="number" value={maxHr} onChange={(e) => setMaxHr(e.target.value)}
+              placeholder="e.g. 185" className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Easy HR min
+            <input type="number" value={easyHrMin} onChange={(e) => setEasyHrMin(e.target.value)}
+              placeholder="e.g. 130" className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Easy HR max
+            <input type="number" value={easyHrMax} onChange={(e) => setEasyHrMax(e.target.value)}
+              placeholder="e.g. 150" className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Tempo HR min
+            <input type="number" value={tempoHrMin} onChange={(e) => setTempoHrMin(e.target.value)}
+              placeholder="e.g. 151" className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Tempo HR max
+            <input type="number" value={tempoHrMax} onChange={(e) => setTempoHrMax(e.target.value)}
+              placeholder="e.g. 165" className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Threshold HR
+            <input type="number" value={thresholdHr} onChange={(e) => setThresholdHr(e.target.value)}
+              placeholder="e.g. 166" className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Zone method
+            <select value={zoneMethod} onChange={(e) => setZoneMethod(e.target.value)}
+              className="mt-1 block w-full rounded border px-2 py-1 text-sm">
+              <option value="estimated">Estimated (Karvonen)</option>
+              <option value="manual">Manual</option>
+            </select>
+          </label>
+        </div>
+        <button
+          onClick={() => saveTrainingProfile.mutate()}
+          disabled={saveTrainingProfile.isPending}
+          className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+        >
+          {trainingProfileSaved ? "Saved" : saveTrainingProfile.isPending ? "Saving..." : "Save training profile"}
+        </button>
+      </section>
+
+      {/* Hybrid Race Profile */}
+      <section className="space-y-3">
+        <h2 className="font-semibold">Hybrid Race Profile</h2>
+        <p className="text-xs text-gray-400">Default format for station-circuit workout plans.</p>
+        <label className="block text-sm">
+          Default format
+          <select value={hybridFormat} onChange={(e) => setHybridFormat(e.target.value)}
+            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm">
+            {HYBRID_FORMATS.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={hybridInclRun}
+            onChange={(e) => setHybridInclRun(e.target.checked)} />
+          Include running between stations by default
+        </label>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="block text-sm">
+            Work (sec)
+            <input type="number" value={hybridWorkSec} onChange={(e) => setHybridWorkSec(e.target.value)}
+              className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Rest (sec)
+            <input type="number" value={hybridRestSec} onChange={(e) => setHybridRestSec(e.target.value)}
+              className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            Rounds
+            <input type="number" value={hybridRounds} onChange={(e) => setHybridRounds(e.target.value)}
+              className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
+          </label>
+        </div>
+        <label className="block text-sm">
+          Notes
+          <input type="text" value={hybridNotes} onChange={(e) => setHybridNotes(e.target.value)}
+            placeholder="e.g. preferred equipment, race goal distance…"
+            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm" />
+        </label>
+        <button
+          onClick={() => saveHybridProfile.mutate()}
+          disabled={saveHybridProfile.isPending}
+          className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+        >
+          {hybridProfileSaved ? "Saved" : saveHybridProfile.isPending ? "Saving..." : "Save Hybrid Race profile"}
+        </button>
       </section>
 
       {/* Strava */}

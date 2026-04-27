@@ -6,7 +6,7 @@ import { ReplanButton } from "@/components/replan-button";
 import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
-import type { SessionProp } from "@/components/session-card";
+import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { IssueItem } from "@/components/active-issues";
 import type { StravaLinkProp } from "@/components/strava-panel";
 
@@ -142,14 +142,21 @@ export default async function WeekPage() {
   // Cast through unknown — Prisma 6 loses fields when same model appears twice in Promise.all
   const plan = planRaw as unknown as PlanWithSessions;
 
+  const sessionIds = plan.sessions.map((s) => s.id);
+
   // Batch-load Strava links for all sessions — avoids doubly-nested include type issues
   const stravaLinksBySession: Record<string, StravaLinkProp[]> = {};
+  const workoutPlansBySession: Record<string, WorkoutPlanProp> = {};
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pc = prisma as any;
+
   if (stravaConnected) {
-    const allLinks = await prisma.sessionStravaActivityLink.findMany({
-      where: { sessionId: { in: plan.sessions.map((s) => s.id) } },
+    const allLinks = await pc.sessionStravaActivityLink.findMany({
+      where: { sessionId: { in: sessionIds } },
       include: { activity: true },
       orderBy: { createdAt: "asc" },
-    });
+    }) as Array<{ id: string; sessionId: string; isPrimary: boolean; activity: { id: string; stravaActivityId: string; name: string; sportType: string; startDate: Date; distance: number; movingTime: number; elapsedTime: number; totalElevationGain: number; averageSpeed: number; averageHeartrate: number | null; maxHeartrate: number | null } }>;
     for (const l of allLinks) {
       if (!stravaLinksBySession[l.sessionId]) stravaLinksBySession[l.sessionId] = [];
       stravaLinksBySession[l.sessionId].push({
@@ -170,6 +177,24 @@ export default async function WeekPage() {
           maxHeartrate: l.activity.maxHeartrate,
         },
       });
+    }
+  }
+
+  {
+    const allWp = await pc.sessionWorkoutPlan.findMany({
+      where: { sessionId: { in: sessionIds } },
+    }) as Array<{ id: string; sessionId: string; planType: string; goal: string; target: string | null; blocks: unknown; rules: unknown; alternatives: unknown; summary: string | null }>;
+    for (const wp of allWp) {
+      workoutPlansBySession[wp.sessionId] = {
+        id: wp.id,
+        planType: wp.planType,
+        goal: wp.goal,
+        target: wp.target,
+        blocks: wp.blocks as WorkoutBlock[],
+        rules: wp.rules as string[],
+        alternatives: wp.alternatives as string[] | null,
+        summary: wp.summary,
+      };
     }
   }
 
@@ -197,6 +222,7 @@ export default async function WeekPage() {
         : null,
       stravaLinks: stravaLinksBySession[s.id] ?? [],
       stravaConnected,
+      workoutPlan: workoutPlansBySession[s.id] ?? null,
     });
   }
 

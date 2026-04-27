@@ -7,7 +7,7 @@ import { SignalsHistory } from "@/components/signals-history";
 import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
-import type { SessionProp } from "@/components/session-card";
+import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
 import type { SignalHistoryItem } from "@/components/signals-history";
@@ -117,6 +117,7 @@ export default async function TodayPage() {
         include: {
           checkIn: true,
           stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
+          workoutPlan: true,
         },
         orderBy: { preferredSlot: "asc" },
       }),
@@ -188,6 +189,18 @@ export default async function TodayPage() {
       },
     })),
     stravaConnected,
+    workoutPlan: s.workoutPlan
+      ? ({
+          id: s.workoutPlan.id,
+          planType: s.workoutPlan.planType,
+          goal: s.workoutPlan.goal,
+          target: s.workoutPlan.target,
+          blocks: s.workoutPlan.blocks as WorkoutBlock[],
+          rules: s.workoutPlan.rules as string[],
+          alternatives: s.workoutPlan.alternatives as string[] | null,
+          summary: s.workoutPlan.summary,
+        } satisfies WorkoutPlanProp)
+      : null,
   }));
 
   const activeIssues: IssueItem[] = injuryCheckIns
