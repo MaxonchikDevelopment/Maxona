@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { normalizeCoachBullets } from "@/lib/format-bullets";
 
 const PRIORITY_OPTIONS = [
   "More HYROX this week",
@@ -338,8 +339,8 @@ export default function ReviewPage() {
             </div>
             {existingDraft.focusSummary && (
               <div className="space-y-1">
-                {existingDraft.focusSummary
-                  .split("\n")
+                {normalizeCoachBullets(existingDraft.focusSummary)
+                  .split("\n\n")
                   .filter((l) => l.trim())
                   .map((line, i) => (
                     <p key={i} className="text-xs italic text-blue-800">{line}</p>
@@ -737,7 +738,14 @@ function PreviousWeekBlock({
             {plan.skipped > 0 ? ` · ${plan.skipped} skipped` : ""}
           </p>
           {plan.focusSummary && (
-            <p className="text-xs italic text-gray-400">{plan.focusSummary}</p>
+            <div className="space-y-0.5">
+              {normalizeCoachBullets(plan.focusSummary)
+                .split("\n\n")
+                .filter((l) => l.trim())
+                .map((line, i) => (
+                  <p key={i} className="text-xs italic text-gray-400">{line}</p>
+                ))}
+            </div>
           )}
           <div className="space-y-1">
             {plan.sessions.map((s) => {

@@ -100,6 +100,21 @@ Z4 threshold: ${zones.z4.min}–${zones.z4.max} bpm
 Z5 VO2max: ${zones.z5.min}–${zones.z5.max} bpm`;
 }
 
+function normalizeHybridProfile(hybrid?: HybridProfileInput | null): {
+  rounds: number;
+  workSec: number;
+  restSec: number;
+} {
+  const rawRounds = hybrid?.defaultRounds ?? 3;
+  // Clamp suspicious values: if someone accidentally set rounds=8 (station count), reset to 3
+  const rounds = rawRounds > 5 && STATION_COUNT >= 8 ? 3 : rawRounds;
+  return {
+    rounds,
+    workSec: hybrid?.stationWorkSec ?? 60,
+    restSec: hybrid?.stationRestSec ?? 20,
+  };
+}
+
 function buildHybridContext(
   planType: string,
   hybrid?: HybridProfileInput | null,
@@ -107,9 +122,7 @@ function buildHybridContext(
 ): string {
   if (!planType.startsWith("hybrid")) return "";
   const fmt = hybrid?.defaultFormat ?? "station_circuit";
-  const workSec = hybrid?.stationWorkSec ?? 60;
-  const restSec = hybrid?.stationRestSec ?? 20;
-  const rounds = hybrid?.defaultRounds ?? 3;
+  const { rounds, workSec, restSec } = normalizeHybridProfile(hybrid);
   const includesRun = hybrid?.includesRunningDefault ?? false;
 
   // Circuit time: rounds × 8 stations × (workSec + restSec) / 60
@@ -155,9 +168,7 @@ function buildFallback(params: GenerateWorkoutPlanParams, planType: string): Wor
   }
 
   if (planType.startsWith("hybrid")) {
-    const rounds = params.hybridProfile?.defaultRounds ?? 3;
-    const workSec = params.hybridProfile?.stationWorkSec ?? 60;
-    const restSec = params.hybridProfile?.stationRestSec ?? 20;
+    const { rounds, workSec, restSec } = normalizeHybridProfile(params.hybridProfile);
     const circuitMin = Math.round((rounds * STATION_COUNT * (workSec + restSec)) / 60);
     const baseWarmup = 10;
     const baseCooldown = 10;

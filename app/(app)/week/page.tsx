@@ -6,6 +6,7 @@ import { ReplanButton } from "@/components/replan-button";
 import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
+import { normalizeCoachBullets } from "@/lib/format-bullets";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { IssueItem } from "@/components/active-issues";
 import type { StravaLinkProp } from "@/components/strava-panel";
@@ -39,11 +40,6 @@ export const dynamic = "force-dynamic";
 
 const USER_ID = "user_maxon";
 
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1");
-}
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const READINESS_TAG_LABELS: Record<string, string> = {
@@ -266,12 +262,26 @@ export default async function WeekPage() {
       <ActiveIssues initialIssues={activeIssues} />
 
       {plan.focusSummary && (
-        <p className="text-sm italic text-gray-600">{stripMarkdown(plan.focusSummary)}</p>
+        <div className="space-y-1">
+          {normalizeCoachBullets(plan.focusSummary)
+            .split("\n\n")
+            .filter((l) => l.trim())
+            .map((line, i) => (
+              <p key={i} className="text-sm italic text-gray-600">{line}</p>
+            ))}
+        </div>
       )}
       {plan.changeExplanation && (
         <div className="rounded border-l-2 border-blue-400 bg-blue-50 px-3 py-2 text-sm text-blue-800">
           <p className="font-medium mb-1">What changed:</p>
-          <p className="whitespace-pre-line">{stripMarkdown(plan.changeExplanation)}</p>
+          <div className="space-y-1">
+            {normalizeCoachBullets(plan.changeExplanation)
+              .split("\n\n")
+              .filter((l) => l.trim())
+              .map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+          </div>
         </div>
       )}
 
@@ -348,7 +358,14 @@ function DraftPreview({
         <span className="text-xs text-gray-400">{weekStartStr}</span>
       </div>
       {plan.focusSummary && (
-        <p className="text-xs italic text-gray-400 whitespace-pre-line">{stripMarkdown(plan.focusSummary)}</p>
+        <div className="space-y-1">
+          {normalizeCoachBullets(plan.focusSummary)
+            .split("\n\n")
+            .filter((l) => l.trim())
+            .map((line, i) => (
+              <p key={i} className="text-xs italic text-gray-400">{line}</p>
+            ))}
+        </div>
       )}
       {weekDays.map((dateStr, i) => {
         const daySessions = sessionsByDate[dateStr] ?? [];

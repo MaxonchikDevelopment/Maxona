@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CheckInCategory } from "@/lib/checkin-utils";
 import type { PlannedSession, ParsedPreferences } from "@/lib/ai/adapter";
+import { normalizeCoachBullets } from "@/lib/format-bullets";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -507,25 +508,6 @@ No intro. No preamble.`,
 }
 
 // ─── Next-week draft summary ──────────────────────────────────────────────────
-
-function normalizeCoachBullets(text: string): string {
-  let s = text
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\r\n/g, "\n");
-
-  // Push any mid-line bullet onto its own line (e.g. "• A. • B." → "• A.\n• B.")
-  s = s.replace(/\s+(•)/g, "\n$1");
-
-  const bullets = s
-    .split("\n")
-    .map((b) => b.trim())
-    .filter((b) => b.length > 0)
-    .map((b) => (b.startsWith("•") ? b : `• ${b.replace(/^[-]\s*/, "")}`))
-    .slice(0, 3);
-
-  return bullets.join("\n\n");
-}
 
 export async function renderNextWeekDraftSummary(input: {
   sessions: PlannedSession[];

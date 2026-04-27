@@ -3,14 +3,12 @@ import { redirect } from "next/navigation";
 import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { DailyReadinessCard } from "@/components/daily-readiness-card";
-import { SignalsHistory } from "@/components/signals-history";
 import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
-import type { SignalHistoryItem } from "@/components/signals-history";
 
 export const dynamic = "force-dynamic";
 
@@ -99,14 +97,10 @@ export default async function TodayPage() {
   const [y, m, d] = todayStr.split("-").map(Number);
   const todayDate = new Date(Date.UTC(y, m - 1, d));
 
-  // 7-day signal window (includes today)
-  const sevenDaysAgo = new Date(todayDate);
-  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6);
-
   const stravaConnection = await prisma.stravaConnection.findUnique({ where: { userId: USER_ID } });
   const stravaConnected = !!stravaConnection;
 
-  const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession, historyReadiness, historyCheckIns] =
+  const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession] =
     await Promise.all([
       prisma.trainingSession.findMany({
         where: {
@@ -137,18 +131,6 @@ export default async function TodayPage() {
           scheduledDate: { gt: todayDate },
         },
         orderBy: { scheduledDate: "asc" },
-      }),
-      prisma.dailyReadiness.findMany({
-        where: { userId: USER_ID, date: { gte: sevenDaysAgo } },
-        orderBy: { date: "desc" },
-      }),
-      prisma.checkIn.findMany({
-        where: {
-          userId: USER_ID,
-          occurredAt: { gte: sevenDaysAgo },
-        },
-        include: { session: true },
-        orderBy: { occurredAt: "desc" },
       }),
     ]);
 
@@ -243,46 +225,6 @@ export default async function TodayPage() {
 
   const implicationLine = buildImplicationLine(readinessProp, activeIssues, todayCheckIn, nextPlanned);
 
-  // Signal tier: unresolved injury first, resolved injury, fatigue, ok last.
-  // Within same tier, most recent date first. This surfaces meaningful signals
-  // before bland neutral entries, keeping the list useful when capped.
-  function signalTier(item: { category: string; resolvedAt: string | null }): number {
-    if (item.category === "injury" && !item.resolvedAt) return 0;
-    if (item.category === "injury") return 1;
-    if (item.category === "fatigue") return 2;
-    return 3;
-  }
-
-  // Build history items (last 7 days), capped at 7
-  const historyItems: SignalHistoryItem[] = [
-    ...historyReadiness
-      .filter((r) => !(r.category === "ok" && !r.notes && r.tags.length === 0))
-      .map((r) => ({
-        date: r.date.toISOString().split("T")[0],
-        source: "readiness" as const,
-        feelScore: r.feelScore,
-        category: r.category,
-        notePreview: r.notes ? r.notes.slice(0, 60) : null,
-        sessionLabel: null,
-        resolvedAt: null,
-      })),
-    ...historyCheckIns.map((ci) => ({
-      date: ci.session.scheduledDate.toISOString().split("T")[0],
-      source: "workout" as const,
-      feelScore: ci.feelScore,
-      category: categorizeCheckIn(ci.feelScore, ci.notes),
-      notePreview: ci.notes ? ci.notes.slice(0, 60) : null,
-      sessionLabel: ci.session.notes?.split(":")[0].trim() ?? null,
-      resolvedAt: ci.resolvedAt?.toISOString() ?? null,
-    })),
-  ]
-    .sort((a, b) => {
-      const tierDiff = signalTier(a) - signalTier(b);
-      if (tierDiff !== 0) return tierDiff;
-      return b.date.localeCompare(a.date);
-    })
-    .slice(0, 7);
-
   return (
     <main className="p-4 space-y-3">
       <h1 className="text-xl font-bold">Today</h1>
@@ -303,9 +245,6 @@ export default async function TodayPage() {
       <ActiveIssues initialIssues={activeIssues} />
       {implicationLine && (
         <p className="text-xs text-gray-500 px-1">{implicationLine}</p>
-      )}
-      {historyItems.length > 0 && (
-        <SignalsHistory items={historyItems} />
       )}
     </main>
   );
