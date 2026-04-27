@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp } from "@/components/strava-panel";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
@@ -19,6 +20,11 @@ export type WorkoutBlock = {
   description: string;
   intensity: string;
   zone?: string | null;
+  cue?: string | null;
+  successCriteria?: string | null;
+  stationCues?: string[] | null;
+  equipment?: string[] | null;
+  modification?: string | null;
 };
 
 export type WorkoutPlanProp = {
@@ -75,10 +81,12 @@ function staticHint(
 
 function WorkoutPlanBlock({
   plan,
+  sessionId,
   onRegenerate,
   regenerating,
 }: {
   plan: WorkoutPlanProp;
+  sessionId: string;
   onRegenerate: () => void;
   regenerating: boolean;
 }) {
@@ -91,13 +99,21 @@ function WorkoutPlanBlock({
         <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">
           Workout plan
         </span>
-        <button
-          onClick={onRegenerate}
-          disabled={regenerating}
-          className="text-[10px] text-gray-400 underline disabled:opacity-40"
-        >
-          {regenerating ? "Generating…" : "Regenerate"}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/sessions/${sessionId}`}
+            className="text-[10px] text-indigo-400 underline"
+          >
+            Coach view
+          </Link>
+          <button
+            onClick={onRegenerate}
+            disabled={regenerating}
+            className="text-[10px] text-gray-400 underline disabled:opacity-40"
+          >
+            {regenerating ? "Generating…" : "Regenerate"}
+          </button>
+        </div>
       </div>
 
       {/* Always visible: goal + target + block labels preview */}
@@ -343,6 +359,7 @@ export function SessionCard({
       {workoutPlan ? (
         <WorkoutPlanBlock
           plan={workoutPlan}
+          sessionId={session.id}
           onRegenerate={generatePlan}
           regenerating={planGenerating}
         />
