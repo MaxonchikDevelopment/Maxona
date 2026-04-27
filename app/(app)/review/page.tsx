@@ -337,7 +337,14 @@ export default function ReviewPage() {
               <span className="text-xs text-blue-400 font-mono">draft</span>
             </div>
             {existingDraft.focusSummary && (
-              <p className="text-xs italic text-blue-800">{existingDraft.focusSummary}</p>
+              <div className="space-y-1">
+                {existingDraft.focusSummary
+                  .split("\n")
+                  .filter((l) => l.trim())
+                  .map((line, i) => (
+                    <p key={i} className="text-xs italic text-blue-800">{line}</p>
+                  ))}
+              </div>
             )}
             {existingDraft.sessions.length > 0 && (
               <div className="flex flex-wrap gap-1">

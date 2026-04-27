@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CheckInCategory } from "@/lib/checkin-utils";
+import type { PlannedSession, ParsedPreferences } from "@/lib/ai/adapter";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -502,5 +503,97 @@ No intro. No preamble.`,
   } catch (err) {
     console.error("[coach-advice] renderChangeExplanation failed:", err);
     return buildFallbackBullets(payload);
+  }
+}
+
+// ─── Next-week draft summary ──────────────────────────────────────────────────
+
+function normalizeCoachBullets(text: string): string {
+  let s = text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\r\n/g, "\n");
+
+  // Push any mid-line bullet onto its own line (e.g. "• A. • B." → "• A.\n• B.")
+  s = s.replace(/\s+(•)/g, "\n$1");
+
+  const bullets = s
+    .split("\n")
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0)
+    .map((b) => (b.startsWith("•") ? b : `• ${b.replace(/^[-]\s*/, "")}`))
+    .slice(0, 3);
+
+  return bullets.join("\n\n");
+}
+
+export async function renderNextWeekDraftSummary(input: {
+  sessions: PlannedSession[];
+  deterministicSummary: string;
+  parsedPreferences?: ParsedPreferences;
+  unmetPreferences?: string[];
+  currentWeekContext?: string;
+}): Promise<string> {
+  try {
+    const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    const sessionLines = input.sessions
+      .map((s) => {
+        const day = DAY_NAMES[new Date(s.scheduledDate).getUTCDay()];
+        return `${day}: ${s.notes ?? s.intensity} (${s.intensity}, ${s.durationMin}min)`;
+      })
+      .join("\n");
+
+    const explicitHonored = input.parsedPreferences?.explicitDayRequests?.length
+      ? input.parsedPreferences.explicitDayRequests
+          .map((r) => `${r.modality} on ${r.day}`)
+          .join(", ")
+      : null;
+
+    const lines = [
+      `Sessions:\n${sessionLines}`,
+      explicitHonored ? `Explicit requests honored: ${explicitHonored}` : null,
+      input.unmetPreferences?.length
+        ? `Could not satisfy: ${input.unmetPreferences.join("; ")}`
+        : null,
+      input.currentWeekContext ? `This week context: ${input.currentWeekContext}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 300,
+      messages: [
+        {
+          role: "user",
+          content: `Sports coach. Write a 2–3 bullet summary of the athlete's upcoming week plan.
+
+${lines}
+
+Rules:
+- Return plain text only. Do not use Markdown bold (**...**) or any other Markdown formatting.
+- Use exactly 2–3 bullet lines. Each bullet must start with "• " on a new line. Do not return a single paragraph.
+- Each bullet ≤ 30 words
+- Only reference sessions from the list above — never invent days, modalities, or distances not shown
+- Lead with what anchors the week's structure (fixed sessions, hard sessions, long run day)
+- Name the specific day (Mon, Wed, Sun, etc.) when it adds clarity
+- If cycling or swimming is present: state its recovery or aerobic role in one clause
+- If unmet preferences exist: address them in the final bullet only
+- Do not invent physiological conclusions
+- Sound like an experienced coach, not a template
+- Format: "• [bullet]"
+No intro. No preamble.`,
+        },
+      ],
+    });
+
+    const block = response.content.find((b) => b.type === "text");
+    const raw = block?.type === "text" ? block.text.trim() : null;
+    const normalized = raw ? normalizeCoachBullets(raw) : null;
+    return normalized || input.deterministicSummary;
+  } catch (err) {
+    console.error("[coach-advice] renderNextWeekDraftSummary failed:", err);
+    return input.deterministicSummary;
   }
 }
