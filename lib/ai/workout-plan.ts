@@ -4,6 +4,9 @@ import type { TrainingProfileInput } from "@/lib/training/zones";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// One Hybrid Circuit round always has 8 stations. "8 stations" ≠ "8 rounds".
+const STATION_COUNT = 8;
+
 export type WorkoutBlock = {
   label: string;
   durationMin: number;
@@ -97,7 +100,11 @@ Z4 threshold: ${zones.z4.min}–${zones.z4.max} bpm
 Z5 VO2max: ${zones.z5.min}–${zones.z5.max} bpm`;
 }
 
-function buildHybridContext(planType: string, hybrid?: HybridProfileInput | null): string {
+function buildHybridContext(
+  planType: string,
+  hybrid?: HybridProfileInput | null,
+  sessionDurationMin?: number
+): string {
   if (!planType.startsWith("hybrid")) return "";
   const fmt = hybrid?.defaultFormat ?? "station_circuit";
   const workSec = hybrid?.stationWorkSec ?? 60;
@@ -105,10 +112,16 @@ function buildHybridContext(planType: string, hybrid?: HybridProfileInput | null
   const rounds = hybrid?.defaultRounds ?? 3;
   const includesRun = hybrid?.includesRunningDefault ?? false;
 
+  // Circuit time: rounds × 8 stations × (workSec + restSec) / 60
+  const circuitMin = Math.round((rounds * STATION_COUNT * (workSec + restSec)) / 60);
+  const remainingMin = sessionDurationMin ? sessionDurationMin - circuitMin : null;
+
   return `Hybrid Race format: ${fmt}
-Station work: ${workSec}s · Rest: ${restSec}s · Rounds: ${rounds}
+TERMINOLOGY (critical): rounds=${rounds} means full station list repeated ${rounds} times; stations=${STATION_COUNT} per round (NOT 8 rounds).
+Target phrasing: "${rounds} rounds × ${STATION_COUNT} stations, ${workSec}s work / ${restSec}s transition"
+Circuit time: ${rounds} × ${STATION_COUNT} × ${workSec + restSec}s ÷ 60 = approx ${circuitMin}min${remainingMin !== null ? `\nRemaining ~${remainingMin}min: use for warm-up, technique primer, weakness block, cool-down` : ""}
 Running between stations: ${includesRun ? "yes" : "no"}
-Default station list (use unless notes suggest otherwise):
+Station list (one round, ${STATION_COUNT} stations):
 1. Ski erg or row
 2. Heavy push (sled substitute)
 3. Heavy pull (sled substitute)
@@ -143,18 +156,55 @@ function buildFallback(params: GenerateWorkoutPlanParams, planType: string): Wor
 
   if (planType.startsWith("hybrid")) {
     const rounds = params.hybridProfile?.defaultRounds ?? 3;
+    const workSec = params.hybridProfile?.stationWorkSec ?? 60;
+    const restSec = params.hybridProfile?.stationRestSec ?? 20;
+    const circuitMin = Math.round((rounds * STATION_COUNT * (workSec + restSec)) / 60);
+    const baseWarmup = 10;
+    const baseCooldown = 10;
+    const afterCircuit = dur - baseWarmup - circuitMin - baseCooldown;
+    const intensityRpe = params.session.intensity === "hard" ? "7–8" : params.session.intensity === "easy" ? "3–4" : "5–6";
+
+    const blocks: WorkoutBlock[] = [];
+
+    if (afterCircuit >= 10) {
+      const techniqueMin = 10;
+      const weaknessMin = afterCircuit - techniqueMin;
+      blocks.push({ label: "Warm-up", durationMin: baseWarmup, description: "Easy cardio (5min bike/row) + dynamic mobility: leg swings, hip circles, 3×10 air squats", intensity: "easy" });
+      blocks.push({ label: "Technique primer", durationMin: techniqueMin, description: "Practise 2 weaker stations at light load — focus on breathing rhythm and stable posture before the main circuit", intensity: "easy" });
+      blocks.push({ label: "Main circuit", durationMin: circuitMin, description: `${rounds} rounds × ${STATION_COUNT} stations — ${workSec}s work / ${restSec}s transition. Cues: Ski/row: steady rhythm. Push/pull: controlled power. Burpees: steady breathing. Carry: tall posture. Lunges: stable knees. Wall balls: consistent depth.`, intensity: params.session.intensity });
+      if (weaknessMin > 0) {
+        blocks.push({ label: "Weakness block", durationMin: weaknessMin, description: "Extra sets on 1–2 weakest stations, or steady ski/row at RPE 5 as aerobic flush", intensity: "moderate" });
+      }
+      blocks.push({ label: "Cool-down", durationMin: baseCooldown, description: "Easy walk + stretch: hip flexors, lats, thoracic rotation", intensity: "easy" });
+    } else if (afterCircuit >= 0) {
+      const bonusPerEnd = Math.floor(afterCircuit / 2);
+      blocks.push({ label: "Warm-up", durationMin: baseWarmup + bonusPerEnd, description: "Easy cardio + dynamic mobility", intensity: "easy" });
+      blocks.push({ label: "Main circuit", durationMin: circuitMin, description: `${rounds} rounds × ${STATION_COUNT} stations — ${workSec}s work / ${restSec}s transition`, intensity: params.session.intensity });
+      blocks.push({ label: "Cool-down", durationMin: baseCooldown + (afterCircuit - bonusPerEnd), description: "Easy walk + full-body stretch", intensity: "easy" });
+    } else {
+      const mainMin = Math.max(5, dur - baseWarmup - baseCooldown);
+      blocks.push({ label: "Warm-up", durationMin: baseWarmup, description: "Easy cardio + dynamic mobility", intensity: "easy" });
+      blocks.push({ label: "Circuit", durationMin: mainMin, description: `${rounds} rounds × ${STATION_COUNT} stations — ${workSec}s work / ${restSec}s transition (adjust rounds to fit time)`, intensity: params.session.intensity });
+      blocks.push({ label: "Cool-down", durationMin: baseCooldown, description: "Easy walk + stretch", intensity: "easy" });
+    }
+
     return {
       planType,
-      goal: "Complete the station circuit with good form",
-      target: `${rounds} rounds`,
-      blocks: [
-        { label: "Warm-up", durationMin: warmup, description: "Light cardio and mobility", intensity: "easy" },
-        { label: "Circuit", durationMin: main, description: `${rounds} rounds of 8 stations — ${params.hybridProfile?.stationWorkSec ?? 60}s work / ${params.hybridProfile?.stationRestSec ?? 20}s rest`, intensity: params.session.intensity },
-        { label: "Cool-down", durationMin: cooldown, description: "Stretch and breathe", intensity: "easy" },
+      goal: params.session.intensity === "hard"
+        ? `Race-pace station practice: sustain controlled output across all ${rounds} rounds`
+        : `Controlled Hybrid Circuit endurance: steady effort and technique throughout ${rounds} rounds`,
+      target: `${rounds} rounds × ${STATION_COUNT} stations · ${workSec}s work / ${restSec}s transition · RPE ${intensityRpe}`,
+      blocks,
+      rules: [
+        `If breathing exceeds control for 2+ stations, reduce to ${Math.max(40, workSec - 10)}s work and ${restSec + 10}s transition.`,
+        "If form breaks on push/pull or lunges, reduce load immediately — stop before technique fails.",
+        params.session.intensity !== "hard"
+          ? "If fatigue is high after round 1, drop to 2 rounds and extend cool-down."
+          : "Between rounds, take 60s active rest (easy row/ski) if HR hasn't recovered.",
+        "If equipment is unavailable: ski erg → row or bike; sled push → heavy farmer carry.",
       ],
-      rules: ["Rest between rounds if HR doesn't recover.", "Scale weight if form breaks down."],
       alternatives: null,
-      summary: `${rounds}-round hybrid station circuit`,
+      summary: `${rounds}-round Hybrid Circuit · ${workSec}s/${restSec}s · approx ${circuitMin}min circuit`,
     };
   }
 
@@ -216,7 +266,7 @@ const SUBMIT_PLAN_TOOL = {
 export async function generateWorkoutPlan(params: GenerateWorkoutPlanParams): Promise<WorkoutPlanOutput> {
   const planType = derivePlanType(params.session.notes, params.hybridProfile);
   const zoneCtx = buildZoneContext(params.trainingProfile);
-  const hybridCtx = buildHybridContext(planType, params.hybridProfile);
+  const hybridCtx = buildHybridContext(planType, params.hybridProfile, params.session.durationMin);
 
   const recentStr = (params.recentSignals ?? []).slice(0, 4)
     .map((s) => `${s.date}: ${s.intensity}${s.notes ? ` · ${s.notes}` : ""}${s.feelScore != null ? ` (feel ${s.feelScore}/6)` : ""}`)
@@ -252,14 +302,30 @@ export async function generateWorkoutPlan(params: GenerateWorkoutPlanParams): Pr
       max_tokens: 1024,
       system: `You are a sports coach. Generate a compact, actionable per-session workout plan.
 
-Rules:
-- Total block durations must sum to exactly the session durationMin.
+General rules:
+- Block durations must sum to exactly the session durationMin.
 - If HR zones are provided, reference them. If not, use "conversational effort" or RPE descriptions.
-- For hybrid/station-circuit: use the station list and timing from the context. Do not invent equipment.
-- If session is labeled as race simulation in the notes, generate a race-prep format. Otherwise default to station_circuit.
-- Rules must be concrete if/then statements. No vague advice.
+- Rules must be concrete if/then statements — no vague advice.
 - Keep everything compact — this displays in a mobile card.
-- Do not mention HYROX as a product name in new content. Use "Hybrid Circuit" or "station circuit" instead.`,
+- Do not mention HYROX as a product name. Use "Hybrid Circuit" or "station circuit" instead.
+
+For Hybrid Circuit / station_circuit sessions:
+- TERMINOLOGY: rounds = how many times all stations are repeated; stations = exercises in one round. Never call 8 stations "8 rounds".
+- Use target format exactly: "X rounds × 8 stations · Ys work / Zs transition · RPE A–B"
+- GOAL must be specific (e.g. "Controlled station endurance — maintain repeatability across all rounds"), NOT generic phrases like "build work capacity" or "complete the session".
+- BLOCK STRUCTURE: Warm-up → Technique primer → Main circuit → Weakness block (if time allows) → Cool-down.
+- The main circuit block MUST state rounds × stations × timing and include actionable station cues:
+  Ski/row: smooth rhythm, avoid sprinting early; Push/pull: controlled power; Burpees: steady breathing, no redline R1; Carry: tall posture, short steps; Lunges: stable knee tracking; Wall balls/squats: consistent depth.
+- Moderate sessions (easy/moderate intensity): RPE 5–6, focus on repeatability, NOT race effort.
+- Hard sessions: allow RPE 7–8, include clear scaling rules.
+- If readiness/notes mention fatigue, illness, or allergy: lower RPE target and add "cut one round if needed" rule.
+- Use the circuit time from hybridContext for the main circuit block duration. Use remaining time for other blocks.
+
+For running sessions:
+- Easy/long: Z1–Z2 / conversational.
+- Tempo: Z3 with controlled Z4 segments.
+
+Do not invent equipment. Do not make medical claims about HR zones.`,
       tools: [SUBMIT_PLAN_TOOL],
       tool_choice: { type: "tool", name: "submit_workout_plan" },
       messages: [{ role: "user", content: userPrompt }],
@@ -276,7 +342,7 @@ Rules:
     const rules = (Array.isArray(raw.rules) ? raw.rules : []) as string[];
     const alternatives = Array.isArray(raw.alternatives) ? (raw.alternatives as string[]) : null;
 
-    return {
+    const parsed: WorkoutPlanOutput = {
       planType: (raw.planType as string) || planType,
       goal: (raw.goal as string) || "",
       target: (raw.target as string | null) || null,
@@ -285,8 +351,62 @@ Rules:
       alternatives: alternatives && alternatives.length > 0 ? alternatives : null,
       summary: (raw.summary as string | null) || null,
     };
+
+    const validated = validateAndAdjust(parsed, params, planType);
+    return validated ?? buildFallback(params, planType);
   } catch (err) {
     console.error("[workout-plan] generateWorkoutPlan failed:", err);
     return buildFallback(params, planType);
   }
+}
+
+const GENERIC_GOAL_PHRASES = ["build work capacity", "improve fitness", "complete the session", "complete the planned"];
+
+function isGenericGoal(goal: string): boolean {
+  const lower = goal.toLowerCase();
+  return GENERIC_GOAL_PHRASES.some((p) => lower.includes(p));
+}
+
+function adjustBlockDurations(blocks: WorkoutBlock[], targetDur: number): WorkoutBlock[] {
+  const sum = blocks.reduce((s, b) => s + b.durationMin, 0);
+  const diff = targetDur - sum;
+  if (diff === 0 || blocks.length === 0) return blocks;
+  // Adjust the largest non-first/last block; fall back to last block
+  let adjustIdx = -1;
+  for (let i = 1; i < blocks.length - 1; i++) {
+    if (adjustIdx === -1 || blocks[i].durationMin > blocks[adjustIdx].durationMin) adjustIdx = i;
+  }
+  if (adjustIdx === -1) adjustIdx = blocks.length - 1;
+  return blocks.map((b, i) =>
+    i === adjustIdx ? { ...b, durationMin: Math.max(5, b.durationMin + diff) } : b
+  );
+}
+
+function validateAndAdjust(
+  plan: WorkoutPlanOutput,
+  params: GenerateWorkoutPlanParams,
+  planType: string
+): WorkoutPlanOutput | null {
+  if (!plan.blocks || plan.blocks.length < 2) return null;
+  if (plan.rules.length < 2) return null;
+
+  const blockSum = plan.blocks.reduce((s, b) => s + b.durationMin, 0);
+  const targetDur = params.session.durationMin;
+
+  if (Math.abs(blockSum - targetDur) > 5) return null;
+
+  const adjustedBlocks = blockSum !== targetDur
+    ? adjustBlockDurations(plan.blocks, targetDur)
+    : plan.blocks;
+
+  if (planType.startsWith("hybrid")) {
+    const hasCircuit = adjustedBlocks.some(
+      (b) => b.description.toLowerCase().includes("station") || b.description.toLowerCase().includes("round")
+    );
+    if (!hasCircuit) return null;
+  }
+
+  if (isGenericGoal(plan.goal)) return null;
+
+  return { ...plan, blocks: adjustedBlocks };
 }

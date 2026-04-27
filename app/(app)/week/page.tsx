@@ -38,6 +38,12 @@ type PlanWithSessions = {
 export const dynamic = "force-dynamic";
 
 const USER_ID = "user_maxon";
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1");
+}
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const READINESS_TAG_LABELS: Record<string, string> = {
@@ -260,12 +266,12 @@ export default async function WeekPage() {
       <ActiveIssues initialIssues={activeIssues} />
 
       {plan.focusSummary && (
-        <p className="text-sm italic text-gray-600">{plan.focusSummary}</p>
+        <p className="text-sm italic text-gray-600">{stripMarkdown(plan.focusSummary)}</p>
       )}
       {plan.changeExplanation && (
         <div className="rounded border-l-2 border-blue-400 bg-blue-50 px-3 py-2 text-sm text-blue-800">
           <p className="font-medium mb-1">What changed:</p>
-          <p className="whitespace-pre-line">{plan.changeExplanation}</p>
+          <p className="whitespace-pre-line">{stripMarkdown(plan.changeExplanation)}</p>
         </div>
       )}
 
@@ -342,7 +348,7 @@ function DraftPreview({
         <span className="text-xs text-gray-400">{weekStartStr}</span>
       </div>
       {plan.focusSummary && (
-        <p className="text-xs italic text-gray-400">{plan.focusSummary}</p>
+        <p className="text-xs italic text-gray-400 whitespace-pre-line">{stripMarkdown(plan.focusSummary)}</p>
       )}
       {weekDays.map((dateStr, i) => {
         const daySessions = sessionsByDate[dateStr] ?? [];

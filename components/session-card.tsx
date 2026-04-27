@@ -83,17 +83,14 @@ function WorkoutPlanBlock({
   regenerating: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const previewBlocks = plan.blocks.slice(0, 3);
 
   return (
     <div className="border-t pt-2 space-y-1.5">
       <div className="flex items-center justify-between">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 flex items-center gap-1"
-        >
-          <span>Workout plan</span>
-          <span className="text-gray-300">{open ? "▲" : "▼"}</span>
-        </button>
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">
+          Workout plan
+        </span>
         <button
           onClick={onRegenerate}
           disabled={regenerating}
@@ -103,12 +100,31 @@ function WorkoutPlanBlock({
         </button>
       </div>
 
+      {/* Always visible: goal + target + block labels preview */}
+      <p className="text-xs font-medium text-gray-700">{plan.goal}</p>
+      {plan.target && (
+        <p className="text-[11px] text-indigo-600">{plan.target}</p>
+      )}
+      <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[10px] text-gray-400">
+        {previewBlocks.map((b, i) => (
+          <span key={i}>
+            {b.label} {b.durationMin}m{i < previewBlocks.length - 1 ? " ·" : ""}
+          </span>
+        ))}
+        {plan.blocks.length > 3 && (
+          <span>· +{plan.blocks.length - 3} more</span>
+        )}
+      </div>
+
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-[10px] text-indigo-400 underline"
+      >
+        {open ? "Hide details" : "Show full plan"}
+      </button>
+
       {open && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-gray-700">Goal: {plan.goal}</p>
-          {plan.target && (
-            <p className="text-[11px] text-indigo-600">Target: {plan.target}</p>
-          )}
           <div className="space-y-1.5">
             {plan.blocks.map((block, i) => (
               <div key={i} className="rounded bg-gray-50 px-2 py-1">
@@ -140,10 +156,6 @@ function WorkoutPlanBlock({
             </div>
           )}
         </div>
-      )}
-
-      {!open && plan.summary && (
-        <p className="text-[11px] text-gray-400 italic">{plan.summary}</p>
       )}
     </div>
   );

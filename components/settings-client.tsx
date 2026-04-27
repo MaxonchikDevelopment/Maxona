@@ -724,6 +724,11 @@ export function SettingsClient({
       <section className="space-y-3">
         <h2 className="font-semibold">Hybrid Race Profile</h2>
         <p className="text-xs text-gray-400">Default format for station-circuit workout plans.</p>
+        <p className="text-xs text-gray-400">
+          Typical format: 3 rounds × 8 stations, 60s work / 20s transition.
+          <br />
+          Rounds = how many times you repeat all 8 stations. One round = 8 stations.
+        </p>
         <label className="block text-sm">
           Default format
           <select value={hybridFormat} onChange={(e) => setHybridFormat(e.target.value)}
@@ -745,12 +750,13 @@ export function SettingsClient({
               className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
           </label>
           <label className="block text-sm">
-            Rest (sec)
+            Rest / transition (sec)
             <input type="number" value={hybridRestSec} onChange={(e) => setHybridRestSec(e.target.value)}
               className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
           </label>
           <label className="block text-sm">
             Rounds
+            <span className="block text-[10px] text-gray-400">= full station list repeats</span>
             <input type="number" value={hybridRounds} onChange={(e) => setHybridRounds(e.target.value)}
               className="mt-1 block w-full rounded border px-2 py-1 text-sm" />
           </label>
