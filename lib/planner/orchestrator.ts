@@ -7,7 +7,7 @@ import { minRestHardSessions } from "@/lib/rules/min-rest-hard-sessions";
 import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { parseFamilyConstraints } from "@/lib/ai/parse-family-constraints";
-import { renderChangeExplanation, type ChangeSummaryPayload } from "@/lib/ai/coach-advice";
+import { renderChangeExplanation, renderNextWeekDraftSummary, type ChangeSummaryPayload } from "@/lib/ai/coach-advice";
 import { enforceExplicitPreferences } from "@/lib/planner/preference-constraints";
 import { parseLLMPreferences } from "@/lib/ai/parse-training-preferences";
 import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
@@ -888,6 +888,14 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     data: { status: "archived" },
   });
 
+  const deterministicSummary = buildDeterministicFocusSummary(validSessions, unmetPreferences);
+  const focusSummary = await renderNextWeekDraftSummary({
+    sessions: validSessions,
+    deterministicSummary,
+    parsedPreferences: parsedPreferences ?? undefined,
+    unmetPreferences,
+  });
+
   return prisma.trainingPlan.create({
     data: {
       userId: USER_ID,
@@ -896,7 +904,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
       status: "draft",
       revision: 1,
       replanReason: "weekly review",
-      focusSummary: buildDeterministicFocusSummary(validSessions, unmetPreferences),
+      focusSummary,
       goals: {
         create: goals.map((g) => ({ goalId: g.id })),
       },
