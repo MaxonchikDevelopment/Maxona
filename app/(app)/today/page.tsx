@@ -415,15 +415,11 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
       )}
 
       {/* Missing energy callout */}
-      {!hasEnergy && nutritionProfileHasWeight(advice) === false && (
+      {!hasEnergy && (
         <p className="text-[10px] text-green-500 italic">
           Add rest-day calorie target in Settings → Nutrition Profile for rough energy estimates.
         </p>
       )}
     </div>
   );
-}
-
-function nutritionProfileHasWeight(_advice: NutritionAdvice): boolean {
-  return false;
 }
