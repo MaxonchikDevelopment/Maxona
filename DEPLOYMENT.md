@@ -67,12 +67,27 @@ curl -X POST https://www.strava.com/api/v3/push_subscriptions \
 
 The webhook endpoint is publicly accessible (no auth cookie required).
 
-## Prisma migrations on Vercel
+## Prisma on Vercel
 
-Vercel does not run `prisma migrate deploy` automatically.
-Either:
-- Run it manually from your local machine against the production `DIRECT_URL`, or
-- Add a build step: in Vercel's build command use `prisma migrate deploy && next build`
+### Client generation (handled automatically)
+
+The build script in `package.json` is `prisma generate && next build`.
+This regenerates the Prisma Client from `schema.prisma` on every Vercel build,
+regardless of `node_modules` cache state. No manual action required.
+
+### Migrations (manual step required per schema change)
+
+Vercel does not run `prisma migrate deploy` automatically. After every schema change:
+
+```bash
+# Run against production DB using DIRECT_URL (not the pooler URL)
+DATABASE_URL="<direct_url>" npx prisma migrate deploy
+```
+
+Or use the helper script locally:
+```bash
+DIRECT_URL="<direct_url>" DATABASE_URL="<direct_url>" npm run db:deploy
+```
 
 ## Security checklist before going live
 
