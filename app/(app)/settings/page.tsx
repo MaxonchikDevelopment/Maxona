@@ -1,18 +1,19 @@
 import { prisma } from "@/lib/prisma";
 import { SettingsClient } from "@/components/settings-client";
 import type { StravaConnectionProp } from "@/components/strava-settings";
-import type { TrainingProfileProp, HybridProfileProp } from "@/components/settings-client";
+import type { TrainingProfileProp, HybridProfileProp, NutritionProfileProp } from "@/components/settings-client";
 
 export const dynamic = "force-dynamic";
 
 const USER_ID = "user_maxon";
 
 export default async function SettingsPage() {
-  const [user, stravaConn, trainingProfileRaw, hybridProfileRaw] = await Promise.all([
+  const [user, stravaConn, trainingProfileRaw, hybridProfileRaw, nutritionProfileRaw] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: USER_ID } }),
     prisma.stravaConnection.findUnique({ where: { userId: USER_ID } }),
     prisma.userTrainingProfile.findUnique({ where: { userId: USER_ID } }),
     prisma.hybridRaceProfile.findUnique({ where: { userId: USER_ID } }),
+    prisma.nutritionProfile.findUnique({ where: { userId: USER_ID } }),
   ]);
 
   const stravaConnection: StravaConnectionProp = stravaConn
@@ -43,6 +44,18 @@ export default async function SettingsPage() {
       }
     : null;
 
+  const nutritionProfile: NutritionProfileProp | null = nutritionProfileRaw
+    ? {
+        dietNotes: nutritionProfileRaw.dietNotes,
+        avoidFoods: nutritionProfileRaw.avoidFoods,
+        preferredBreakfast: nutritionProfileRaw.preferredBreakfast,
+        preferredPreWorkoutSnack: nutritionProfileRaw.preferredPreWorkoutSnack,
+        preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
+        caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
+        stomachSensitive: nutritionProfileRaw.stomachSensitive,
+      }
+    : null;
+
   return (
     <SettingsClient
       initialConstraints={(user.constraints ?? {}) as Record<string, unknown>}
@@ -51,6 +64,7 @@ export default async function SettingsPage() {
       initialStravaConnection={stravaConnection}
       initialTrainingProfile={trainingProfile}
       initialHybridProfile={hybridProfile}
+      initialNutritionProfile={nutritionProfile}
     />
   );
 }

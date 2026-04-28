@@ -6,6 +6,7 @@ import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp } from "@/components/strava-panel";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
 import { ADHERENCE_LABEL } from "@/components/workout-feedback-section";
+import type { NutritionAdvice } from "@/lib/ai/nutrition-advice";
 
 export type CheckInProp = {
   id: string;
@@ -57,6 +58,7 @@ export type SessionProp = {
   stravaConnected?: boolean;
   workoutPlan?: WorkoutPlanProp | null;
   workoutFeedback?: WorkoutFeedbackChipProp | null;
+  nutritionAdvice?: NutritionAdvice | null;
 };
 
 // Keyword list mirrors lib/checkin-utils.ts — kept inline to avoid server-only imports in client bundle
@@ -90,11 +92,13 @@ function WorkoutPlanBlock({
   sessionId,
   onRegenerate,
   regenerating,
+  nutritionAdvice,
 }: {
   plan: WorkoutPlanProp;
   sessionId: string;
   onRegenerate: () => void;
   regenerating: boolean;
+  nutritionAdvice?: NutritionAdvice | null;
 }) {
   const [open, setOpen] = useState(false);
   const previewBlocks = plan.blocks.slice(0, 3);
@@ -173,6 +177,26 @@ function WorkoutPlanBlock({
               ))}
             </div>
           )}
+          {nutritionAdvice && (
+            <div className="rounded bg-green-50 px-2 py-1.5 space-y-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Fueling</p>
+              {nutritionAdvice.before.map((b, i) => (
+                <p key={i} className="text-[11px] text-green-800">
+                  <span className="font-medium">Before:</span> {b}
+                </p>
+              ))}
+              {nutritionAdvice.during.map((d, i) => (
+                <p key={i} className="text-[11px] text-green-800">
+                  <span className="font-medium">During:</span> {d}
+                </p>
+              ))}
+              {nutritionAdvice.after.map((a, i) => (
+                <p key={i} className="text-[11px] text-green-800">
+                  <span className="font-medium">After:</span> {a}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -195,6 +219,7 @@ export function SessionCard({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(session.status === "done" || !!session.checkIn);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlanProp | null>(session.workoutPlan ?? null);
+  const nutritionAdvice = session.nutritionAdvice ?? null;
   const [planGenerating, setPlanGenerating] = useState(false);
   const isFuture = todayStr ? session.scheduledDate > todayStr : false;
 
@@ -368,6 +393,7 @@ export function SessionCard({
           sessionId={session.id}
           onRegenerate={generatePlan}
           regenerating={planGenerating}
+          nutritionAdvice={nutritionAdvice}
         />
       ) : (
         <div className="border-t pt-2">

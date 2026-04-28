@@ -92,6 +92,7 @@ model User {
   hybridRaceProfile   HybridRaceProfile?
   workoutPlans        SessionWorkoutPlan[]
   workoutFeedbacks    SessionWorkoutFeedback[]
+  nutritionProfile    NutritionProfile?
 }
 
 model AvailabilityWindow {
@@ -371,4 +372,20 @@ model SessionWorkoutFeedback {
 
   session TrainingSession @relation(fields: [sessionId], references: [id])
   user    User            @relation(fields: [userId], references: [id])
+}
+
+model NutritionProfile {
+  id                       String   @id @default(cuid())
+  userId                   String   @unique
+  dietNotes                String?
+  avoidFoods               String?
+  preferredBreakfast       String?
+  preferredPreWorkoutSnack String?
+  preferredPostWorkoutMeal String?
+  caffeineSensitive        Boolean  @default(false)
+  stomachSensitive         Boolean  @default(false)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
 }

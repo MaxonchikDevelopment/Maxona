@@ -6,6 +6,8 @@ import { DailyReadinessCard } from "@/components/daily-readiness-card";
 import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
+import { generateNutritionAdvice } from "@/lib/ai/nutrition-advice";
+import type { NutritionAdvice } from "@/lib/ai/nutrition-advice";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
@@ -100,7 +102,7 @@ export default async function TodayPage() {
   const stravaConnection = await prisma.stravaConnection.findUnique({ where: { userId: USER_ID } });
   const stravaConnected = !!stravaConnection;
 
-  const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession] =
+  const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession, nutritionProfileRaw] =
     await Promise.all([
       prisma.trainingSession.findMany({
         where: {
@@ -132,7 +134,42 @@ export default async function TodayPage() {
         },
         orderBy: { scheduledDate: "asc" },
       }),
+      prisma.nutritionProfile.findUnique({ where: { userId: USER_ID } }),
     ]);
+
+  // Generate nutrition advice once for the day if there are sessions scheduled
+  let nutritionAdvice: NutritionAdvice | null = null;
+  if (sessions.length > 0) {
+    try {
+      nutritionAdvice = await generateNutritionAdvice({
+        sessions: sessions.map((s) => ({
+          intensity: s.intensity,
+          durationMin: s.durationMin,
+          notes: s.notes,
+        })),
+        readiness: readinessRecord
+          ? {
+              feelScore: readinessRecord.feelScore,
+              notes: readinessRecord.notes,
+              tags: readinessRecord.tags,
+              category: readinessRecord.category,
+            }
+          : null,
+        nutritionProfile: nutritionProfileRaw
+          ? {
+              dietNotes: nutritionProfileRaw.dietNotes,
+              avoidFoods: nutritionProfileRaw.avoidFoods,
+              preferredPreWorkoutSnack: nutritionProfileRaw.preferredPreWorkoutSnack,
+              preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
+              caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
+              stomachSensitive: nutritionProfileRaw.stomachSensitive,
+            }
+          : null,
+      });
+    } catch {
+      nutritionAdvice = null;
+    }
+  }
 
   const props: SessionProp[] = sessions.map((s) => ({
     id: s.id,
@@ -183,6 +220,7 @@ export default async function TodayPage() {
           summary: s.workoutPlan.summary,
         } satisfies WorkoutPlanProp)
       : null,
+    nutritionAdvice,
   }));
 
   const activeIssues: IssueItem[] = injuryCheckIns
@@ -243,6 +281,31 @@ export default async function TodayPage() {
             <div className="flex items-start gap-1.5 rounded bg-amber-50 px-2.5 py-2">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-500 shrink-0 mt-0.5">Recovery</span>
               <p className="text-xs text-amber-700">{implicationLine}</p>
+            </div>
+          )}
+          {nutritionAdvice && (
+            <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Nutrition today</p>
+              {nutritionAdvice.before.map((b, i) => (
+                <p key={i} className="text-xs text-green-800">
+                  <span className="font-medium">Before:</span> {b}
+                </p>
+              ))}
+              {nutritionAdvice.during.map((d, i) => (
+                <p key={i} className="text-xs text-green-800">
+                  <span className="font-medium">During:</span> {d}
+                </p>
+              ))}
+              {nutritionAdvice.after.map((a, i) => (
+                <p key={i} className="text-xs text-green-800">
+                  <span className="font-medium">After:</span> {a}
+                </p>
+              ))}
+              {nutritionAdvice.hydration.map((h, i) => (
+                <p key={i} className="text-xs text-green-800">
+                  <span className="font-medium">Hydration:</span> {h}
+                </p>
+              ))}
             </div>
           )}
           <ManualSessionForm defaultDate={todayStr} />

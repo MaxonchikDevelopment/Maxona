@@ -4,6 +4,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StravaSettings } from "@/components/strava-settings";
 import type { StravaConnectionProp } from "@/components/strava-settings";
 
+export type NutritionProfileProp = {
+  dietNotes: string | null;
+  avoidFoods: string | null;
+  preferredBreakfast: string | null;
+  preferredPreWorkoutSnack: string | null;
+  preferredPostWorkoutMeal: string | null;
+  caffeineSensitive: boolean;
+  stomachSensitive: boolean;
+};
+
 export type TrainingProfileProp = {
   restingHr: number | null;
   maxHr: number | null;
@@ -85,6 +95,7 @@ export function SettingsClient({
   initialStravaConnection,
   initialTrainingProfile,
   initialHybridProfile,
+  initialNutritionProfile,
 }: {
   initialConstraints: Constraints;
   userName: string;
@@ -92,6 +103,7 @@ export function SettingsClient({
   initialStravaConnection: StravaConnectionProp;
   initialTrainingProfile?: TrainingProfileProp | null;
   initialHybridProfile?: HybridProfileProp | null;
+  initialNutritionProfile?: NutritionProfileProp | null;
 }) {
   const qc = useQueryClient();
 
@@ -187,6 +199,38 @@ export function SettingsClient({
     onSuccess: () => {
       setHybridProfileSaved(true);
       setTimeout(() => setHybridProfileSaved(false), 2000);
+    },
+  });
+
+  // --- Nutrition Profile ---
+  const in_ = initialNutritionProfile;
+  const [nutDietNotes, setNutDietNotes] = useState(in_?.dietNotes ?? "");
+  const [nutAvoidFoods, setNutAvoidFoods] = useState(in_?.avoidFoods ?? "");
+  const [nutBreakfast, setNutBreakfast] = useState(in_?.preferredBreakfast ?? "");
+  const [nutPreSnack, setNutPreSnack] = useState(in_?.preferredPreWorkoutSnack ?? "");
+  const [nutPostMeal, setNutPostMeal] = useState(in_?.preferredPostWorkoutMeal ?? "");
+  const [nutCaffeine, setNutCaffeine] = useState(in_?.caffeineSensitive ?? false);
+  const [nutStomach, setNutStomach] = useState(in_?.stomachSensitive ?? false);
+  const [nutritionSaved, setNutritionSaved] = useState(false);
+
+  const saveNutritionProfile = useMutation({
+    mutationFn: () =>
+      fetch("/api/nutrition/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dietNotes: nutDietNotes || null,
+          avoidFoods: nutAvoidFoods || null,
+          preferredBreakfast: nutBreakfast || null,
+          preferredPreWorkoutSnack: nutPreSnack || null,
+          preferredPostWorkoutMeal: nutPostMeal || null,
+          caffeineSensitive: nutCaffeine,
+          stomachSensitive: nutStomach,
+        }),
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      setNutritionSaved(true);
+      setTimeout(() => setNutritionSaved(false), 2000);
     },
   });
 
@@ -774,6 +818,81 @@ export function SettingsClient({
           className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
         >
           {hybridProfileSaved ? "Saved" : saveHybridProfile.isPending ? "Saving..." : "Save Hybrid Race profile"}
+        </button>
+      </section>
+
+      {/* Nutrition Profile */}
+      <section className="space-y-3">
+        <h2 className="font-semibold">Nutrition Profile</h2>
+        <p className="text-xs text-gray-400">Used to personalise daily and per-session fueling advice.</p>
+        <label className="block text-sm">
+          Diet notes
+          <textarea
+            value={nutDietNotes}
+            onChange={(e) => setNutDietNotes(e.target.value)}
+            placeholder="e.g. plant-based, low-carb, intermittent fasting…"
+            rows={2}
+            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block text-sm">
+          Foods to avoid
+          <textarea
+            value={nutAvoidFoods}
+            onChange={(e) => setNutAvoidFoods(e.target.value)}
+            placeholder="e.g. dairy, gluten, nuts…"
+            rows={2}
+            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block text-sm">
+          Preferred pre-workout snack
+          <input
+            type="text"
+            value={nutPreSnack}
+            onChange={(e) => setNutPreSnack(e.target.value)}
+            placeholder="e.g. banana + peanut butter"
+            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block text-sm">
+          Preferred post-workout meal
+          <input
+            type="text"
+            value={nutPostMeal}
+            onChange={(e) => setNutPostMeal(e.target.value)}
+            placeholder="e.g. rice + chicken + veggies"
+            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+          />
+        </label>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={nutCaffeine}
+              onChange={(e) => setNutCaffeine(e.target.checked)}
+            />
+            Caffeine sensitive
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={nutStomach}
+              onChange={(e) => setNutStomach(e.target.checked)}
+            />
+            Stomach sensitive (keep pre-workout food very light)
+          </label>
+        </div>
+        <button
+          onClick={() => saveNutritionProfile.mutate()}
+          disabled={saveNutritionProfile.isPending}
+          className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+        >
+          {nutritionSaved
+            ? "Saved"
+            : saveNutritionProfile.isPending
+            ? "Saving..."
+            : "Save nutrition profile"}
         </button>
       </section>
 
