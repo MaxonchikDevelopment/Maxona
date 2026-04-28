@@ -326,17 +326,32 @@ function EnergyRow({ label, value }: { label: string; value: string }) {
 }
 
 function MealRow({ meal }: { meal: MealTimingItem }) {
+  const hasItems = (meal.items?.length ?? 0) > 0;
   return (
-    <div className="flex gap-2 text-xs text-green-800">
-      <span className="shrink-0 font-medium text-green-600 w-10">{meal.time}</span>
-      <span className="flex-1">
-        <span className="font-medium">{meal.label}</span>
-        {" — "}
-        {meal.suggestion}
-        {meal.approxCalories != null && (
-          <span className="text-green-600"> (~{meal.approxCalories} kcal)</span>
-        )}
-      </span>
+    <div className="space-y-0.5">
+      <div className="flex gap-2 text-xs text-green-800">
+        <span className="shrink-0 font-medium text-green-600 w-10">{meal.time}</span>
+        <span className="flex-1">
+          <span className="font-medium">{meal.label}</span>
+          {" — "}
+          {meal.suggestion}
+          {meal.approxCalories != null && (
+            <span className="text-green-600"> (~{meal.approxCalories} kcal)</span>
+          )}
+        </span>
+      </div>
+      {hasItems && (
+        <div className="ml-12 space-y-0.5">
+          {meal.items!.map((item, i) => (
+            <p key={i} className="text-[11px] text-green-700">
+              · {item.name} — {item.amount}
+              {item.kcal != null && (
+                <span className="text-green-500"> ({item.kcal} kcal)</span>
+              )}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -347,6 +362,7 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
   const hasBefore = advice.before.length > 0;
   const hasDuring = advice.during.length > 0;
   const hasAfter = advice.after.length > 0;
+  const mealTotal = advice.mealTiming.reduce((sum, m) => sum + (m.approxCalories ?? 0), 0);
 
   return (
     <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-2">
@@ -376,6 +392,13 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
           {advice.mealTiming.map((meal, i) => (
             <MealRow key={i} meal={meal} />
           ))}
+          {mealTotal > 0 && hasEnergy && (
+            <p className="text-[11px] text-green-700 font-medium border-t border-green-100 pt-1">
+              Meal total ≈ {mealTotal.toLocaleString()} kcal · Target ≈ {advice.energy!.targetCalories.toLocaleString()} kcal
+              {" · "}
+              <span className="font-normal text-green-600">{advice.energy!.balanceNote}</span>
+            </p>
+          )}
         </div>
       )}
 

@@ -12,7 +12,13 @@ export function normalizeCoachBullets(text: string): string {
     .map((b) => b.trim())
     .filter((b) => b.length > 0)
     .map((b) => (b.startsWith("•") ? b : `• ${b.replace(/^[-]\s*/, "")}`))
-    .slice(0, 3);
+    .slice(0, 4);
 
   return bullets.join("\n\n");
+}
+
+export function stripMarkdownBold(s: string): string {
+  return s
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1");
 }

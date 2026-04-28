@@ -3,11 +3,18 @@ import type { DayEnergyEstimate } from "@/lib/nutrition/energy-estimate";
 
 const client = new Anthropic();
 
+export type MealItem = {
+  name: string;
+  amount: string;
+  kcal: number | null;
+};
+
 export type MealTimingItem = {
   time: string;
   label: string;
   suggestion: string;
   approxCalories: number | null;
+  items?: MealItem[];
 };
 
 export type NutritionAdvice = {
@@ -75,6 +82,79 @@ const FALLBACK: NutritionAdvice = {
   hydration: ["Aim for 2–3 L water today; sip consistently"],
 };
 
+function buildDeterministicMeals(targetKcal: number): MealTimingItem[] {
+  const b = Math.round(targetKcal * 0.20);
+  const l = Math.round(targetKcal * 0.33);
+  const s = Math.round(targetKcal * 0.12);
+  const d = targetKcal - b - l - s;
+
+  return [
+    {
+      time: "08:00",
+      label: "Breakfast",
+      suggestion: "Oats with banana and yogurt",
+      approxCalories: b,
+      items: [
+        { name: "oats (dry)", amount: "70–80 g", kcal: Math.round(b * 0.40) },
+        { name: "banana", amount: "1 medium / 120 g", kcal: Math.round(b * 0.25) },
+        { name: "Greek yogurt", amount: "150 g", kcal: Math.round(b * 0.28) },
+        { name: "honey", amount: "10 g", kcal: Math.round(b * 0.07) },
+      ],
+    },
+    {
+      time: "12:30",
+      label: "Lunch",
+      suggestion: "Pasta with chicken and vegetables",
+      approxCalories: l,
+      items: [
+        { name: "dry pasta", amount: "100–110 g", kcal: Math.round(l * 0.40) },
+        { name: "cooked chicken", amount: "160–180 g", kcal: Math.round(l * 0.33) },
+        { name: "frozen vegetables", amount: "250 g", kcal: Math.round(l * 0.08) },
+        { name: "olive oil", amount: "10 g", kcal: Math.round(l * 0.12) },
+        { name: "parmesan / tomato sauce", amount: "20–30 g", kcal: Math.round(l * 0.07) },
+      ],
+    },
+    {
+      time: "16:00",
+      label: "Snack",
+      suggestion: "Rice cakes with peanut butter",
+      approxCalories: s,
+      items: [
+        { name: "rice cakes", amount: "3 cakes / 30 g", kcal: Math.round(s * 0.40) },
+        { name: "peanut butter", amount: "20–25 g", kcal: Math.round(s * 0.60) },
+      ],
+    },
+    {
+      time: "19:30",
+      label: "Dinner",
+      suggestion: "Rice with fish and vegetables",
+      approxCalories: d,
+      items: [
+        { name: "dry rice", amount: "90–100 g", kcal: Math.round(d * 0.38) },
+        { name: "cooked fish", amount: "150–180 g", kcal: Math.round(d * 0.28) },
+        { name: "frozen vegetables", amount: "250 g", kcal: Math.round(d * 0.08) },
+        { name: "olive oil", amount: "10 g", kcal: Math.round(d * 0.10) },
+        { name: "sauce / seasoning", amount: "to taste", kcal: Math.round(d * 0.16) },
+      ],
+    },
+  ];
+}
+
+function validateAndNormalizeMeals(
+  meals: MealTimingItem[],
+  targetKcal: number | null | undefined
+): MealTimingItem[] {
+  if (!targetKcal || targetKcal <= 0 || meals.length === 0) return meals;
+
+  const mealTotal = meals.reduce((sum, m) => sum + (m.approxCalories ?? 0), 0);
+  if (mealTotal === 0) return buildDeterministicMeals(targetKcal);
+
+  const ratio = mealTotal / targetKcal;
+  if (ratio >= 0.90 && ratio <= 1.10) return meals;
+
+  return buildDeterministicMeals(targetKcal);
+}
+
 export async function generateNutritionAdvice(
   input: NutritionAdviceInput
 ): Promise<NutritionAdvice> {
@@ -117,11 +197,15 @@ export async function generateNutritionAdvice(
     (s) => `${s.intensity} · ${s.durationMin} min${s.notes ? ` · ${s.notes}` : ""}`
   );
 
-  const hasMinGap = p?.minHoursAfterMainMealBeforeWorkout != null;
+  const targetKcal = input.energy?.targetCalories ?? null;
 
   const energyContext = input.energy
     ? `Energy estimate: passive ${input.energy.passiveCalories} kcal + training ${input.energy.activeCalories} kcal = target ${input.energy.targetCalories} kcal (${input.energy.balanceNote})`
     : "No calorie estimate available (bodyWeightKg or estimatedRestDayCalories missing).";
+
+  const mealTarget = targetKcal
+    ? `IMPORTANT: The sum of all meal approxCalories MUST approximately equal ${targetKcal} kcal. Distribute: ~20% breakfast, ~33% lunch, ~12% snack, ~35% dinner.`
+    : "";
 
   const prompt = `You are a practical sports nutrition coach. Generate compact, actionable fueling advice for today.
 
@@ -148,11 +232,17 @@ Rules:
 - Use preferredFoods and user staples for concrete suggestions first (rice, chicken, pasta, fish, bulgur, couscous, vegetables, olive oil, oats).
 - Suggest realistic quick-cook meals. Cooking times: ${p?.cookingTimePreference ?? "no preference"}.
 
-mealTiming: suggest 2–4 practical meals for TODAY ONLY. Each item:
+mealTiming: suggest 2–4 practical meals for TODAY ONLY.
+${mealTarget}
+For each meal:
 - "time": HH:MM (24h, realistic for the day)
-- "label": e.g. "Breakfast", "Lunch", "Pre-workout snack", "Dinner", "Post-workout meal"
-- "suggestion": one sentence: what exactly to cook/eat (use user's preferred foods)
-- "approxCalories": integer approximate kcal, or null if cannot estimate
+- "label": "Breakfast" | "Lunch" | "Pre-workout snack" | "Dinner" | "Post-workout meal"
+- "suggestion": short title e.g. "Pasta with chicken and vegetables"
+- "approxCalories": integer kcal for this meal (must be consistent with the items sum)
+- "items": 3–5 main ingredients:
+  - "name": ingredient name
+  - "amount": practical weight/portion — use DRY weight for pasta/rice/grains (e.g. "100–110 g dry pasta"), COOKED weight for meat/fish (e.g. "150–180 g cooked chicken"), grams for vegetables/oils (e.g. "250 g frozen vegetables", "10 g olive oil")
+  - "kcal": integer approximate kcal for this item
 
 before / after / hydration: max 2 bullets each, max 15 words each.
 summary: one sentence max 20 words describing today's fueling focus.
@@ -162,7 +252,19 @@ Return ONLY valid JSON:
 {
   "summary": "...",
   "mealTiming": [
-    { "time": "12:00", "label": "Lunch", "suggestion": "...", "approxCalories": 750 }
+    {
+      "time": "12:30",
+      "label": "Lunch",
+      "suggestion": "Pasta with chicken and vegetables",
+      "approxCalories": 800,
+      "items": [
+        { "name": "dry pasta", "amount": "100–110 g", "kcal": 350 },
+        { "name": "cooked chicken", "amount": "160–180 g", "kcal": 250 },
+        { "name": "frozen vegetables", "amount": "250 g", "kcal": 80 },
+        { "name": "olive oil", "amount": "10 g", "kcal": 90 },
+        { "name": "parmesan", "amount": "20 g", "kcal": 80 }
+      ]
+    }
   ],
   "before": ["..."],
   "during": [],
@@ -174,7 +276,7 @@ Return ONLY valid JSON:
   try {
     const message = await client.messages.create({
       model: process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
-      max_tokens: 700,
+      max_tokens: 1024,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -188,20 +290,43 @@ Return ONLY valid JSON:
 
     const parsed = JSON.parse(jsonMatch[0]) as Partial<NutritionAdvice>;
 
-    const mealTiming: MealTimingItem[] = Array.isArray(parsed.mealTiming)
+    const stripBold = (s: string) =>
+      s.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/__([^_]+)__/g, "$1");
+
+    const rawMeals: MealTimingItem[] = Array.isArray(parsed.mealTiming)
       ? parsed.mealTiming
           .filter((m) => m && typeof m === "object" && m.time && m.label && m.suggestion)
           .slice(0, 4)
           .map((m) => ({
             time: String(m.time),
             label: String(m.label),
-            suggestion: String(m.suggestion),
+            suggestion: stripBold(String(m.suggestion)),
             approxCalories: typeof m.approxCalories === "number" ? m.approxCalories : null,
+            items: Array.isArray(m.items)
+              ? m.items
+                  .filter(
+                    (i) =>
+                      i &&
+                      typeof i === "object" &&
+                      typeof (i as MealItem).name === "string" &&
+                      typeof (i as MealItem).amount === "string"
+                  )
+                  .map((i) => ({
+                    name: stripBold(String((i as MealItem).name ?? "")),
+                    amount: String((i as MealItem).amount ?? ""),
+                    kcal:
+                      typeof (i as MealItem).kcal === "number"
+                        ? (i as MealItem).kcal
+                        : null,
+                  }))
+              : undefined,
           }))
       : [];
 
+    const mealTiming = validateAndNormalizeMeals(rawMeals, targetKcal);
+
     return {
-      summary: typeof parsed.summary === "string" ? parsed.summary : FALLBACK.summary,
+      summary: typeof parsed.summary === "string" ? stripBold(parsed.summary) : FALLBACK.summary,
       energy: input.energy ?? null,
       mealTiming,
       before: Array.isArray(parsed.before) && parsed.before.length > 0 ? parsed.before : (isRestDay ? [] : FALLBACK.before),

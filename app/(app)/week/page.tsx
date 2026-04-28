@@ -6,7 +6,7 @@ import { ReplanButton } from "@/components/replan-button";
 import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
-import { normalizeCoachBullets } from "@/lib/format-bullets";
+import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
@@ -308,14 +308,18 @@ export default async function WeekPage() {
       <ActiveIssues initialIssues={activeIssues} />
 
       {plan.focusSummary && (
-        <div className="rounded border border-blue-100 bg-blue-50 px-3 py-3 space-y-1.5">
+        <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2.5 space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">Coach focus</p>
-          {normalizeCoachBullets(plan.focusSummary)
-            .split("\n\n")
-            .filter((l) => l.trim())
-            .map((line, i) => (
-              <p key={i} className="text-sm text-blue-800">{line}</p>
-            ))}
+          <ul className="space-y-1">
+            {normalizeCoachBullets(plan.focusSummary)
+              .split("\n\n")
+              .filter((l) => l.trim())
+              .map((line, i) => (
+                <li key={i} className="text-xs text-blue-800">
+                  · {line.replace(/^[•·]\s*/, "")}
+                </li>
+              ))}
+          </ul>
         </div>
       )}
       {plan.changeExplanation && (
@@ -337,7 +341,7 @@ export default async function WeekPage() {
           <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Weekly nutrition focus</p>
           <ul className="space-y-1">
             {weeklyNutritionFocus.bullets.map((b, i) => (
-              <li key={i} className="text-xs text-green-800">· {b}</li>
+              <li key={i} className="text-xs text-green-800">· {stripMarkdownBold(b)}</li>
             ))}
           </ul>
         </div>

@@ -7,3 +7,4 @@ coverage
 .DS_Store
 .vercel
 tsconfig.tsbuildinfo
+.env*.local
