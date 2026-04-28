@@ -60,6 +60,9 @@ export default async function SettingsPage() {
         preferredFoods: nutritionProfileRaw.preferredFoods,
         supplements: nutritionProfileRaw.supplements,
         cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
+        bodyWeightKg: nutritionProfileRaw.bodyWeightKg,
+        estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
+        calorieGoal: nutritionProfileRaw.calorieGoal,
       }
     : null;
 

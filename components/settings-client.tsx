@@ -19,6 +19,9 @@ export type NutritionProfileProp = {
   preferredFoods: string | null;
   supplements: string | null;
   cookingTimePreference: string | null;
+  bodyWeightKg: number | null;
+  estimatedRestDayCalories: number | null;
+  calorieGoal: string | null;
 };
 
 export type TrainingProfileProp = {
@@ -225,6 +228,9 @@ export function SettingsClient({
   const [nutPreferredFoods, setNutPreferredFoods] = useState(in_?.preferredFoods ?? "");
   const [nutSupplements, setNutSupplements] = useState(in_?.supplements ?? "");
   const [nutCookingPref, setNutCookingPref] = useState(in_?.cookingTimePreference ?? "");
+  const [nutBodyWeight, setNutBodyWeight] = useState(String(in_?.bodyWeightKg ?? ""));
+  const [nutRestCalories, setNutRestCalories] = useState(String(in_?.estimatedRestDayCalories ?? ""));
+  const [nutCalorieGoal, setNutCalorieGoal] = useState(in_?.calorieGoal ?? "maintain");
   const [nutritionSaved, setNutritionSaved] = useState(false);
 
   const saveNutritionProfile = useMutation({
@@ -247,6 +253,9 @@ export function SettingsClient({
           preferredFoods: nutPreferredFoods || null,
           supplements: nutSupplements || null,
           cookingTimePreference: nutCookingPref || null,
+          bodyWeightKg: nutBodyWeight ? Number(nutBodyWeight) : null,
+          estimatedRestDayCalories: nutRestCalories ? Number(nutRestCalories) : null,
+          calorieGoal: nutCalorieGoal || null,
         }),
       }).then((r) => r.json()),
     onSuccess: () => {
@@ -965,7 +974,53 @@ export function SettingsClient({
           </label>
         </div>
 
-        {/* Section 4 — Optional details */}
+        {/* Section 4 — Energy estimate */}
+        <div className="space-y-2.5">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Energy estimate</p>
+            <p className="text-xs text-gray-400 mt-0.5">Used only for rough daily guidance. This is not calorie tracking.</p>
+          </div>
+          <label className="block text-sm">
+            Body weight (kg)
+            <input
+              type="number"
+              min={30}
+              max={200}
+              step={0.5}
+              value={nutBodyWeight}
+              onChange={(e) => setNutBodyWeight(e.target.value)}
+              placeholder="e.g. 78"
+              className="mt-1 block w-24 rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Estimated rest-day calories
+            <input
+              type="number"
+              min={1000}
+              max={5000}
+              step={50}
+              value={nutRestCalories}
+              onChange={(e) => setNutRestCalories(e.target.value)}
+              placeholder="e.g. 2300"
+              className="mt-1 block w-32 rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Goal
+            <select
+              value={nutCalorieGoal}
+              onChange={(e) => setNutCalorieGoal(e.target.value)}
+              className="mt-1 block w-48 rounded border px-3 py-1.5 text-sm"
+            >
+              <option value="maintain">Maintain</option>
+              <option value="slight_surplus">Slight surplus</option>
+              <option value="slight_deficit">Slight deficit</option>
+            </select>
+          </label>
+        </div>
+
+        {/* Section 5 — Optional details */}
         <div className="space-y-2.5">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Optional details</p>
           <label className="block text-sm">

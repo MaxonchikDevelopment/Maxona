@@ -22,6 +22,8 @@ export type WeeklyNutritionFocusInput = {
     avoidFoods?: string | null;
     supplements?: string | null;
     cookingTimePreference?: string | null;
+    calorieGoal?: string | null;
+    estimatedRestDayCalories?: number | null;
   } | null;
 };
 
@@ -54,6 +56,8 @@ export async function generateWeeklyNutritionFocus(
   if (p?.avoidFoods) profileParts.push(`Avoid: ${p.avoidFoods}`);
   if (p?.supplements) profileParts.push(`Supplements: ${p.supplements}`);
   if (p?.cookingTimePreference) profileParts.push(`Cooking style: ${p.cookingTimePreference}`);
+  if (p?.calorieGoal) profileParts.push(`Calorie goal: ${p.calorieGoal.replace("_", " ")}`);
+  if (p?.estimatedRestDayCalories) profileParts.push(`Rest-day calorie target: ${p.estimatedRestDayCalories} kcal`);
 
   const prompt = `You are a practical sports nutrition coach. Based on this week's training, write 3–4 concise weekly fueling priorities.
 
@@ -63,10 +67,12 @@ ${sessionLines.join("\n")}
 ${profileParts.length > 0 ? `Athlete profile:\n${profileParts.join("\n")}` : "No nutrition profile — use generic safe advice."}
 
 Rules:
-- Identify which days need better fueling, where hydration is critical, where recovery meals matter most
+- Identify which days need most fueling — name them (e.g. "Sunday long run: highest fuel day")
+- For evening training days, mention using lunch as the main fueling meal
 - Flag hard or long sessions (75+ min or hard intensity) as key fueling days
-- If schedule has blocked/rest days, note portable or simple meal options if useful
+- If rest days exist, remind to keep meals regular and avoid under-fueling
 - If nutritionGoal or meal pattern suggests under-fueling risk, call it out
+- Keep week-level view — no per-day calorie tables
 - Each bullet max 20 words. Practical, coach-style language. No medical claims.
 - Return exactly 3 or 4 bullets.
 

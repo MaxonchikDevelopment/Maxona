@@ -130,6 +130,8 @@ export default async function WeekPage() {
       avoidFoods: string | null;
       supplements: string | null;
       cookingTimePreference: string | null;
+      calorieGoal: string | null;
+      estimatedRestDayCalories: number | null;
     } | null>,
   ]);
 
@@ -225,7 +227,20 @@ export default async function WeekPage() {
         durationMin: s.durationMin,
         notes: s.notes,
       })),
-      nutritionProfile: nutritionProfileRaw,
+      nutritionProfile: nutritionProfileRaw
+        ? {
+            nutritionGoal: nutritionProfileRaw.nutritionGoal,
+            currentMealPattern: nutritionProfileRaw.currentMealPattern,
+            stomachSensitive: nutritionProfileRaw.stomachSensitive,
+            caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
+            preferredFoods: nutritionProfileRaw.preferredFoods,
+            avoidFoods: nutritionProfileRaw.avoidFoods,
+            supplements: nutritionProfileRaw.supplements,
+            cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
+            calorieGoal: nutritionProfileRaw.calorieGoal,
+            estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
+          }
+        : null,
     });
   } catch {
     weeklyNutritionFocus = null;

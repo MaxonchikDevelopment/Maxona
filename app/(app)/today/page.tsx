@@ -7,7 +7,9 @@ import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { generateNutritionAdvice } from "@/lib/ai/nutrition-advice";
-import type { NutritionAdvice } from "@/lib/ai/nutrition-advice";
+import { estimateDayEnergy } from "@/lib/nutrition/energy-estimate";
+import type { NutritionAdvice, MealTimingItem } from "@/lib/ai/nutrition-advice";
+import type { DayEnergyEstimate } from "@/lib/nutrition/energy-estimate";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
@@ -26,7 +28,6 @@ function buildImplicationLine(
     nextPlanned?.notes?.split(":")[0].trim() ??
     (nextPlanned ? nextPlanned.intensity : null);
 
-  // 1. Active injury from past check-ins
   if (activeIssues.length > 0) {
     const issue = activeIssues[0];
     const issueLabel = issue.sessionNotes?.split(":")[0].trim() ?? "injury";
@@ -36,7 +37,6 @@ function buildImplicationLine(
     return `${issueLabel} still active — hard sessions blocked`;
   }
 
-  // 2. Today's workout check-in was bad
   if (latestCheckIn && latestCheckIn.feelScore <= 3) {
     if (latestCheckIn.category === "injury") {
       const sport = latestCheckIn.sessionNotes?.split(":")[0].trim() ?? "session";
@@ -53,7 +53,6 @@ function buildImplicationLine(
     }
   }
 
-  // 3. Readiness-based signals
   if (!readiness) return null;
 
   if (readiness.category === "injury" && readiness.feelScore <= 3) {
@@ -72,7 +71,6 @@ function buildImplicationLine(
     return "Poor recovery signal — tomorrow's session may be shorter";
   }
 
-  // 4. All good with next session reference
   if (nextPlanned && readiness.feelScore >= 5) {
     return `Plan on track — ${nextLabel} ahead`;
   }
@@ -90,8 +88,6 @@ export default async function TodayPage() {
     day: "2-digit",
   }).format(new Date());
 
-  // Shared rollover — activates next-week draft if its Monday has arrived,
-  // regardless of which page the user opened first.
   if (await activateDraftIfReady(USER_ID, todayStr)) {
     redirect("/today");
   }
@@ -137,15 +133,27 @@ export default async function TodayPage() {
       prisma.nutritionProfile.findUnique({ where: { userId: USER_ID } }),
     ]);
 
-  // Generate nutrition advice for the day — always, including rest days
+  const sessionInputs = sessions.map((s) => ({
+    intensity: s.intensity,
+    durationMin: s.durationMin,
+    notes: s.notes,
+  }));
+
+  const energy: DayEnergyEstimate | null = estimateDayEnergy({
+    sessions: sessionInputs,
+    nutritionProfile: nutritionProfileRaw
+      ? {
+          bodyWeightKg: nutritionProfileRaw.bodyWeightKg,
+          estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
+          calorieGoal: nutritionProfileRaw.calorieGoal,
+        }
+      : null,
+  });
+
   let nutritionAdvice: NutritionAdvice | null = null;
   try {
     nutritionAdvice = await generateNutritionAdvice({
-      sessions: sessions.map((s) => ({
-        intensity: s.intensity,
-        durationMin: s.durationMin,
-        notes: s.notes,
-      })),
+      sessions: sessionInputs,
       readiness: readinessRecord
         ? {
             feelScore: readinessRecord.feelScore,
@@ -158,6 +166,7 @@ export default async function TodayPage() {
         ? {
             dietNotes: nutritionProfileRaw.dietNotes,
             avoidFoods: nutritionProfileRaw.avoidFoods,
+            preferredBreakfast: nutritionProfileRaw.preferredBreakfast,
             preferredPreWorkoutSnack: nutritionProfileRaw.preferredPreWorkoutSnack,
             preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
             caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
@@ -169,8 +178,12 @@ export default async function TodayPage() {
             preferredFoods: nutritionProfileRaw.preferredFoods,
             supplements: nutritionProfileRaw.supplements,
             cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
+            bodyWeightKg: nutritionProfileRaw.bodyWeightKg,
+            estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
+            calorieGoal: nutritionProfileRaw.calorieGoal,
           }
         : null,
+      energy,
     });
   } catch {
     nutritionAdvice = null;
@@ -252,7 +265,6 @@ export default async function TodayPage() {
       }
     : null;
 
-  // Worst (lowest feel) check-in from today's sessions
   const todayCheckIn = sessions
     .filter((s) => s.checkIn)
     .map((s) => ({
@@ -298,34 +310,120 @@ export default async function TodayPage() {
   );
 }
 
-function NutritionCard({ advice }: { advice: NutritionAdvice }) {
+const GOAL_LABELS: Record<string, string> = {
+  maintain: "Maintain",
+  slight_surplus: "Slight surplus",
+  slight_deficit: "Slight deficit",
+};
+
+function EnergyRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-1.5">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Nutrition today</p>
-      <p className="text-xs font-medium text-green-700">{advice.summary}</p>
-      {advice.before.map((b, i) => (
-        <p key={i} className="text-xs text-green-800">
-          <span className="font-medium">Before:</span> {b}
-        </p>
-      ))}
-      {advice.during.map((d, i) => (
-        <p key={i} className="text-xs text-green-800">
-          <span className="font-medium">During:</span> {d}
-        </p>
-      ))}
-      {advice.after.map((a, i) => (
-        <p key={i} className="text-xs text-green-800">
-          <span className="font-medium">After:</span> {a}
-        </p>
-      ))}
-      {advice.hydration.map((h, i) => (
-        <p key={i} className="text-xs text-green-800">
-          <span className="font-medium">Hydration:</span> {h}
-        </p>
-      ))}
+    <div className="flex justify-between text-xs text-green-800">
+      <span className="text-green-600">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function MealRow({ meal }: { meal: MealTimingItem }) {
+  return (
+    <div className="flex gap-2 text-xs text-green-800">
+      <span className="shrink-0 font-medium text-green-600 w-10">{meal.time}</span>
+      <span className="flex-1">
+        <span className="font-medium">{meal.label}</span>
+        {" — "}
+        {meal.suggestion}
+        {meal.approxCalories != null && (
+          <span className="text-green-600"> (~{meal.approxCalories} kcal)</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function NutritionCard({ advice }: { advice: NutritionAdvice }) {
+  const hasEnergy = advice.energy != null;
+  const hasMeals = advice.mealTiming.length > 0;
+  const hasBefore = advice.before.length > 0;
+  const hasDuring = advice.during.length > 0;
+  const hasAfter = advice.after.length > 0;
+
+  return (
+    <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-2">
+      {/* Focus */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Nutrition today</p>
+        <p className="text-xs font-medium text-green-700 mt-0.5">{advice.summary}</p>
+      </div>
+
+      {/* Energy estimate */}
+      {hasEnergy && (
+        <div className="rounded bg-green-100/60 px-2.5 py-2 space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-green-500">Energy estimate</p>
+          <EnergyRow label="Passive" value={`≈${advice.energy!.passiveCalories.toLocaleString()} kcal`} />
+          {advice.energy!.activeCalories > 0 && (
+            <EnergyRow label="Training" value={`+${advice.energy!.activeCalories.toLocaleString()} kcal`} />
+          )}
+          <EnergyRow label="Target today" value={`≈${advice.energy!.targetCalories.toLocaleString()} kcal`} />
+          <p className="text-[10px] text-green-500 italic">{advice.energy!.balanceNote}</p>
+        </div>
+      )}
+
+      {/* Meal timing */}
+      {hasMeals && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-green-500">Meal timing</p>
+          {advice.mealTiming.map((meal, i) => (
+            <MealRow key={i} meal={meal} />
+          ))}
+        </div>
+      )}
+
+      {/* Before / During / After */}
+      {(hasBefore || hasDuring || hasAfter) && (
+        <div className="space-y-1">
+          {hasBefore && advice.before.map((b, i) => (
+            <p key={i} className="text-xs text-green-800">
+              <span className="font-medium">Before:</span> {b}
+            </p>
+          ))}
+          {hasDuring && advice.during.map((d, i) => (
+            <p key={i} className="text-xs text-green-800">
+              <span className="font-medium">During:</span> {d}
+            </p>
+          ))}
+          {hasAfter && advice.after.map((a, i) => (
+            <p key={i} className="text-xs text-green-800">
+              <span className="font-medium">After:</span> {a}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Hydration */}
+      {advice.hydration.length > 0 && (
+        <div className="space-y-0.5">
+          {advice.hydration.map((h, i) => (
+            <p key={i} className="text-xs text-green-800">· {h}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Timing note */}
       {advice.timingNote && (
         <p className="text-xs text-green-600 italic">{advice.timingNote}</p>
       )}
+
+      {/* Missing energy callout */}
+      {!hasEnergy && nutritionProfileHasWeight(advice) === false && (
+        <p className="text-[10px] text-green-500 italic">
+          Add rest-day calorie target in Settings → Nutrition Profile for rough energy estimates.
+        </p>
+      )}
     </div>
   );
+}
+
+function nutritionProfileHasWeight(_advice: NutritionAdvice): boolean {
+  return false;
 }

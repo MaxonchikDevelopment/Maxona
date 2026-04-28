@@ -26,6 +26,9 @@ export async function PATCH(req: Request) {
     preferredFoods?: string | null;
     supplements?: string | null;
     cookingTimePreference?: string | null;
+    bodyWeightKg?: number | null;
+    estimatedRestDayCalories?: number | null;
+    calorieGoal?: string | null;
   };
 
   const data = {
@@ -43,6 +46,9 @@ export async function PATCH(req: Request) {
     preferredFoods: body.preferredFoods ?? null,
     supplements: body.supplements ?? null,
     cookingTimePreference: body.cookingTimePreference ?? null,
+    bodyWeightKg: body.bodyWeightKg ?? null,
+    estimatedRestDayCalories: body.estimatedRestDayCalories ?? null,
+    calorieGoal: body.calorieGoal ?? null,
   };
 
   const profile = await prisma.nutritionProfile.upsert({
