@@ -12,6 +12,13 @@ export type NutritionProfileProp = {
   preferredPostWorkoutMeal: string | null;
   caffeineSensitive: boolean;
   stomachSensitive: boolean;
+  currentMealPattern: string | null;
+  nutritionGoal: string | null;
+  minHoursAfterMainMealBeforeWorkout: number | null;
+  preWorkoutSnackTolerance: string | null;
+  preferredFoods: string | null;
+  supplements: string | null;
+  cookingTimePreference: string | null;
 };
 
 export type TrainingProfileProp = {
@@ -211,6 +218,13 @@ export function SettingsClient({
   const [nutPostMeal, setNutPostMeal] = useState(in_?.preferredPostWorkoutMeal ?? "");
   const [nutCaffeine, setNutCaffeine] = useState(in_?.caffeineSensitive ?? false);
   const [nutStomach, setNutStomach] = useState(in_?.stomachSensitive ?? false);
+  const [nutMealPattern, setNutMealPattern] = useState(in_?.currentMealPattern ?? "");
+  const [nutGoal, setNutGoal] = useState(in_?.nutritionGoal ?? "");
+  const [nutMealGap, setNutMealGap] = useState(String(in_?.minHoursAfterMainMealBeforeWorkout ?? ""));
+  const [nutSnackTolerance, setNutSnackTolerance] = useState(in_?.preWorkoutSnackTolerance ?? "");
+  const [nutPreferredFoods, setNutPreferredFoods] = useState(in_?.preferredFoods ?? "");
+  const [nutSupplements, setNutSupplements] = useState(in_?.supplements ?? "");
+  const [nutCookingPref, setNutCookingPref] = useState(in_?.cookingTimePreference ?? "");
   const [nutritionSaved, setNutritionSaved] = useState(false);
 
   const saveNutritionProfile = useMutation({
@@ -226,6 +240,13 @@ export function SettingsClient({
           preferredPostWorkoutMeal: nutPostMeal || null,
           caffeineSensitive: nutCaffeine,
           stomachSensitive: nutStomach,
+          currentMealPattern: nutMealPattern || null,
+          nutritionGoal: nutGoal || null,
+          minHoursAfterMainMealBeforeWorkout: nutMealGap ? Number(nutMealGap) : null,
+          preWorkoutSnackTolerance: nutSnackTolerance || null,
+          preferredFoods: nutPreferredFoods || null,
+          supplements: nutSupplements || null,
+          cookingTimePreference: nutCookingPref || null,
         }),
       }).then((r) => r.json()),
     onSuccess: () => {
@@ -822,67 +843,163 @@ export function SettingsClient({
       </section>
 
       {/* Nutrition Profile */}
-      <section className="space-y-3">
-        <h2 className="font-semibold">Nutrition Profile</h2>
-        <p className="text-xs text-gray-400">Used to personalise daily and per-session fueling advice.</p>
-        <label className="block text-sm">
-          Diet notes
-          <textarea
-            value={nutDietNotes}
-            onChange={(e) => setNutDietNotes(e.target.value)}
-            placeholder="e.g. plant-based, low-carb, intermittent fasting…"
-            rows={2}
-            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-          />
-        </label>
-        <label className="block text-sm">
-          Foods to avoid
-          <textarea
-            value={nutAvoidFoods}
-            onChange={(e) => setNutAvoidFoods(e.target.value)}
-            placeholder="e.g. dairy, gluten, nuts…"
-            rows={2}
-            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-          />
-        </label>
-        <label className="block text-sm">
-          Preferred pre-workout snack
-          <input
-            type="text"
-            value={nutPreSnack}
-            onChange={(e) => setNutPreSnack(e.target.value)}
-            placeholder="e.g. banana + peanut butter"
-            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-          />
-        </label>
-        <label className="block text-sm">
-          Preferred post-workout meal
-          <input
-            type="text"
-            value={nutPostMeal}
-            onChange={(e) => setNutPostMeal(e.target.value)}
-            placeholder="e.g. rice + chicken + veggies"
-            className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
-          />
-        </label>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm">
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-semibold">Nutrition Profile</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Personalises daily and weekly fueling guidance.</p>
+        </div>
+
+        {/* Section 1 — Routine */}
+        <div className="space-y-2.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Routine</p>
+          <label className="block text-sm">
+            Current meal pattern
             <input
-              type="checkbox"
-              checked={nutCaffeine}
-              onChange={(e) => setNutCaffeine(e.target.checked)}
+              type="text"
+              value={nutMealPattern}
+              onChange={(e) => setNutMealPattern(e.target.value)}
+              placeholder="e.g. 3 meals, skip breakfast, IF 16:8…"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
             />
-            Caffeine sensitive
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="block text-sm">
+            Nutrition goal
             <input
-              type="checkbox"
-              checked={nutStomach}
-              onChange={(e) => setNutStomach(e.target.checked)}
+              type="text"
+              value={nutGoal}
+              onChange={(e) => setNutGoal(e.target.value)}
+              placeholder="e.g. better energy, avoid under-fueling, body recomp…"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
             />
-            Stomach sensitive (keep pre-workout food very light)
           </label>
         </div>
+
+        {/* Section 2 — Pre-workout tolerance */}
+        <div className="space-y-2.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Pre-workout tolerance</p>
+          <label className="block text-sm">
+            Min gap after main meal before workout (hours)
+            <input
+              type="number"
+              min={1}
+              max={6}
+              value={nutMealGap}
+              onChange={(e) => setNutMealGap(e.target.value)}
+              placeholder="e.g. 2"
+              className="mt-1 block w-24 rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Pre-workout snack tolerance
+            <input
+              type="text"
+              value={nutSnackTolerance}
+              onChange={(e) => setNutSnackTolerance(e.target.value)}
+              placeholder="e.g. handles solid food fine, liquid only, nothing within 1h…"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={nutStomach}
+                onChange={(e) => setNutStomach(e.target.checked)}
+              />
+              Stomach sensitive
+              <span className="text-xs text-gray-400">— keep pre-workout food very light</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={nutCaffeine}
+                onChange={(e) => setNutCaffeine(e.target.checked)}
+              />
+              Caffeine sensitive
+            </label>
+          </div>
+        </div>
+
+        {/* Section 3 — Foods that work */}
+        <div className="space-y-2.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Foods that work</p>
+          <label className="block text-sm">
+            Preferred foods / easy staples
+            <input
+              type="text"
+              value={nutPreferredFoods}
+              onChange={(e) => setNutPreferredFoods(e.target.value)}
+              placeholder="e.g. oats, eggs, rice, sweet potato…"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Foods to avoid
+            <input
+              type="text"
+              value={nutAvoidFoods}
+              onChange={(e) => setNutAvoidFoods(e.target.value)}
+              placeholder="e.g. dairy, gluten, nuts…"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Preferred pre-workout snack
+            <input
+              type="text"
+              value={nutPreSnack}
+              onChange={(e) => setNutPreSnack(e.target.value)}
+              placeholder="e.g. banana + peanut butter"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Preferred post-workout meal
+            <input
+              type="text"
+              value={nutPostMeal}
+              onChange={(e) => setNutPostMeal(e.target.value)}
+              placeholder="e.g. rice + chicken + veggies"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+
+        {/* Section 4 — Optional details */}
+        <div className="space-y-2.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Optional details</p>
+          <label className="block text-sm">
+            Supplements
+            <input
+              type="text"
+              value={nutSupplements}
+              onChange={(e) => setNutSupplements(e.target.value)}
+              placeholder="e.g. creatine, magnesium, vitamin D…"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Cooking style / time preference
+            <input
+              type="text"
+              value={nutCookingPref}
+              onChange={(e) => setNutCookingPref(e.target.value)}
+              placeholder="e.g. quick meals under 20 min, batch cook weekends…"
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            Diet notes
+            <textarea
+              value={nutDietNotes}
+              onChange={(e) => setNutDietNotes(e.target.value)}
+              placeholder="e.g. plant-based, low-carb, intermittent fasting…"
+              rows={2}
+              className="mt-1 block w-full rounded border px-3 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+
         <button
           onClick={() => saveNutritionProfile.mutate()}
           disabled={saveNutritionProfile.isPending}

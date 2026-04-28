@@ -8,6 +8,7 @@ export type NutritionAdvice = {
   after: string[];
   hydration: string[];
   summary: string;
+  timingNote?: string;
 };
 
 export type NutritionAdviceInput = {
@@ -29,7 +30,22 @@ export type NutritionAdviceInput = {
     preferredPostWorkoutMeal?: string | null;
     caffeineSensitive?: boolean;
     stomachSensitive?: boolean;
+    currentMealPattern?: string | null;
+    nutritionGoal?: string | null;
+    minHoursAfterMainMealBeforeWorkout?: number | null;
+    preWorkoutSnackTolerance?: string | null;
+    preferredFoods?: string | null;
+    supplements?: string | null;
+    cookingTimePreference?: string | null;
   } | null;
+};
+
+const REST_DAY_ADVICE: NutritionAdvice = {
+  before: [],
+  during: [],
+  after: [],
+  hydration: ["Aim for 2–3 L water today", "Consistent sipping helps recovery"],
+  summary: "Rest day — focus on balanced meals and steady hydration.",
 };
 
 const FALLBACK: NutritionAdvice = {
@@ -43,26 +59,30 @@ const FALLBACK: NutritionAdvice = {
 export async function generateNutritionAdvice(
   input: NutritionAdviceInput
 ): Promise<NutritionAdvice> {
-  if (input.sessions.length === 0) return FALLBACK;
+  if (input.sessions.length === 0) return REST_DAY_ADVICE;
 
-  const isStomachSensitive = input.nutritionProfile?.stomachSensitive ?? false;
+  const p = input.nutritionProfile;
+  const isStomachSensitive = p?.stomachSensitive ?? false;
   const poorRecovery =
     input.readiness?.tags?.some((t) =>
       ["alcohol", "poor_sleep", "sickness"].includes(t)
     ) ?? false;
 
   const profileParts: string[] = [];
-  if (input.nutritionProfile?.dietNotes)
-    profileParts.push(`Diet notes: ${input.nutritionProfile.dietNotes}`);
-  if (input.nutritionProfile?.avoidFoods)
-    profileParts.push(`Avoid: ${input.nutritionProfile.avoidFoods}`);
-  if (input.nutritionProfile?.preferredPreWorkoutSnack)
-    profileParts.push(`Preferred pre-workout snack: ${input.nutritionProfile.preferredPreWorkoutSnack}`);
-  if (input.nutritionProfile?.preferredPostWorkoutMeal)
-    profileParts.push(`Preferred post-workout meal: ${input.nutritionProfile.preferredPostWorkoutMeal}`);
-  if (input.nutritionProfile?.caffeineSensitive)
-    profileParts.push("Caffeine sensitive");
-  if (isStomachSensitive) profileParts.push("Stomach sensitive — keep food very light");
+  if (p?.currentMealPattern) profileParts.push(`Meal pattern: ${p.currentMealPattern}`);
+  if (p?.nutritionGoal) profileParts.push(`Nutrition goal: ${p.nutritionGoal}`);
+  if (p?.dietNotes) profileParts.push(`Diet notes: ${p.dietNotes}`);
+  if (p?.avoidFoods) profileParts.push(`Avoid: ${p.avoidFoods}`);
+  if (p?.preferredFoods) profileParts.push(`Preferred foods / easy staples: ${p.preferredFoods}`);
+  if (p?.preferredPreWorkoutSnack) profileParts.push(`Preferred pre-workout snack: ${p.preferredPreWorkoutSnack}`);
+  if (p?.preWorkoutSnackTolerance) profileParts.push(`Pre-workout snack tolerance: ${p.preWorkoutSnackTolerance}`);
+  if (p?.preferredPostWorkoutMeal) profileParts.push(`Preferred post-workout meal: ${p.preferredPostWorkoutMeal}`);
+  if (p?.minHoursAfterMainMealBeforeWorkout != null)
+    profileParts.push(`Min gap after main meal before workout: ${p.minHoursAfterMainMealBeforeWorkout}h`);
+  if (p?.supplements) profileParts.push(`Supplements (routine): ${p.supplements}`);
+  if (p?.cookingTimePreference) profileParts.push(`Cooking preference: ${p.cookingTimePreference}`);
+  if (p?.caffeineSensitive) profileParts.push("Caffeine sensitive");
+  if (isStomachSensitive) profileParts.push("Stomach sensitive — keep pre-workout food very light");
 
   const readinessParts: string[] = [];
   if (input.readiness) {
@@ -76,7 +96,9 @@ export async function generateNutritionAdvice(
     (s) => `${s.intensity} · ${s.durationMin} min${s.notes ? ` · ${s.notes}` : ""}`
   );
 
-  const prompt = `You are a practical sports nutrition coach. Generate compact, actionable fueling advice.
+  const hasMinGap = p?.minHoursAfterMainMealBeforeWorkout != null;
+
+  const prompt = `You are a practical sports nutrition coach. Generate compact, actionable fueling advice for today.
 
 Sessions today:
 ${sessionParts.join("\n")}
@@ -87,12 +109,17 @@ ${profileParts.length > 0 ? `Athlete nutrition profile:\n${profileParts.join("\n
 
 Rules:
 - No medical claims.
-- Stomach sensitive or stomach in profile → keep food very light and conservative.
+- Stomach sensitive → keep pre-workout food very light and conservative.
 - Poor recovery signals (alcohol, poor_sleep, sickness tags) → emphasize hydration + conservative fueling.
-- Easy session < 60 min → simple advice, no during-session food needed; return [] for "during".
+- Easy session < 60 min → simple advice, no during-session food; return [] for "during".
 - Hard or long session (75+ min, or hard intensity) → include carbs and hydration guidance.
+- If preferredFoods or preferredPreWorkoutSnack exist, use them as examples in before/after bullets.
+- If supplements exist, include one short reminder bullet in "after" (routine only, no claims).
+- If meal pattern suggests skipping breakfast and nutritionGoal mentions energy or under-fueling, suggest a small practical breakfast in "before".
+- If minHoursAfterMainMealBeforeWorkout is set, ${hasMinGap ? "include a timingNote about the gap" : "omit timingNote"}.
 - Max 2 bullets per section. Each bullet max 15 words.
-- If during-session fueling is not needed, return [] for "during".
+- summary: one sentence max 20 words describing today's fueling focus.
+- timingNote: only include if meal timing guidance is relevant (e.g. min gap rule applies). Otherwise omit.
 
 Return ONLY valid JSON, no other text:
 {
@@ -100,13 +127,14 @@ Return ONLY valid JSON, no other text:
   "during": [],
   "after": ["..."],
   "hydration": ["..."],
-  "summary": "one sentence max 20 words"
+  "summary": "one sentence",
+  "timingNote": "optional one sentence or omit key"
 }`;
 
   try {
     const message = await client.messages.create({
       model: process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
-      max_tokens: 400,
+      max_tokens: 450,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -132,6 +160,10 @@ Return ONLY valid JSON, no other text:
         : FALLBACK.hydration,
       summary:
         typeof parsed.summary === "string" ? parsed.summary : FALLBACK.summary,
+      timingNote:
+        typeof parsed.timingNote === "string" && parsed.timingNote.trim()
+          ? parsed.timingNote
+          : undefined,
     };
   } catch {
     return FALLBACK;

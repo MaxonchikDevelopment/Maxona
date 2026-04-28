@@ -7,6 +7,8 @@ import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { normalizeCoachBullets } from "@/lib/format-bullets";
+import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
+import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { IssueItem } from "@/components/active-issues";
 import type { StravaLinkProp } from "@/components/strava-panel";
@@ -104,16 +106,32 @@ export default async function WeekPage() {
   // Readiness chip: only today's non-ok signal is relevant on the week view.
   // Yesterday's readiness is stale — hide it so it doesn't linger as a false warning.
   const todayDate = new Date(todayStr + "T00:00:00Z");
-  const latestReadiness = planRaw
-    ? await prisma.dailyReadiness.findFirst({
-        where: {
-          userId: USER_ID,
-          date: { gte: todayDate },
-          category: { not: "ok" },
-        },
-        orderBy: { date: "desc" },
-      })
-    : null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pc = prisma as any;
+
+  const [latestReadiness, nutritionProfileRaw] = await Promise.all([
+    planRaw
+      ? pc.dailyReadiness.findFirst({
+          where: {
+            userId: USER_ID,
+            date: { gte: todayDate },
+            category: { not: "ok" },
+          },
+          orderBy: { date: "desc" },
+        }) as Promise<{ id: string; category: string; feelScore: number; tags: unknown } | null>
+      : Promise.resolve(null),
+    pc.nutritionProfile.findUnique({ where: { userId: USER_ID } }) as Promise<{
+      nutritionGoal: string | null;
+      currentMealPattern: string | null;
+      stomachSensitive: boolean;
+      caffeineSensitive: boolean;
+      preferredFoods: string | null;
+      avoidFoods: string | null;
+      supplements: string | null;
+      cookingTimePreference: string | null;
+    } | null>,
+  ]);
 
   const activeIssues: IssueItem[] = injuryCheckIns
     .filter((ci) => categorizeCheckIn(ci.feelScore, ci.notes) === "injury")
@@ -149,9 +167,6 @@ export default async function WeekPage() {
   // Batch-load Strava links for all sessions — avoids doubly-nested include type issues
   const stravaLinksBySession: Record<string, StravaLinkProp[]> = {};
   const workoutPlansBySession: Record<string, WorkoutPlanProp> = {};
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pc = prisma as any;
 
   if (stravaConnected) {
     const allLinks = await pc.sessionStravaActivityLink.findMany({
@@ -198,6 +213,22 @@ export default async function WeekPage() {
         summary: wp.summary,
       };
     }
+  }
+
+  // Generate weekly nutrition focus in parallel with session data assembly
+  let weeklyNutritionFocus: WeeklyNutritionFocus | null = null;
+  try {
+    weeklyNutritionFocus = await generateWeeklyNutritionFocus({
+      sessions: plan.sessions.map((s) => ({
+        dateStr: toDateStr(s.scheduledDate),
+        intensity: s.intensity,
+        durationMin: s.durationMin,
+        notes: s.notes,
+      })),
+      nutritionProfile: nutritionProfileRaw,
+    });
+  } catch {
+    weeklyNutritionFocus = null;
   }
 
   const sessionsByDate: Record<string, SessionProp[]> = {};
@@ -283,6 +314,17 @@ export default async function WeekPage() {
                 <p key={i}>{line}</p>
               ))}
           </div>
+        </div>
+      )}
+
+      {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
+        <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Weekly nutrition focus</p>
+          <ul className="space-y-1">
+            {weeklyNutritionFocus.bullets.map((b, i) => (
+              <li key={i} className="text-xs text-green-800">· {b}</li>
+            ))}
+          </ul>
         </div>
       )}
 

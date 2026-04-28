@@ -137,38 +137,43 @@ export default async function TodayPage() {
       prisma.nutritionProfile.findUnique({ where: { userId: USER_ID } }),
     ]);
 
-  // Generate nutrition advice once for the day if there are sessions scheduled
+  // Generate nutrition advice for the day — always, including rest days
   let nutritionAdvice: NutritionAdvice | null = null;
-  if (sessions.length > 0) {
-    try {
-      nutritionAdvice = await generateNutritionAdvice({
-        sessions: sessions.map((s) => ({
-          intensity: s.intensity,
-          durationMin: s.durationMin,
-          notes: s.notes,
-        })),
-        readiness: readinessRecord
-          ? {
-              feelScore: readinessRecord.feelScore,
-              notes: readinessRecord.notes,
-              tags: readinessRecord.tags,
-              category: readinessRecord.category,
-            }
-          : null,
-        nutritionProfile: nutritionProfileRaw
-          ? {
-              dietNotes: nutritionProfileRaw.dietNotes,
-              avoidFoods: nutritionProfileRaw.avoidFoods,
-              preferredPreWorkoutSnack: nutritionProfileRaw.preferredPreWorkoutSnack,
-              preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
-              caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
-              stomachSensitive: nutritionProfileRaw.stomachSensitive,
-            }
-          : null,
-      });
-    } catch {
-      nutritionAdvice = null;
-    }
+  try {
+    nutritionAdvice = await generateNutritionAdvice({
+      sessions: sessions.map((s) => ({
+        intensity: s.intensity,
+        durationMin: s.durationMin,
+        notes: s.notes,
+      })),
+      readiness: readinessRecord
+        ? {
+            feelScore: readinessRecord.feelScore,
+            notes: readinessRecord.notes,
+            tags: readinessRecord.tags,
+            category: readinessRecord.category,
+          }
+        : null,
+      nutritionProfile: nutritionProfileRaw
+        ? {
+            dietNotes: nutritionProfileRaw.dietNotes,
+            avoidFoods: nutritionProfileRaw.avoidFoods,
+            preferredPreWorkoutSnack: nutritionProfileRaw.preferredPreWorkoutSnack,
+            preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
+            caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
+            stomachSensitive: nutritionProfileRaw.stomachSensitive,
+            currentMealPattern: nutritionProfileRaw.currentMealPattern,
+            nutritionGoal: nutritionProfileRaw.nutritionGoal,
+            minHoursAfterMainMealBeforeWorkout: nutritionProfileRaw.minHoursAfterMainMealBeforeWorkout,
+            preWorkoutSnackTolerance: nutritionProfileRaw.preWorkoutSnackTolerance,
+            preferredFoods: nutritionProfileRaw.preferredFoods,
+            supplements: nutritionProfileRaw.supplements,
+            cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
+          }
+        : null,
+    });
+  } catch {
+    nutritionAdvice = null;
   }
 
   const props: SessionProp[] = sessions.map((s) => ({
@@ -270,6 +275,7 @@ export default async function TodayPage() {
       {props.length === 0 ? (
         <div className="space-y-2">
           <p className="text-sm text-gray-500">Rest day — nothing scheduled.</p>
+          {nutritionAdvice && <NutritionCard advice={nutritionAdvice} />}
           <ManualSessionForm defaultDate={todayStr} />
         </div>
       ) : (
@@ -283,35 +289,43 @@ export default async function TodayPage() {
               <p className="text-xs text-amber-700">{implicationLine}</p>
             </div>
           )}
-          {nutritionAdvice && (
-            <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Nutrition today</p>
-              {nutritionAdvice.before.map((b, i) => (
-                <p key={i} className="text-xs text-green-800">
-                  <span className="font-medium">Before:</span> {b}
-                </p>
-              ))}
-              {nutritionAdvice.during.map((d, i) => (
-                <p key={i} className="text-xs text-green-800">
-                  <span className="font-medium">During:</span> {d}
-                </p>
-              ))}
-              {nutritionAdvice.after.map((a, i) => (
-                <p key={i} className="text-xs text-green-800">
-                  <span className="font-medium">After:</span> {a}
-                </p>
-              ))}
-              {nutritionAdvice.hydration.map((h, i) => (
-                <p key={i} className="text-xs text-green-800">
-                  <span className="font-medium">Hydration:</span> {h}
-                </p>
-              ))}
-            </div>
-          )}
+          {nutritionAdvice && <NutritionCard advice={nutritionAdvice} />}
           <ManualSessionForm defaultDate={todayStr} />
         </div>
       )}
       <ActiveIssues initialIssues={activeIssues} />
     </main>
+  );
+}
+
+function NutritionCard({ advice }: { advice: NutritionAdvice }) {
+  return (
+    <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Nutrition today</p>
+      <p className="text-xs font-medium text-green-700">{advice.summary}</p>
+      {advice.before.map((b, i) => (
+        <p key={i} className="text-xs text-green-800">
+          <span className="font-medium">Before:</span> {b}
+        </p>
+      ))}
+      {advice.during.map((d, i) => (
+        <p key={i} className="text-xs text-green-800">
+          <span className="font-medium">During:</span> {d}
+        </p>
+      ))}
+      {advice.after.map((a, i) => (
+        <p key={i} className="text-xs text-green-800">
+          <span className="font-medium">After:</span> {a}
+        </p>
+      ))}
+      {advice.hydration.map((h, i) => (
+        <p key={i} className="text-xs text-green-800">
+          <span className="font-medium">Hydration:</span> {h}
+        </p>
+      ))}
+      {advice.timingNote && (
+        <p className="text-xs text-green-600 italic">{advice.timingNote}</p>
+      )}
+    </div>
   );
 }

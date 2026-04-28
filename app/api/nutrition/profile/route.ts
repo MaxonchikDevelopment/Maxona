@@ -19,6 +19,13 @@ export async function PATCH(req: Request) {
     preferredPostWorkoutMeal?: string | null;
     caffeineSensitive?: boolean;
     stomachSensitive?: boolean;
+    currentMealPattern?: string | null;
+    nutritionGoal?: string | null;
+    minHoursAfterMainMealBeforeWorkout?: number | null;
+    preWorkoutSnackTolerance?: string | null;
+    preferredFoods?: string | null;
+    supplements?: string | null;
+    cookingTimePreference?: string | null;
   };
 
   const data = {
@@ -29,6 +36,13 @@ export async function PATCH(req: Request) {
     preferredPostWorkoutMeal: body.preferredPostWorkoutMeal ?? null,
     caffeineSensitive: body.caffeineSensitive ?? false,
     stomachSensitive: body.stomachSensitive ?? false,
+    currentMealPattern: body.currentMealPattern ?? null,
+    nutritionGoal: body.nutritionGoal ?? null,
+    minHoursAfterMainMealBeforeWorkout: body.minHoursAfterMainMealBeforeWorkout ?? null,
+    preWorkoutSnackTolerance: body.preWorkoutSnackTolerance ?? null,
+    preferredFoods: body.preferredFoods ?? null,
+    supplements: body.supplements ?? null,
+    cookingTimePreference: body.cookingTimePreference ?? null,
   };
 
   const profile = await prisma.nutritionProfile.upsert({

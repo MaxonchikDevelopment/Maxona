@@ -53,6 +53,13 @@ export default async function SettingsPage() {
         preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
         caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
         stomachSensitive: nutritionProfileRaw.stomachSensitive,
+        currentMealPattern: nutritionProfileRaw.currentMealPattern,
+        nutritionGoal: nutritionProfileRaw.nutritionGoal,
+        minHoursAfterMainMealBeforeWorkout: nutritionProfileRaw.minHoursAfterMainMealBeforeWorkout,
+        preWorkoutSnackTolerance: nutritionProfileRaw.preWorkoutSnackTolerance,
+        preferredFoods: nutritionProfileRaw.preferredFoods,
+        supplements: nutritionProfileRaw.supplements,
+        cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
       }
     : null;
 
