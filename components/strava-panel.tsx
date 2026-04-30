@@ -257,6 +257,9 @@ export function StravaPanel({
               {syncing ? "Syncing…" : "Sync latest"}
             </button>
           </div>
+          <p className="text-[9px] text-gray-300 mb-0.5">
+            New activities auto-import via webhook · Sync latest is a fallback
+          </p>
           {loadingPicker ? (
             <p className="text-xs text-gray-400">Loading…</p>
           ) : available.length === 0 ? (
