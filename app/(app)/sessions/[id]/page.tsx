@@ -6,6 +6,9 @@ import { deriveWorkoutIntent } from "@/lib/ai/workout-plan";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
 import { CoachViewActions } from "@/components/coach-view-actions";
 import { WorkoutFeedbackSection } from "@/components/workout-feedback-section";
+import { SessionAnalytics } from "@/components/session-analytics";
+import { AnalyzeStreamButton } from "@/components/analyze-stream-button";
+import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
 import type { WorkoutBlock } from "@/components/session-card";
 
@@ -121,6 +124,39 @@ export default async function SessionCoachViewPage({
       maxHeartrate: l.activity.maxHeartrate,
     },
   }));
+
+  // HR analytics — only for done sessions with a primary Strava link
+  const primaryLink = session.status === "done"
+    ? session.stravaLinks.find((l) => l.isPrimary) ?? session.stravaLinks[0] ?? null
+    : null;
+
+  const activityWithStream = primaryLink
+    ? await prisma.stravaActivity.findUnique({
+        where: { id: primaryLink.activity.id },
+        select: {
+          id: true,
+          calories: true,
+          stream: {
+            select: {
+              time: true,
+              heartrate: true,
+            },
+          },
+        },
+      })
+    : null;
+
+  const hrAnalytics = (() => {
+    if (!activityWithStream?.stream) return null;
+    const { time, heartrate } = activityWithStream.stream;
+    if (!Array.isArray(time) || !Array.isArray(heartrate)) return null;
+    return buildHrAnalytics(
+      time as number[],
+      heartrate as number[],
+      trainingProfile,
+      session.intensity
+    );
+  })();
 
   return (
     <main className="p-4 space-y-4 max-w-lg mx-auto">
@@ -291,6 +327,28 @@ export default async function SessionCoachViewPage({
           session={{ durationMin: session.durationMin, notes: session.notes }}
           stravaLinks={stravaLinks}
         />
+      )}
+
+      {/* HR Analytics */}
+      {session.status === "done" && (
+        <div className="rounded border border-indigo-100 p-4 space-y-3">
+          {stravaLinks.length === 0 ? (
+            <p className="text-xs text-gray-400">
+              Attach a Strava activity to see heart-rate analytics.
+            </p>
+          ) : !activityWithStream?.stream ? (
+            <AnalyzeStreamButton activityId={activityWithStream?.id ?? primaryLink!.activity.id} />
+          ) : !hrAnalytics ? (
+            <p className="text-xs text-gray-400">
+              Heart-rate stream not available for this activity.
+            </p>
+          ) : (
+            <SessionAnalytics
+              analytics={hrAnalytics}
+              calories={activityWithStream.calories}
+            />
+          )}
+        </div>
       )}
 
       {/* G: After workout / Workout feedback */}

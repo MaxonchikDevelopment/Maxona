@@ -11,8 +11,9 @@ All database access goes through **Prisma ORM on the server side only**.
 
 ## Row-Level Security
 
-RLS is **enabled on all 19 application tables** in the `public` schema as of migration
-`20260430000000_enable_rls_on_all_tables`.
+RLS is **enabled on all 20 application tables** in the `public` schema. The first 19 were enabled
+in migration `20260430000000_enable_rls_on_all_tables`; `StravaActivityStream` was added in
+`20260430200000_add_strava_activity_stream`.
 
 **Tables protected:**
 
@@ -37,6 +38,7 @@ RLS is **enabled on all 19 application tables** in the `public` schema as of mig
 | `HybridRaceProfile` | ✓ enabled |
 | `SessionWorkoutFeedback` | ✓ enabled |
 | `NutritionProfile` | ✓ enabled |
+| `StravaActivityStream` | ✓ enabled |
 
 **No permissive policies are defined.** This is intentional: the `anon` and
 `authenticated` Supabase roles must have zero access to application data.
