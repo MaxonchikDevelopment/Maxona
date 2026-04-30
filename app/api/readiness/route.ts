@@ -29,6 +29,10 @@ export async function POST(request: Request) {
     );
   }
 
+  if (typeof notes === "string" && notes.length > 2000) {
+    return NextResponse.json({ error: "notes too long (max 2000 chars)" }, { status: 400 });
+  }
+
   const trimmedNotes = notes?.trim() || null;
   const inferredTags = inferTagsFromNotes(trimmedNotes);
   const providedTags: ReadinessTag[] = Array.isArray(userTags)

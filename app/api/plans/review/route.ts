@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateNextWeekDraft } from "@/lib/planner/orchestrator";
+import { checkCooldown } from "@/lib/rate-limit";
 import type { WeeklyReview } from "@/lib/ai/adapter";
 
 const USER_ID = "user_maxon";
@@ -40,6 +41,13 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const { allowed, retryAfterSec } = checkCooldown("plans:review", 30_000);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Review generation is on cooldown. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec) } }
+    );
+  }
   try {
     const body = await request.json();
     const weeklyReview: WeeklyReview | undefined = body.weeklyReview ?? undefined;

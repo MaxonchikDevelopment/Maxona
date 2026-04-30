@@ -27,12 +27,13 @@ export interface StravaApiActivity {
   description?: string;
 }
 
-export function buildOAuthUrl(redirectUri: string): string {
+export function buildOAuthUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
     client_id: process.env.STRAVA_CLIENT_ID ?? "",
     redirect_uri: redirectUri,
     response_type: "code",
     scope: "activity:read_all",
+    state,
   });
   return `https://www.strava.com/oauth/authorize?${params}`;
 }

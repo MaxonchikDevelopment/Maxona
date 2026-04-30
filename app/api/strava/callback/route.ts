@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { exchangeCode } from "@/lib/strava/client";
 import { prisma } from "@/lib/prisma";
 
@@ -8,13 +9,25 @@ function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
-export async function GET(request: Request) {
+function clearState(response: NextResponse): NextResponse {
+  response.cookies.delete("strava_oauth_state");
+  return response;
+}
+
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const state = searchParams.get("state");
+
+  // Validate OAuth state to prevent CSRF / token injection
+  const stateCookie = request.cookies.get("strava_oauth_state")?.value;
+  if (!state || !stateCookie || state !== stateCookie) {
+    return clearState(NextResponse.redirect(`${appUrl()}/settings?strava=denied`));
+  }
 
   if (error || !code) {
-    return NextResponse.redirect(`${appUrl()}/settings?strava=denied`);
+    return clearState(NextResponse.redirect(`${appUrl()}/settings?strava=denied`));
   }
 
   try {
@@ -44,9 +57,9 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.redirect(`${appUrl()}/settings?strava=connected`);
+    return clearState(NextResponse.redirect(`${appUrl()}/settings?strava=connected`));
   } catch (err) {
     console.error("[strava/callback]", err);
-    return NextResponse.redirect(`${appUrl()}/settings?strava=error`);
+    return clearState(NextResponse.redirect(`${appUrl()}/settings?strava=error`));
   }
 }

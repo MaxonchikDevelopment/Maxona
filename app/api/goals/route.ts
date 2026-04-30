@@ -16,6 +16,12 @@ export async function POST(request: Request) {
   if (!title?.trim()) {
     return NextResponse.json({ error: "Title required" }, { status: 400 });
   }
+  if (title.trim().length > 200) {
+    return NextResponse.json({ error: "Title too long (max 200 chars)" }, { status: 400 });
+  }
+  if (typeof description === "string" && description.length > 2000) {
+    return NextResponse.json({ error: "Description too long (max 2000 chars)" }, { status: 400 });
+  }
   const goal = await prisma.goal.create({
     data: {
       userId: USER_ID,

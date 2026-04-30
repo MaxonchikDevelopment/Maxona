@@ -39,7 +39,10 @@ export async function POST(
   ]);
 
   if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
-  if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  // Check activity exists and belongs to this user (prevents cross-user activity linking)
+  if (!activity || activity.userId !== USER_ID) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
 
   // If marking as primary, demote any existing primary first
   if (isPrimary) {

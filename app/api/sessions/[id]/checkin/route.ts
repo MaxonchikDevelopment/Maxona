@@ -227,6 +227,10 @@ export async function POST(
     return NextResponse.json({ error: "feelScore must be 1–6" }, { status: 400 });
   }
 
+  if (typeof notes === "string" && notes.length > 2000) {
+    return NextResponse.json({ error: "notes too long (max 2000 chars)" }, { status: 400 });
+  }
+
   const session = await prisma.trainingSession.findFirst({
     where: { id, userId: USER_ID },
   });
@@ -317,6 +321,9 @@ export async function PATCH(
   }
 
   if ("notes" in body) {
+    if (typeof body.notes === "string" && body.notes.length > 2000) {
+      return NextResponse.json({ error: "notes too long (max 2000 chars)" }, { status: 400 });
+    }
     data.notes = body.notes?.trim() || null;
   }
 
