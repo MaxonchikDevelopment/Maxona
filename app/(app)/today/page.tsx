@@ -8,9 +8,12 @@ import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { generateNutritionAdvice } from "@/lib/ai/nutrition-advice";
 import { estimateDayEnergy } from "@/lib/nutrition/energy-estimate";
+import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
 import type { NutritionAdvice, MealTimingItem } from "@/lib/ai/nutrition-advice";
 import type { DayEnergyEstimate } from "@/lib/nutrition/energy-estimate";
+import type { HrAnalytics } from "@/lib/analytics/hr-stream";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
+import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
 
@@ -110,6 +113,7 @@ export default async function TodayPage() {
           checkIn: true,
           stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
           workoutPlan: true,
+          workoutFeedback: true,
         },
         orderBy: { preferredSlot: "asc" },
       }),
@@ -132,6 +136,45 @@ export default async function TodayPage() {
       }),
       prisma.nutritionProfile.findUnique({ where: { userId: USER_ID } }),
     ]);
+
+  // ── HR Analytics: batch-load streams for done sessions with Strava ──
+  const primaryActivityIds = sessions
+    .filter((s) => (s.status === "done" || !!s.checkIn) && s.stravaLinks.length > 0)
+    .map((s) => (s.stravaLinks.find((l) => l.isPrimary) ?? s.stravaLinks[0])?.activity?.id)
+    .filter((id): id is string => !!id);
+
+  const [streamsRaw, trainingProfile] = await Promise.all([
+    primaryActivityIds.length > 0
+      ? prisma.stravaActivityStream.findMany({
+          where: { stravaActivityId: { in: primaryActivityIds } },
+          select: { stravaActivityId: true, time: true, heartrate: true },
+        })
+      : Promise.resolve([]),
+    primaryActivityIds.length > 0
+      ? prisma.userTrainingProfile.findUnique({ where: { userId: USER_ID } })
+      : Promise.resolve(null),
+  ]);
+
+  const streamsByActivityId = Object.fromEntries(
+    streamsRaw.map((s) => [s.stravaActivityId, s])
+  );
+
+  const hrAnalyticsBySession: Record<string, HrAnalytics> = {};
+  for (const s of sessions) {
+    if (s.stravaLinks.length === 0) continue;
+    const primaryLink = s.stravaLinks.find((l) => l.isPrimary) ?? s.stravaLinks[0];
+    const stream = streamsByActivityId[primaryLink.activity.id];
+    if (!stream) continue;
+    const { time, heartrate } = stream;
+    if (!Array.isArray(time) || !Array.isArray(heartrate)) continue;
+    const analytics = buildHrAnalytics(
+      time as number[],
+      heartrate as number[],
+      trainingProfile,
+      s.intensity
+    );
+    if (analytics) hrAnalyticsBySession[s.id] = analytics;
+  }
 
   const sessionInputs = sessions.map((s) => ({
     intensity: s.intensity,
@@ -238,6 +281,19 @@ export default async function TodayPage() {
           summary: s.workoutPlan.summary,
         } satisfies WorkoutPlanProp)
       : null,
+    workoutFeedback: s.workoutFeedback
+      ? ({
+          id: s.workoutFeedback.id,
+          adherenceLabel: s.workoutFeedback.adherenceLabel,
+          summary: s.workoutFeedback.summary,
+          bullets: Array.isArray(s.workoutFeedback.bullets)
+            ? (s.workoutFeedback.bullets as string[])
+            : [],
+          nextAdjustment: s.workoutFeedback.nextAdjustment,
+          generatedAt: s.workoutFeedback.generatedAt.toISOString(),
+        } satisfies WorkoutFeedbackProp)
+      : null,
+    hrAnalytics: hrAnalyticsBySession[s.id] ?? null,
     nutritionAdvice,
   }));
 

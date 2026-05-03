@@ -59,11 +59,22 @@ export async function POST(request: Request) {
     },
   });
 
+  // Check if athlete has any planned sessions today (readiness advice should not contradict the plan)
+  const todayDateObj = new Date(date + "T00:00:00Z");
+  const todaySessionCount = await prisma.trainingSession.count({
+    where: {
+      userId: USER_ID,
+      scheduledDate: todayDateObj,
+      plan: { status: "active" },
+      status: "planned",
+    },
+  });
+
   // Silent neutral entry — no signal worth coaching on
   const isSilentNeutral = feelScore === 4 && !trimmedNotes && tags.length === 0;
   const coachAdvice = isSilentNeutral
     ? null
-    : await generateReadinessCoachAdvice({ feelScore, notes: trimmedNotes, tags, category });
+    : await generateReadinessCoachAdvice({ feelScore, notes: trimmedNotes, tags, category, hasSessions: todaySessionCount > 0 });
 
   const updated = await prisma.dailyReadiness.update({
     where: { id: record.id },

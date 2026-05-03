@@ -8,8 +8,11 @@ import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
+import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
 import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
+import type { HrAnalytics } from "@/lib/analytics/hr-stream";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
+import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
 import type { IssueItem } from "@/components/active-issues";
 import type { StravaLinkProp } from "@/components/strava-panel";
 
@@ -217,6 +220,66 @@ export default async function WeekPage() {
     }
   }
 
+  // Batch-load workout feedbacks for all sessions
+  const workoutFeedbacksBySession: Record<string, WorkoutFeedbackProp> = {};
+  {
+    const allWf = await pc.sessionWorkoutFeedback.findMany({
+      where: { sessionId: { in: sessionIds } },
+    }) as Array<{ id: string; sessionId: string; adherenceLabel: string; summary: string; bullets: unknown; nextAdjustment: string | null; generatedAt: Date }>;
+    for (const wf of allWf) {
+      workoutFeedbacksBySession[wf.sessionId] = {
+        id: wf.id,
+        adherenceLabel: wf.adherenceLabel,
+        summary: wf.summary,
+        bullets: Array.isArray(wf.bullets) ? (wf.bullets as string[]) : [],
+        nextAdjustment: wf.nextAdjustment,
+        generatedAt: wf.generatedAt.toISOString(),
+      };
+    }
+  }
+
+  // Batch-load HR analytics for done sessions with Strava links
+  const hrAnalyticsBySession: Record<string, HrAnalytics> = {};
+  {
+    // Collect primary activity IDs for done sessions
+    const primaryActivityIds: string[] = [];
+    const activityIdToSessionId: Record<string, string> = {};
+    const sessionIntensityById: Record<string, string> = {};
+
+    for (const s of plan.sessions) {
+      const links = stravaLinksBySession[s.id] ?? [];
+      if (links.length === 0) continue;
+      const primaryLink = links.find((l) => l.isPrimary) ?? links[0];
+      primaryActivityIds.push(primaryLink.activity.id);
+      activityIdToSessionId[primaryLink.activity.id] = s.id;
+      sessionIntensityById[s.id] = s.intensity;
+    }
+
+    if (primaryActivityIds.length > 0) {
+      const [streamsRaw, trainingProfile] = await Promise.all([
+        pc.stravaActivityStream.findMany({
+          where: { stravaActivityId: { in: primaryActivityIds } },
+          select: { stravaActivityId: true, time: true, heartrate: true },
+        }) as Promise<Array<{ stravaActivityId: string; time: unknown; heartrate: unknown }>>,
+        pc.userTrainingProfile.findUnique({ where: { userId: USER_ID } }) as Promise<{ restingHr: number | null; maxHr: number | null; easyHrMin: number | null; easyHrMax: number | null; tempoHrMin: number | null; tempoHrMax: number | null; thresholdHr: number | null; zoneMethod: string | null } | null>,
+      ]);
+
+      for (const stream of streamsRaw) {
+        const sessionId = activityIdToSessionId[stream.stravaActivityId];
+        if (!sessionId) continue;
+        const { time, heartrate } = stream;
+        if (!Array.isArray(time) || !Array.isArray(heartrate)) continue;
+        const analytics = buildHrAnalytics(
+          time as number[],
+          heartrate as number[],
+          trainingProfile,
+          sessionIntensityById[sessionId] ?? "moderate"
+        );
+        if (analytics) hrAnalyticsBySession[sessionId] = analytics;
+      }
+    }
+  }
+
   // Generate weekly nutrition focus in parallel with session data assembly
   let weeklyNutritionFocus: WeeklyNutritionFocus | null = null;
   try {
@@ -271,6 +334,8 @@ export default async function WeekPage() {
       stravaLinks: stravaLinksBySession[s.id] ?? [],
       stravaConnected,
       workoutPlan: workoutPlansBySession[s.id] ?? null,
+      workoutFeedback: workoutFeedbacksBySession[s.id] ?? null,
+      hrAnalytics: hrAnalyticsBySession[s.id] ?? null,
     });
   }
 

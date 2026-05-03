@@ -30,6 +30,7 @@ export async function GET(request: Request) {
     dateFilter = { gte: from, lte: to };
   }
 
+  // Exclude activities already linked to the current session (already attached)
   let excludedIds: string[] = [];
   if (excludeSessionId) {
     const links = await prisma.sessionStravaActivityLink.findMany({
@@ -49,18 +50,25 @@ export async function GET(request: Request) {
     take: 50,
   });
 
+  // Hard-filter activities already linked to OTHER sessions — they're claimed
+  const linkedToOther = await prisma.sessionStravaActivityLink.findMany({
+    where: {
+      stravaActivityId: { in: activities.map((a) => a.id) },
+      ...(excludeSessionId ? { sessionId: { not: excludeSessionId } } : {}),
+    },
+    select: { stravaActivityId: true },
+  });
+  const linkedToOtherIds = new Set(linkedToOther.map((l) => l.stravaActivityId));
+  const filteredActivities = activities.filter((a) => !linkedToOtherIds.has(a.id));
+
   // Score when session context is available
   const shouldScore = !!(sessionDate && sessionSlot);
   if (!shouldScore) {
-    return NextResponse.json(activities);
+    return NextResponse.json(filteredActivities);
   }
 
-  // Check which candidates are already linked to other sessions (soft penalty)
-  const linkedElsewhere = await prisma.sessionStravaActivityLink.findMany({
-    where: { stravaActivityId: { in: activities.map((a) => a.id) } },
-    select: { stravaActivityId: true },
-  });
-  const linkedElsewhereIds = new Set(linkedElsewhere.map((l) => l.stravaActivityId));
+  // (linkedElsewhereIds is now empty since we hard-filtered above — kept for scoring API compat)
+  const linkedElsewhereIds = new Set<string>();
 
   const session = {
     scheduledDate: sessionDate!,
@@ -69,7 +77,7 @@ export async function GET(request: Request) {
     preferredSlot: sessionSlot!,
   };
 
-  const scored = activities
+  const scored = filteredActivities
     .map((a) => ({
       ...a,
       score: scoreCandidate(

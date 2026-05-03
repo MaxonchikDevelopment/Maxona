@@ -260,8 +260,12 @@ export async function generateReadinessCoachAdvice(params: {
   notes: string | null;
   tags: string[];
   category: CheckInCategory;
+  hasSessions?: boolean;
 }): Promise<string | null> {
   const tagStr = params.tags.length > 0 ? `Tags: ${params.tags.join(", ")}` : "";
+  const sessionCtx = params.hasSessions
+    ? "The athlete has a training session scheduled today. Do NOT suggest complete rest — suggest modifying intensity or duration instead."
+    : "";
 
   try {
     if (params.feelScore <= 3) {
@@ -282,11 +286,13 @@ Daily readiness score: ${params.feelScore}/6
 Notes: ${params.notes ? `"${params.notes}"` : "(none)"}
 ${tagStr}
 Context: ${context}
+${sessionCtx}
 
 Give 1–2 concrete suggestions for managing today and tomorrow's training. Rules:
 - Each ≤ 20 words
 - Actionable and specific to the tags/notes if present (e.g. alcohol → hydration; poor_sleep → nap; travel → easy only)
-- For injury: suggest modified load or targeted recovery for tomorrow's session
+- For injury: suggest modified load or targeted recovery for today's session
+- If a session is scheduled today, suggest modifying it (reduce intensity/shorten) — not cancelling entirely
 - Format: "• [suggestion]"
 No intro. No preamble.`,
           },
@@ -309,6 +315,7 @@ No intro. No preamble.`,
 Daily readiness score: 4/6
 Notes: ${params.notes ? `"${params.notes}"` : "(none)"}
 ${tagStr}
+${sessionCtx}
 
 Give 1 short analytical observation about today's readiness. Rules:
 - ≤ 20 words

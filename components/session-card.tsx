@@ -5,7 +5,11 @@ import Link from "next/link";
 import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp } from "@/components/strava-panel";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
-import { ADHERENCE_LABEL } from "@/components/workout-feedback-section";
+import { WorkoutFeedbackSection } from "@/components/workout-feedback-section";
+import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
+import { SessionAnalytics } from "@/components/session-analytics";
+import { AnalyzeStreamButton } from "@/components/analyze-stream-button";
+import type { HrAnalytics } from "@/lib/analytics/hr-stream";
 import type { NutritionAdvice } from "@/lib/ai/nutrition-advice";
 
 export type CheckInProp = {
@@ -40,10 +44,6 @@ export type WorkoutPlanProp = {
   summary: string | null;
 };
 
-export type WorkoutFeedbackChipProp = {
-  adherenceLabel: string;
-};
-
 export type SessionProp = {
   id: string;
   scheduledDate: string;
@@ -57,17 +57,19 @@ export type SessionProp = {
   stravaLinks?: StravaLinkProp[];
   stravaConnected?: boolean;
   workoutPlan?: WorkoutPlanProp | null;
-  workoutFeedback?: WorkoutFeedbackChipProp | null;
+  workoutFeedback?: WorkoutFeedbackProp | null;
+  hrAnalytics?: HrAnalytics | null;
   nutritionAdvice?: NutritionAdvice | null;
 };
 
-// Keyword list mirrors lib/checkin-utils.ts — kept inline to avoid server-only imports in client bundle
+// Keyword list mirrors lib/checkin-utils.ts — specific injury/pain indicators only
 const INJURY_KEYWORDS = [
-  "injury", "injured", "pain", "hurt", "sore", "knee", "ankle", "back",
-  "hip", "hamstring", "calf", "shin", "groin", "shoulder", "wrist", "foot",
-  "muscle", "strain", "sprain", "tendon", "ligament",
-  "боль", "болит", "болят", "травм", "колен", "лодыжк", "спин", "бедр", "плеч",
-  "schmerz", "schmerzen", "verletzt", "verletzung", "knie", "knöchel", "rücken", "hüfte", "schulter",
+  "injury", "injured",
+  "pain", "sharp pain", "pulled",
+  "strain", "sprain", "tendon", "ligament",
+  "knee", "ankle", "shin",
+  "боль", "болит", "болят", "травм", "колен", "лодыжк", "голен",
+  "schmerz", "schmerzen", "verletzt", "verletzung", "knie", "knöchel",
 ];
 
 function classifyCheckIn(feelScore: number, notes: string | null): "injury" | "fatigue" | "ok" {
@@ -126,7 +128,6 @@ function WorkoutPlanBlock({
         </div>
       </div>
 
-      {/* Always visible: goal + target + block labels preview */}
       <p className="text-xs font-medium text-gray-700">{plan.goal}</p>
       {plan.target && (
         <p className="text-xs font-medium text-indigo-600">{plan.target}</p>
@@ -219,9 +220,29 @@ export function SessionCard({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(session.status === "done" || !!session.checkIn);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlanProp | null>(session.workoutPlan ?? null);
+  const [feedbackGenerating, setFeedbackGenerating] = useState(false);
+  const [showWorkoutPlan, setShowWorkoutPlan] = useState(false);
   const nutritionAdvice = session.nutritionAdvice ?? null;
   const [planGenerating, setPlanGenerating] = useState(false);
   const isFuture = todayStr ? session.scheduledDate > todayStr : false;
+
+  // Primary Strava activity ID — for AnalyzeStreamButton when stream is missing
+  const primaryActivityId = session.stravaLinks?.length
+    ? (session.stravaLinks.find((l) => l.isPrimary) ?? session.stravaLinks[0]).activity.id
+    : null;
+
+  async function triggerFeedbackIfReady(hasStrava: boolean) {
+    const hasCheckIn = !!checkIn || done;
+    if (!hasStrava || !hasCheckIn) return;
+    setFeedbackGenerating(true);
+    try {
+      await fetch(`/api/sessions/${session.id}/workout-feedback`, { method: "POST" });
+    } catch {
+      // non-fatal
+    } finally {
+      setFeedbackGenerating(false);
+    }
+  }
 
   async function submitCheckIn() {
     setSubmitting(true);
@@ -236,6 +257,11 @@ export function SessionCard({
     setOpen(false);
     setEditing(false);
     setSubmitting(false);
+
+    // Auto-generate after-workout feedback if Strava is already attached
+    if ((session.stravaLinks?.length ?? 0) > 0) {
+      await triggerFeedbackIfReady(true);
+    }
     router.refresh();
   }
 
@@ -252,6 +278,11 @@ export function SessionCard({
     setEditing(false);
     setOpen(false);
     setSubmitting(false);
+
+    // Refresh feedback if Strava is attached
+    if ((session.stravaLinks?.length ?? 0) > 0) {
+      await triggerFeedbackIfReady(true);
+    }
     router.refresh();
   }
 
@@ -327,6 +358,15 @@ export function SessionCard({
     setOpen(true);
   }
 
+  // Called by StravaPanel after an activity is attached
+  async function handleActivityAttached() {
+    // Auto-generate feedback if check-in already exists
+    if (checkIn || done) {
+      await triggerFeedbackIfReady(true);
+      router.refresh();
+    }
+  }
+
   const isResolved = !!checkIn?.resolvedAt;
   const category = checkIn ? classifyCheckIn(checkIn.feelScore, checkIn.notes) : "ok";
   const isInjury = category === "injury";
@@ -336,6 +376,7 @@ export function SessionCard({
 
   return (
     <div className="space-y-2 rounded border p-4">
+      {/* ── Session header ── */}
       <div className="flex items-center justify-between">
         <div>
           <span className="font-medium capitalize">{session.intensity}</span>
@@ -386,107 +427,171 @@ export function SessionCard({
         <p className="text-sm text-gray-600">{session.notes}</p>
       )}
 
-      {/* Workout plan — generated on demand, collapsed by default */}
-      {workoutPlan ? (
-        <WorkoutPlanBlock
-          plan={workoutPlan}
-          sessionId={session.id}
-          onRegenerate={generatePlan}
-          regenerating={planGenerating}
-          nutritionAdvice={nutritionAdvice}
-        />
-      ) : (
-        <div className="border-t pt-2">
-          <button
-            onClick={generatePlan}
-            disabled={planGenerating}
-            className="text-xs text-indigo-500 underline disabled:opacity-40"
-          >
-            {planGenerating ? "Generating plan…" : "Plan workout"}
-          </button>
-        </div>
-      )}
-
-      {/* Workout feedback chip */}
-      {session.workoutFeedback && (
-        <div className="border-t pt-2">
-          <p className="text-[10px] text-gray-400">
-            Feedback:{" "}
-            <span className="font-medium text-gray-500">
-              {ADHERENCE_LABEL[session.workoutFeedback.adherenceLabel] ??
-                session.workoutFeedback.adherenceLabel}
-            </span>
-          </p>
-        </div>
-      )}
-
-      {/* Existing check-in summary (when not editing) */}
-      {done && !open && checkIn && (
-        <div className="space-y-1">
-          {checkIn.notes && (
-            <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
+      {done ? (
+        // ════════════════════════════════════════
+        // DONE SESSION — execution-first layout
+        // ════════════════════════════════════════
+        <>
+          {/* Check-in note + coach advice (not editing) */}
+          {!open && checkIn && (
+            <div className="space-y-1">
+              {checkIn.notes && (
+                <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
+              )}
+              {coachAdvice && !isResolved && (
+                <div className={`rounded px-2 py-1.5 ${isPositiveAdvice ? "bg-green-50" : "bg-amber-50"}`}>
+                  <p className={`text-xs font-medium mb-0.5 ${isPositiveAdvice ? "text-green-700" : "text-amber-700"}`}>Coach</p>
+                  <p className={`text-xs whitespace-pre-line ${isPositiveAdvice ? "text-green-800" : "text-amber-800"}`}>{coachAdvice}</p>
+                </div>
+              )}
+              {hint && (
+                <p className="text-xs text-amber-600">{hint}</p>
+              )}
+            </div>
           )}
-          {/* Execution summary — factual actual vs plan, when Strava attached */}
+
+          {/* Execution summary — actual vs plan */}
           {(session.stravaLinks?.length ?? 0) > 0 && (
             <ExecutionSummaryBlock
               session={{ durationMin: session.durationMin, notes: session.notes }}
               stravaLinks={session.stravaLinks!}
             />
           )}
-          {/* Coach advice — bad sessions: amber; good sessions: green */}
-          {coachAdvice && !isResolved && (
-            <div className={`rounded px-2 py-1.5 ${isPositiveAdvice ? "bg-green-50" : "bg-amber-50"}`}>
-              <p className={`text-xs font-medium mb-0.5 ${isPositiveAdvice ? "text-green-700" : "text-amber-700"}`}>Coach</p>
-              <p className={`text-xs whitespace-pre-line ${isPositiveAdvice ? "text-green-800" : "text-amber-800"}`}>{coachAdvice}</p>
+
+          {/* HR Analytics — auto-shown when stream exists */}
+          {session.hrAnalytics ? (
+            <div className="border-t pt-2">
+              <SessionAnalytics analytics={session.hrAnalytics} />
+            </div>
+          ) : (session.stravaLinks?.length ?? 0) > 0 && primaryActivityId ? (
+            <div className="border-t pt-2">
+              <AnalyzeStreamButton activityId={primaryActivityId} />
+            </div>
+          ) : null}
+
+          {/* After-workout coach feedback */}
+          {feedbackGenerating ? (
+            <div className="border-t pt-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">After workout</p>
+              <p className="text-xs text-gray-400 mt-1">Analyzing workout…</p>
+            </div>
+          ) : (
+            <WorkoutFeedbackSection
+              key={`feedback-${session.id}-${session.workoutFeedback?.generatedAt ?? "none"}`}
+              sessionId={session.id}
+              initialFeedback={session.workoutFeedback ?? null}
+              sessionIsDone={done}
+              hasCheckIn={!!checkIn}
+            />
+          )}
+
+          {/* Action buttons — flex-wrap to avoid overlap */}
+          {!editing && checkIn && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+              {(session.stravaLinks?.length ?? 0) > 0 && (
+                <button
+                  onClick={reanalyzeAdvice}
+                  disabled={submitting}
+                  className="text-[10px] text-gray-400 underline disabled:opacity-50"
+                >
+                  {submitting ? "Re-analyzing…" : "Re-analyze"}
+                </button>
+              )}
+              {isInjury && !isResolved && (
+                <button
+                  onClick={resolveIssue}
+                  disabled={submitting}
+                  className="text-xs text-green-600 underline disabled:opacity-50"
+                >
+                  Mark issue resolved
+                </button>
+              )}
+              {isInjury && isResolved && (
+                <button
+                  onClick={reopenIssue}
+                  disabled={submitting}
+                  className="text-xs text-gray-400 underline disabled:opacity-50"
+                >
+                  Reopen issue
+                </button>
+              )}
             </div>
           )}
-          {/* Fallback static hint */}
-          {hint && (
-            <p className="text-xs text-amber-600">{hint}</p>
-          )}
-          {/* Re-analyze coach advice */}
-          {!editing && (session.stravaLinks?.length ?? 0) > 0 && (
-            <button
-              onClick={reanalyzeAdvice}
-              disabled={submitting}
-              className="text-[10px] text-gray-400 underline disabled:opacity-50"
-            >
-              {submitting ? "Re-analyzing…" : "Re-analyze"}
-            </button>
-          )}
-          {/* Resolve/reopen — injury ONLY, not fatigue */}
-          {isInjury && !isResolved && (
-            <button
-              onClick={resolveIssue}
-              disabled={submitting}
-              className="text-xs text-green-600 underline disabled:opacity-50"
-            >
-              Mark issue resolved
-            </button>
-          )}
-          {isInjury && isResolved && (
-            <button
-              onClick={reopenIssue}
-              disabled={submitting}
-              className="text-xs text-gray-400 underline disabled:opacity-50"
-            >
-              Reopen issue
-            </button>
-          )}
-        </div>
-      )}
 
-      {/* Strava activity links */}
-      {session.stravaConnected && (
-        <StravaPanel
-          sessionId={session.id}
-          sessionDate={session.scheduledDate}
-          sessionDurationMin={session.durationMin}
-          sessionNotes={session.notes}
-          sessionSlot={session.preferredSlot}
-          initialLinks={session.stravaLinks ?? []}
-          stravaConnected={session.stravaConnected}
-        />
+          {/* Strava panel — attach/manage activities */}
+          {session.stravaConnected && (
+            <StravaPanel
+              sessionId={session.id}
+              sessionDate={session.scheduledDate}
+              sessionDurationMin={session.durationMin}
+              sessionNotes={session.notes}
+              sessionSlot={session.preferredSlot}
+              initialLinks={session.stravaLinks ?? []}
+              stravaConnected={session.stravaConnected}
+              onActivityAttached={handleActivityAttached}
+            />
+          )}
+
+          {/* Workout plan — collapsed at bottom for done sessions */}
+          {workoutPlan && (
+            <div className="border-t pt-2">
+              <button
+                onClick={() => setShowWorkoutPlan((v) => !v)}
+                className="text-[10px] text-gray-400 underline"
+              >
+                {showWorkoutPlan ? "Hide pre-workout plan" : "Pre-workout plan"}
+              </button>
+              {showWorkoutPlan && (
+                <WorkoutPlanBlock
+                  plan={workoutPlan}
+                  sessionId={session.id}
+                  onRegenerate={generatePlan}
+                  regenerating={planGenerating}
+                  nutritionAdvice={null}
+                />
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        // ════════════════════════════════════════
+        // UPCOMING / PLANNED SESSION — plan-first layout
+        // ════════════════════════════════════════
+        <>
+          {/* Workout plan or generate button */}
+          {workoutPlan ? (
+            <WorkoutPlanBlock
+              plan={workoutPlan}
+              sessionId={session.id}
+              onRegenerate={generatePlan}
+              regenerating={planGenerating}
+              nutritionAdvice={nutritionAdvice}
+            />
+          ) : (
+            <div className="border-t pt-2">
+              <button
+                onClick={generatePlan}
+                disabled={planGenerating}
+                className="text-xs text-indigo-500 underline disabled:opacity-40"
+              >
+                {planGenerating ? "Generating plan…" : "Plan workout"}
+              </button>
+            </div>
+          )}
+
+          {/* Strava attach area for upcoming sessions */}
+          {session.stravaConnected && (
+            <StravaPanel
+              sessionId={session.id}
+              sessionDate={session.scheduledDate}
+              sessionDurationMin={session.durationMin}
+              sessionNotes={session.notes}
+              sessionSlot={session.preferredSlot}
+              initialLinks={session.stravaLinks ?? []}
+              stravaConnected={session.stravaConnected}
+            />
+          )}
+        </>
       )}
 
       {/* Check-in / edit form */}

@@ -61,6 +61,7 @@ export function StravaPanel({
   sessionSlot,
   initialLinks,
   stravaConnected,
+  onActivityAttached,
 }: {
   sessionId: string;
   sessionDate: string;
@@ -69,6 +70,7 @@ export function StravaPanel({
   sessionSlot: string;
   initialLinks: StravaLinkProp[];
   stravaConnected: boolean;
+  onActivityAttached?: () => void;
 }) {
   const [links, setLinks] = useState<StravaLinkProp[]>(initialLinks);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -99,12 +101,13 @@ export function StravaPanel({
 
   async function openPicker() {
     setPickerOpen(true);
-    // Throttled sync before loading — ignored quietly if recently synced
+    setSyncing(true);
     try {
       await fetch("/api/strava/sync", { method: "POST" });
     } catch {
       // non-fatal
     }
+    setSyncing(false);
     await fetchActivities();
   }
 
@@ -130,6 +133,7 @@ export function StravaPanel({
       const newLink: StravaLinkProp = await res.json();
       setLinks((prev) => [...prev, newLink]);
       setAvailable((prev) => prev.filter((a) => a.id !== activityId));
+      onActivityAttached?.();
     } finally {
       setBusy(null);
     }
@@ -260,7 +264,9 @@ export function StravaPanel({
           <p className="text-[9px] text-gray-300 mb-0.5">
             New activities auto-import via webhook · Sync latest is a fallback
           </p>
-          {loadingPicker ? (
+          {(syncing && !loadingPicker) ? (
+            <p className="text-xs text-gray-400">Syncing latest activities…</p>
+          ) : loadingPicker ? (
             <p className="text-xs text-gray-400">Loading…</p>
           ) : available.length === 0 ? (
             <p className="text-xs text-gray-400">No unattached activities within ±2 days.</p>
