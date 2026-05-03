@@ -24,17 +24,30 @@ export function AnalyzeStreamButton({
   const [state, setState] = useState<StreamStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  async function handleAnalyze() {
+  async function handleFetch() {
     setState("loading");
     setErrorMsg(null);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
     try {
       const res = await fetch(`/api/strava/activities/${activityId}/streams`, {
         method: "POST",
+        signal: controller.signal,
       });
-      const data: StreamResponse = await res.json();
+
+      let data: StreamResponse;
+      try {
+        data = await res.json();
+      } catch {
+        setErrorMsg("Invalid response. Try again.");
+        setState("error");
+        return;
+      }
 
       if (!res.ok || !data.ok) {
-        setErrorMsg(data.message ?? "Failed to fetch stream.");
+        setErrorMsg(data.message ?? "Could not fetch stream. Try syncing Strava again.");
         setState("error");
         return;
       }
@@ -47,16 +60,22 @@ export function AnalyzeStreamButton({
       // "created" or "existing" — stream is available
       router.refresh();
       setState("done");
-    } catch {
-      setErrorMsg("Network error. Try again.");
+    } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        setErrorMsg("Stream fetch timed out. Try again later.");
+      } else {
+        setErrorMsg("Could not fetch stream. Try syncing Strava again.");
+      }
       setState("error");
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
   if (state === "done") {
     return (
       <div className="space-y-1">
-        <p className="text-[11px] text-green-600">Stream saved.</p>
+        <p className="text-[11px] text-green-600">HR stream saved.</p>
         {sessionId && (
           <Link
             href={`/sessions/${sessionId}`}
@@ -72,7 +91,7 @@ export function AnalyzeStreamButton({
   if (state === "no_stream") {
     return (
       <p className="text-[11px] text-gray-400">
-        No detailed stream available for this activity.
+        No HR stream available for this activity.
       </p>
     );
   }
@@ -80,11 +99,11 @@ export function AnalyzeStreamButton({
   return (
     <div className="space-y-1">
       <button
-        onClick={handleAnalyze}
+        onClick={handleFetch}
         disabled={state === "loading"}
         className="text-xs text-indigo-600 underline disabled:opacity-40"
       >
-        {state === "loading" ? "Fetching stream…" : "Analyze Strava stream"}
+        {state === "loading" ? "Fetching HR stream…" : "Fetch HR stream"}
       </button>
       {state === "error" && errorMsg && (
         <p className="text-[11px] text-red-500">{errorMsg}</p>

@@ -1,5 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
+
+// Module-level: track last auto-sync time across panel opens (resets on page reload)
+let lastAutoSyncMs = 0;
+const AUTO_SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 
 export type StravaActivitySummary = {
   id: string;
@@ -24,6 +28,8 @@ export type StravaLinkProp = {
   activity: StravaActivitySummary;
 };
 
+type SyncStatus = "idle" | "checking" | "recently_synced" | "synced" | "sync_error";
+
 function fmtDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
 }
@@ -45,6 +51,10 @@ function activityLine(a: StravaActivitySummary): string {
 function shortDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+function isSameDay(activityStartDate: string, sessionDate: string): boolean {
+  return activityStartDate.slice(0, 10) === sessionDate;
 }
 
 const LABEL_STYLE: Record<string, string> = {
@@ -77,7 +87,11 @@ export function StravaPanel({
   const [available, setAvailable] = useState<StravaActivitySummary[]>([]);
   const [loadingPicker, setLoadingPicker] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [manualSyncing, setManualSyncing] = useState(false);
+  const [showOlder, setShowOlder] = useState(false);
+  // Prevent repeated auto-sync within the same component mount
+  const autoSyncDone = useRef(false);
 
   if (!stravaConnected) return null;
 
@@ -101,23 +115,47 @@ export function StravaPanel({
 
   async function openPicker() {
     setPickerOpen(true);
-    setSyncing(true);
-    try {
-      await fetch("/api/strava/sync", { method: "POST" });
-    } catch {
-      // non-fatal
+    setShowOlder(false);
+
+    if (!autoSyncDone.current) {
+      autoSyncDone.current = true;
+
+      const now = Date.now();
+      if (now - lastAutoSyncMs < AUTO_SYNC_COOLDOWN_MS) {
+        // Already synced recently — no API call needed
+        setSyncStatus("recently_synced");
+      } else {
+        setSyncStatus("checking");
+        try {
+          const res = await fetch("/api/strava/sync", { method: "POST" });
+          const data = await res.json();
+          lastAutoSyncMs = Date.now();
+          setSyncStatus(data.throttled ? "recently_synced" : "synced");
+        } catch {
+          setSyncStatus("sync_error");
+        }
+      }
+    } else {
+      // Reopened — clear stale status, just refresh list
+      setSyncStatus("idle");
     }
-    setSyncing(false);
+
     await fetchActivities();
   }
 
+  function closePicker() {
+    setPickerOpen(false);
+    setSyncStatus("idle");
+  }
+
   async function syncLatest() {
-    setSyncing(true);
+    setManualSyncing(true);
     try {
       await fetch("/api/strava/sync?force=1", { method: "POST" });
+      lastAutoSyncMs = Date.now();
       await fetchActivities();
     } finally {
-      setSyncing(false);
+      setManualSyncing(false);
     }
   }
 
@@ -133,6 +171,7 @@ export function StravaPanel({
       const newLink: StravaLinkProp = await res.json();
       setLinks((prev) => [...prev, newLink]);
       setAvailable((prev) => prev.filter((a) => a.id !== activityId));
+      setPickerOpen(false); // Collapse picker after attach
       onActivityAttached?.();
     } finally {
       setBusy(null);
@@ -196,9 +235,16 @@ export function StravaPanel({
     );
   }
 
-  const suggested = available.filter((a) => !!a.suggestionLabel);
-  const other = available.filter((a) => !a.suggestionLabel);
+  // Split by same day vs older; respect showOlder toggle
+  const sameDayActivities = available.filter((a) => isSameDay(a.startDate, sessionDate));
+  const olderActivities = available.filter((a) => !isSameDay(a.startDate, sessionDate));
+  const hasOlder = olderActivities.length > 0;
+  const visibleActivities = showOlder ? available : sameDayActivities;
+  const suggested = visibleActivities.filter((a) => !!a.suggestionLabel);
+  const other = visibleActivities.filter((a) => !a.suggestionLabel);
   const hasSuggestions = suggested.length > 0;
+
+  const isSyncing = syncStatus === "checking" || manualSyncing;
 
   return (
     <div className="border-t pt-2 space-y-1.5">
@@ -207,7 +253,7 @@ export function StravaPanel({
           Strava
         </span>
         <button
-          onClick={pickerOpen ? () => setPickerOpen(false) : openPicker}
+          onClick={pickerOpen ? closePicker : openPicker}
           className="text-[10px] text-gray-400 underline"
         >
           {pickerOpen ? "close" : "+ Attach"}
@@ -251,25 +297,45 @@ export function StravaPanel({
       {/* Picker */}
       {pickerOpen && (
         <div className="mt-1 space-y-1 border rounded p-2 bg-gray-50">
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">Activities</span>
+          <div className="flex items-start justify-between mb-0.5 gap-2">
+            <div className="space-y-0.5 min-w-0">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">Activities</span>
+              {syncStatus === "checking" && (
+                <p className="text-[9px] text-gray-400">Checking Strava…</p>
+              )}
+              {syncStatus === "recently_synced" && (
+                <p className="text-[9px] text-gray-400">Strava recently synced</p>
+              )}
+              {syncStatus === "sync_error" && (
+                <p className="text-[9px] text-red-400">Could not sync Strava now. Use Sync latest.</p>
+              )}
+            </div>
             <button
               onClick={syncLatest}
-              disabled={syncing || loadingPicker}
-              className="text-[9px] text-gray-400 underline disabled:opacity-40"
+              disabled={isSyncing || loadingPicker}
+              className="shrink-0 text-[9px] text-gray-400 underline disabled:opacity-40"
             >
-              {syncing ? "Syncing…" : "Sync latest"}
+              {manualSyncing ? "Syncing…" : "Sync latest"}
             </button>
           </div>
-          <p className="text-[9px] text-gray-300 mb-0.5">
-            New activities auto-import via webhook · Sync latest is a fallback
-          </p>
-          {(syncing && !loadingPicker) ? (
-            <p className="text-xs text-gray-400">Syncing latest activities…</p>
-          ) : loadingPicker ? (
+
+          {loadingPicker ? (
             <p className="text-xs text-gray-400">Loading…</p>
           ) : available.length === 0 ? (
             <p className="text-xs text-gray-400">No unattached activities within ±2 days.</p>
+          ) : visibleActivities.length === 0 ? (
+            // No same-day activities, prompt to show older
+            <div className="space-y-1">
+              <p className="text-xs text-gray-400">No same-day activities.</p>
+              {hasOlder && (
+                <button
+                  onClick={() => setShowOlder(true)}
+                  className="text-[9px] text-gray-400 underline"
+                >
+                  Show older activities ({olderActivities.length})
+                </button>
+              )}
+            </div>
           ) : (
             <>
               {hasSuggestions && (
@@ -287,6 +353,23 @@ export function StravaPanel({
                   )}
                   {other.map((a) => renderPickerRow(a, false))}
                 </>
+              )}
+              {/* Older activities toggle */}
+              {!showOlder && hasOlder && (
+                <button
+                  onClick={() => setShowOlder(true)}
+                  className="text-[9px] text-gray-400 underline pt-0.5"
+                >
+                  Show older activities ({olderActivities.length})
+                </button>
+              )}
+              {showOlder && (
+                <button
+                  onClick={() => setShowOlder(false)}
+                  className="text-[9px] text-gray-400 underline pt-0.5"
+                >
+                  Hide older
+                </button>
               )}
             </>
           )}
