@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { StravaPanel } from "@/components/strava-panel";
-import type { StravaLinkProp } from "@/components/strava-panel";
+import type { StravaLinkProp, StravaActivitySummary } from "@/components/strava-panel";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
 import { WorkoutFeedbackSection } from "@/components/workout-feedback-section";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
@@ -87,6 +87,24 @@ function staticHint(
   if (category === "fatigue") return "Tough day — load adjusted for next session.";
   if (feelScore >= 5) return "Strong session — plan unchanged.";
   return null;
+}
+
+function fmtCompactTime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const min = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h}h${min > 0 ? ` ${min}m` : ""}` : `${min}m`;
+}
+
+function fmtCompactDist(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+}
+
+function buildCompactExecLine(a: StravaActivitySummary): string {
+  const parts: string[] = ["Actual"];
+  if (a.movingTime > 0) parts.push(fmtCompactTime(a.movingTime));
+  if (a.distance > 0) parts.push(fmtCompactDist(a.distance));
+  if (a.averageHeartrate) parts.push(`HR avg ${Math.round(a.averageHeartrate)}`);
+  return parts.join(" · ");
 }
 
 function WorkoutPlanBlock({
@@ -212,6 +230,10 @@ export function SessionCard({
   todayStr?: string;
 }) {
   const router = useRouter();
+  const isPast = todayStr ? session.scheduledDate < todayStr : false;
+  const shouldCollapse =
+    isPast &&
+    (session.status === "done" || session.status === "skipped" || !!session.checkIn);
   const [checkIn, setCheckIn] = useState<CheckInProp | null>(session.checkIn);
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
@@ -224,6 +246,7 @@ export function SessionCard({
   const [showWorkoutPlan, setShowWorkoutPlan] = useState(false);
   const nutritionAdvice = session.nutritionAdvice ?? null;
   const [planGenerating, setPlanGenerating] = useState(false);
+  const [cardExpanded, setCardExpanded] = useState(!shouldCollapse);
   const isFuture = todayStr ? session.scheduledDate > todayStr : false;
 
   // Primary Strava activity ID — for AnalyzeStreamButton when stream is missing
@@ -374,6 +397,87 @@ export function SessionCard({
   const hint = !isResolved && !coachAdvice ? staticHint(category, checkIn?.feelScore ?? 4) : null;
   const isPositiveAdvice = (checkIn?.feelScore ?? 0) >= 5;
 
+  // ── Compact collapsed card (past done/skipped sessions) ──────────────────
+  if (!cardExpanded) {
+    const primaryLink =
+      session.stravaLinks?.find((l) => l.isPrimary) ?? session.stravaLinks?.[0] ?? null;
+    const compactExecLine = primaryLink ? buildCompactExecLine(primaryLink.activity) : null;
+    const coachTakeaway =
+      session.workoutFeedback?.summary ??
+      (checkIn?.coachAdvice
+        ? checkIn.coachAdvice.split("\n")[0].replace(/^[•·*-]\s*/, "").trim()
+        : null);
+    const hasBadges = (session.stravaLinks?.length ?? 0) > 0 || isInjury;
+
+    return (
+      <div className="rounded border px-3 py-2.5 space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="text-sm font-medium capitalize">{session.intensity}</span>
+            <span className="text-xs text-gray-500">
+              {session.durationMin} min · {session.preferredSlot}
+            </span>
+            {session.planningType === "fixed" && (
+              <span className="rounded bg-gray-100 px-1 text-xs text-gray-500">fixed</span>
+            )}
+            {session.planningType === "preferred" && (
+              <span className="rounded bg-blue-50 px-1 text-xs text-blue-500">optional</span>
+            )}
+            {session.planningType === "manual" && (
+              <span className="rounded bg-purple-50 px-1 text-xs text-purple-500">manual</span>
+            )}
+            <span
+              className={`text-xs font-medium ${
+                session.status === "skipped"
+                  ? "text-gray-400"
+                  : isResolved
+                  ? "text-gray-400"
+                  : "text-green-600"
+              }`}
+            >
+              {session.status === "skipped"
+                ? "Skipped"
+                : isResolved
+                ? "Done · resolved"
+                : checkIn
+                ? `Done · ${checkIn.feelScore}/6`
+                : "Done"}
+            </span>
+          </div>
+          <button
+            onClick={() => setCardExpanded(true)}
+            className="shrink-0 text-gray-400 hover:text-gray-600 leading-none"
+            aria-label="Show details"
+          >
+            ↓
+          </button>
+        </div>
+        {session.notes && (
+          <p className="text-xs text-gray-500 line-clamp-1">{session.notes}</p>
+        )}
+        {compactExecLine && (
+          <p className="text-xs text-gray-600">{compactExecLine}</p>
+        )}
+        {coachTakeaway && !isResolved && (
+          <p className="text-xs text-gray-500 italic line-clamp-2">{coachTakeaway}</p>
+        )}
+        {hasBadges && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5">
+            {(session.stravaLinks?.length ?? 0) > 0 && (
+              <span className="text-[10px] text-orange-500">Strava ✓</span>
+            )}
+            {isInjury && !isResolved && (
+              <span className="text-[10px] font-medium text-red-500">Issue open</span>
+            )}
+            {isInjury && isResolved && (
+              <span className="text-[10px] text-gray-400">Issue resolved</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2 rounded border p-4">
       {/* ── Session header ── */}
@@ -393,34 +497,45 @@ export function SessionCard({
             <span className="ml-2 rounded bg-purple-50 px-1 text-xs text-purple-500">manual</span>
           )}
         </div>
-        {done ? (
-          <div className="flex items-center gap-2">
-            <span className={`text-sm ${isResolved ? "text-gray-400" : "text-green-600"}`}>
-              {isResolved
-                ? "Done · resolved"
-                : checkIn
-                ? `Done · ${checkIn.feelScore}/6`
-                : "Done"}
-            </span>
-            {!editing && (
-              <button onClick={startEdit} className="text-xs text-gray-400 underline">
-                edit
-              </button>
-            )}
-          </div>
-        ) : isFuture ? (
-          <span className="text-xs text-gray-400">Upcoming</span>
-        ) : (
-          <button
-            onClick={() => {
-              setEditing(false);
-              setOpen(true);
-            }}
-            className="text-sm text-blue-600"
-          >
-            Check in
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {done ? (
+            <>
+              <span className={`text-sm ${isResolved ? "text-gray-400" : "text-green-600"}`}>
+                {isResolved
+                  ? "Done · resolved"
+                  : checkIn
+                  ? `Done · ${checkIn.feelScore}/6`
+                  : "Done"}
+              </span>
+              {!editing && (
+                <button onClick={startEdit} className="text-xs text-gray-400 underline">
+                  edit
+                </button>
+              )}
+            </>
+          ) : isFuture ? (
+            <span className="text-xs text-gray-400">Upcoming</span>
+          ) : (
+            <button
+              onClick={() => {
+                setEditing(false);
+                setOpen(true);
+              }}
+              className="text-sm text-blue-600"
+            >
+              Check in
+            </button>
+          )}
+          {shouldCollapse && (
+            <button
+              onClick={() => setCardExpanded(false)}
+              className="text-gray-300 hover:text-gray-600 leading-none"
+              aria-label="Collapse"
+            >
+              ↑
+            </button>
+          )}
+        </div>
       </div>
 
       {session.notes && (
