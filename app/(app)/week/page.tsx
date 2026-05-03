@@ -443,16 +443,18 @@ export default async function WeekPage() {
         </div>
       )}
       {plan.changeExplanation && (
-        <div className="rounded border-l-2 border-blue-400 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-          <p className="font-medium mb-1">What changed:</p>
-          <div className="space-y-1">
+        <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2.5 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">What changed</p>
+          <ul className="space-y-1">
             {normalizeCoachBullets(plan.changeExplanation)
               .split("\n\n")
               .filter((l) => l.trim())
               .map((line, i) => (
-                <p key={i}>{line}</p>
+                <li key={i} className="text-xs text-blue-800">
+                  · {line.replace(/^[•·]\s*/, "")}
+                </li>
               ))}
-          </div>
+          </ul>
         </div>
       )}
 

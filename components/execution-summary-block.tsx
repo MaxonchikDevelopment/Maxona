@@ -127,7 +127,7 @@ export function ExecutionSummaryBlock({
     .join(" · ");
 
   return (
-    <div className="rounded bg-gray-50 px-2 py-1.5 space-y-1">
+    <div className="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 space-y-1">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
         Execution
       </p>

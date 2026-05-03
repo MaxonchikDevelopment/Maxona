@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { stripMarkdownBold } from "@/lib/format-bullets";
 
 export type WorkoutFeedbackProp = {
   id: string;
@@ -110,19 +111,19 @@ export function WorkoutFeedbackSection({
         </div>
         <div className="rounded border bg-gray-50 px-3 py-2.5 space-y-1.5">
           <span className={`text-xs font-medium ${color}`}>{label}</span>
-          <p className="text-xs text-gray-700">{feedback.summary}</p>
+          <p className="text-xs text-gray-700">{stripMarkdownBold(feedback.summary)}</p>
           {feedback.bullets.length > 0 && (
             <div className="space-y-0.5">
               {feedback.bullets.map((b, i) => (
                 <p key={i} className="text-[11px] text-gray-500">
-                  • {b}
+                  • {stripMarkdownBold(b)}
                 </p>
               ))}
             </div>
           )}
           {feedback.nextAdjustment && (
             <p className="text-[11px] text-indigo-600 italic pt-0.5">
-              Next: {feedback.nextAdjustment}
+              Next: {stripMarkdownBold(feedback.nextAdjustment)}
             </p>
           )}
         </div>

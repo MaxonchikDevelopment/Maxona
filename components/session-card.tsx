@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { stripMarkdownBold } from "@/lib/format-bullets";
 import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp, StravaActivitySummary } from "@/components/strava-panel";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
@@ -197,7 +198,7 @@ function WorkoutPlanBlock({
             </div>
           )}
           {nutritionAdvice && (
-            <div className="rounded bg-green-50 px-2 py-1.5 space-y-0.5">
+            <div className="rounded border border-green-100 bg-green-50 px-2 py-1.5 space-y-0.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Fueling</p>
               {nutritionAdvice.before.map((b, i) => (
                 <p key={i} className="text-[11px] text-green-800">
@@ -403,9 +404,9 @@ export function SessionCard({
       session.stravaLinks?.find((l) => l.isPrimary) ?? session.stravaLinks?.[0] ?? null;
     const compactExecLine = primaryLink ? buildCompactExecLine(primaryLink.activity) : null;
     const coachTakeaway =
-      session.workoutFeedback?.summary ??
+      (session.workoutFeedback?.summary ? stripMarkdownBold(session.workoutFeedback.summary) : null) ??
       (checkIn?.coachAdvice
-        ? checkIn.coachAdvice.split("\n")[0].replace(/^[•·*-]\s*/, "").trim()
+        ? stripMarkdownBold(checkIn.coachAdvice.split("\n")[0].replace(/^[•·*-]\s*/, "").trim())
         : null);
     const hasBadges = (session.stravaLinks?.length ?? 0) > 0 || isInjury;
 
@@ -481,9 +482,9 @@ export function SessionCard({
   return (
     <div className="space-y-2 rounded border p-4">
       {/* ── Session header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="font-medium capitalize">{session.intensity}</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <span className="text-sm font-medium capitalize">{session.intensity}</span>
           <span className="ml-2 text-sm text-gray-500">
             {session.durationMin} min · {session.preferredSlot}
           </span>
@@ -497,7 +498,7 @@ export function SessionCard({
             <span className="ml-2 rounded bg-purple-50 px-1 text-xs text-purple-500">manual</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {done ? (
             <>
               <span className={`text-sm ${isResolved ? "text-gray-400" : "text-green-600"}`}>
@@ -556,7 +557,7 @@ export function SessionCard({
               {coachAdvice && !isResolved && (
                 <div className={`rounded px-2 py-1.5 ${isPositiveAdvice ? "bg-green-50" : "bg-amber-50"}`}>
                   <p className={`text-xs font-medium mb-0.5 ${isPositiveAdvice ? "text-green-700" : "text-amber-700"}`}>Coach</p>
-                  <p className={`text-xs whitespace-pre-line ${isPositiveAdvice ? "text-green-800" : "text-amber-800"}`}>{coachAdvice}</p>
+                  <p className={`text-xs whitespace-pre-line ${isPositiveAdvice ? "text-green-800" : "text-amber-800"}`}>{stripMarkdownBold(coachAdvice)}</p>
                 </div>
               )}
               {hint && (
