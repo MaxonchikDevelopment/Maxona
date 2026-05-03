@@ -7,6 +7,7 @@ import { ManualSessionForm } from "@/components/manual-session-form";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { generateNutritionAdvice } from "@/lib/ai/nutrition-advice";
+import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { estimateDayEnergy } from "@/lib/nutrition/energy-estimate";
 import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
 import type { NutritionAdvice, MealTimingItem } from "@/lib/ai/nutrition-advice";
@@ -193,43 +194,65 @@ export default async function TodayPage() {
       : null,
   });
 
-  let nutritionAdvice: NutritionAdvice | null = null;
-  try {
-    nutritionAdvice = await generateNutritionAdvice({
-      sessions: sessionInputs,
-      readiness: readinessRecord
-        ? {
-            feelScore: readinessRecord.feelScore,
-            notes: readinessRecord.notes,
-            tags: readinessRecord.tags,
-            category: readinessRecord.category,
-          }
-        : null,
-      nutritionProfile: nutritionProfileRaw
-        ? {
-            dietNotes: nutritionProfileRaw.dietNotes,
-            avoidFoods: nutritionProfileRaw.avoidFoods,
-            preferredBreakfast: nutritionProfileRaw.preferredBreakfast,
-            preferredPreWorkoutSnack: nutritionProfileRaw.preferredPreWorkoutSnack,
-            preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
-            caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
-            stomachSensitive: nutritionProfileRaw.stomachSensitive,
-            currentMealPattern: nutritionProfileRaw.currentMealPattern,
-            nutritionGoal: nutritionProfileRaw.nutritionGoal,
-            minHoursAfterMainMealBeforeWorkout: nutritionProfileRaw.minHoursAfterMainMealBeforeWorkout,
-            preWorkoutSnackTolerance: nutritionProfileRaw.preWorkoutSnackTolerance,
-            preferredFoods: nutritionProfileRaw.preferredFoods,
-            supplements: nutritionProfileRaw.supplements,
-            cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
-            bodyWeightKg: nutritionProfileRaw.bodyWeightKg,
-            estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
-            calorieGoal: nutritionProfileRaw.calorieGoal,
-          }
-        : null,
-      energy,
+  const nutritionAdviceInput = {
+    sessions: sessionInputs,
+    readiness: readinessRecord
+      ? {
+          feelScore: readinessRecord.feelScore,
+          notes: readinessRecord.notes,
+          tags: readinessRecord.tags,
+          category: readinessRecord.category,
+        }
+      : null,
+    nutritionProfile: nutritionProfileRaw
+      ? {
+          dietNotes: nutritionProfileRaw.dietNotes,
+          avoidFoods: nutritionProfileRaw.avoidFoods,
+          preferredBreakfast: nutritionProfileRaw.preferredBreakfast,
+          preferredPreWorkoutSnack: nutritionProfileRaw.preferredPreWorkoutSnack,
+          preferredPostWorkoutMeal: nutritionProfileRaw.preferredPostWorkoutMeal,
+          caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
+          stomachSensitive: nutritionProfileRaw.stomachSensitive,
+          currentMealPattern: nutritionProfileRaw.currentMealPattern,
+          nutritionGoal: nutritionProfileRaw.nutritionGoal,
+          minHoursAfterMainMealBeforeWorkout: nutritionProfileRaw.minHoursAfterMainMealBeforeWorkout,
+          preWorkoutSnackTolerance: nutritionProfileRaw.preWorkoutSnackTolerance,
+          preferredFoods: nutritionProfileRaw.preferredFoods,
+          supplements: nutritionProfileRaw.supplements,
+          cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
+          bodyWeightKg: nutritionProfileRaw.bodyWeightKg,
+          estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
+          calorieGoal: nutritionProfileRaw.calorieGoal,
+        }
+      : null,
+    energy,
+  };
+
+  const nutritionHash = hashInputs({ date: todayStr, ...nutritionAdviceInput });
+
+  let nutritionAdvice: NutritionAdvice | null =
+    await getCachedInsight<NutritionAdvice>({
+      userId: USER_ID,
+      kind: "daily-nutrition",
+      scopeKey: todayStr,
+      inputHash: nutritionHash,
     });
-  } catch {
-    nutritionAdvice = null;
+
+  if (!nutritionAdvice) {
+    if (process.env.NODE_ENV !== "production") console.time("[today] nutrition-advice generate");
+    try {
+      nutritionAdvice = await generateNutritionAdvice(nutritionAdviceInput);
+      void setCachedInsight({
+        userId: USER_ID,
+        kind: "daily-nutrition",
+        scopeKey: todayStr,
+        inputHash: nutritionHash,
+        payload: nutritionAdvice,
+      });
+    } catch {
+      nutritionAdvice = null;
+    }
+    if (process.env.NODE_ENV !== "production") console.timeEnd("[today] nutrition-advice generate");
   }
 
   const props: SessionProp[] = sessions.map((s) => ({

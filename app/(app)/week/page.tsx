@@ -8,6 +8,7 @@ import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
+import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
 import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import type { HrAnalytics } from "@/lib/analytics/hr-stream";
@@ -166,82 +167,115 @@ export default async function WeekPage() {
 
   // Cast through unknown — Prisma 6 loses fields when same model appears twice in Promise.all
   const plan = planRaw as unknown as PlanWithSessions;
+  const planId = planRaw!.id;
 
   const sessionIds = plan.sessions.map((s) => s.id);
 
-  // Batch-load Strava links for all sessions — avoids doubly-nested include type issues
+  // Compute weekly nutrition hash before batch queries so the cache check can run in parallel
+  const weeklyNutritionInput = {
+    sessions: plan.sessions.map((s) => ({
+      dateStr: toDateStr(s.scheduledDate),
+      intensity: s.intensity,
+      durationMin: s.durationMin,
+      notes: s.notes,
+    })),
+    nutritionProfile: nutritionProfileRaw
+      ? {
+          nutritionGoal: nutritionProfileRaw.nutritionGoal,
+          currentMealPattern: nutritionProfileRaw.currentMealPattern,
+          stomachSensitive: nutritionProfileRaw.stomachSensitive,
+          caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
+          preferredFoods: nutritionProfileRaw.preferredFoods,
+          avoidFoods: nutritionProfileRaw.avoidFoods,
+          supplements: nutritionProfileRaw.supplements,
+          cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
+          calorieGoal: nutritionProfileRaw.calorieGoal,
+          estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
+        }
+      : null,
+  };
+  const weeklyNutritionHash = hashInputs(weeklyNutritionInput);
+
+  // Run all batch queries + cache check in parallel (3 sequential RTTs → 1)
+  type LinkRow = { id: string; sessionId: string; isPrimary: boolean; activity: { id: string; stravaActivityId: string; name: string; sportType: string; startDate: Date; distance: number; movingTime: number; elapsedTime: number; totalElevationGain: number; averageSpeed: number; averageHeartrate: number | null; maxHeartrate: number | null } };
+  type WpRow = { id: string; sessionId: string; planType: string; goal: string; target: string | null; blocks: unknown; rules: unknown; alternatives: unknown; summary: string | null };
+  type WfRow = { id: string; sessionId: string; adherenceLabel: string; summary: string; bullets: unknown; nextAdjustment: string | null; generatedAt: Date };
+
+  const [allLinksRaw, allWp, allWf, cachedWeeklyNutrition] = await Promise.all([
+    stravaConnected
+      ? pc.sessionStravaActivityLink.findMany({
+          where: { sessionId: { in: sessionIds } },
+          include: { activity: true },
+          orderBy: { createdAt: "asc" },
+        }) as Promise<LinkRow[]>
+      : Promise.resolve([] as LinkRow[]),
+    pc.sessionWorkoutPlan.findMany({
+      where: { sessionId: { in: sessionIds } },
+    }) as Promise<WpRow[]>,
+    pc.sessionWorkoutFeedback.findMany({
+      where: { sessionId: { in: sessionIds } },
+    }) as Promise<WfRow[]>,
+    getCachedInsight<WeeklyNutritionFocus>({
+      userId: USER_ID,
+      kind: "weekly-nutrition",
+      scopeKey: planId,
+      inputHash: weeklyNutritionHash,
+    }),
+  ]);
+
+  // Build session lookup maps
   const stravaLinksBySession: Record<string, StravaLinkProp[]> = {};
+  for (const l of allLinksRaw) {
+    if (!stravaLinksBySession[l.sessionId]) stravaLinksBySession[l.sessionId] = [];
+    stravaLinksBySession[l.sessionId].push({
+      id: l.id,
+      isPrimary: l.isPrimary,
+      activity: {
+        id: l.activity.id,
+        stravaActivityId: l.activity.stravaActivityId,
+        name: l.activity.name,
+        sportType: l.activity.sportType,
+        startDate: l.activity.startDate.toISOString(),
+        distance: l.activity.distance,
+        movingTime: l.activity.movingTime,
+        elapsedTime: l.activity.elapsedTime,
+        totalElevationGain: l.activity.totalElevationGain,
+        averageSpeed: l.activity.averageSpeed,
+        averageHeartrate: l.activity.averageHeartrate,
+        maxHeartrate: l.activity.maxHeartrate,
+      },
+    });
+  }
+
   const workoutPlansBySession: Record<string, WorkoutPlanProp> = {};
-
-  if (stravaConnected) {
-    const allLinks = await pc.sessionStravaActivityLink.findMany({
-      where: { sessionId: { in: sessionIds } },
-      include: { activity: true },
-      orderBy: { createdAt: "asc" },
-    }) as Array<{ id: string; sessionId: string; isPrimary: boolean; activity: { id: string; stravaActivityId: string; name: string; sportType: string; startDate: Date; distance: number; movingTime: number; elapsedTime: number; totalElevationGain: number; averageSpeed: number; averageHeartrate: number | null; maxHeartrate: number | null } }>;
-    for (const l of allLinks) {
-      if (!stravaLinksBySession[l.sessionId]) stravaLinksBySession[l.sessionId] = [];
-      stravaLinksBySession[l.sessionId].push({
-        id: l.id,
-        isPrimary: l.isPrimary,
-        activity: {
-          id: l.activity.id,
-          stravaActivityId: l.activity.stravaActivityId,
-          name: l.activity.name,
-          sportType: l.activity.sportType,
-          startDate: l.activity.startDate.toISOString(),
-          distance: l.activity.distance,
-          movingTime: l.activity.movingTime,
-          elapsedTime: l.activity.elapsedTime,
-          totalElevationGain: l.activity.totalElevationGain,
-          averageSpeed: l.activity.averageSpeed,
-          averageHeartrate: l.activity.averageHeartrate,
-          maxHeartrate: l.activity.maxHeartrate,
-        },
-      });
-    }
+  for (const wp of allWp) {
+    workoutPlansBySession[wp.sessionId] = {
+      id: wp.id,
+      planType: wp.planType,
+      goal: wp.goal,
+      target: wp.target,
+      blocks: wp.blocks as WorkoutBlock[],
+      rules: wp.rules as string[],
+      alternatives: wp.alternatives as string[] | null,
+      summary: wp.summary,
+    };
   }
 
-  {
-    const allWp = await pc.sessionWorkoutPlan.findMany({
-      where: { sessionId: { in: sessionIds } },
-    }) as Array<{ id: string; sessionId: string; planType: string; goal: string; target: string | null; blocks: unknown; rules: unknown; alternatives: unknown; summary: string | null }>;
-    for (const wp of allWp) {
-      workoutPlansBySession[wp.sessionId] = {
-        id: wp.id,
-        planType: wp.planType,
-        goal: wp.goal,
-        target: wp.target,
-        blocks: wp.blocks as WorkoutBlock[],
-        rules: wp.rules as string[],
-        alternatives: wp.alternatives as string[] | null,
-        summary: wp.summary,
-      };
-    }
-  }
-
-  // Batch-load workout feedbacks for all sessions
   const workoutFeedbacksBySession: Record<string, WorkoutFeedbackProp> = {};
-  {
-    const allWf = await pc.sessionWorkoutFeedback.findMany({
-      where: { sessionId: { in: sessionIds } },
-    }) as Array<{ id: string; sessionId: string; adherenceLabel: string; summary: string; bullets: unknown; nextAdjustment: string | null; generatedAt: Date }>;
-    for (const wf of allWf) {
-      workoutFeedbacksBySession[wf.sessionId] = {
-        id: wf.id,
-        adherenceLabel: wf.adherenceLabel,
-        summary: wf.summary,
-        bullets: Array.isArray(wf.bullets) ? (wf.bullets as string[]) : [],
-        nextAdjustment: wf.nextAdjustment,
-        generatedAt: wf.generatedAt.toISOString(),
-      };
-    }
+  for (const wf of allWf) {
+    workoutFeedbacksBySession[wf.sessionId] = {
+      id: wf.id,
+      adherenceLabel: wf.adherenceLabel,
+      summary: wf.summary,
+      bullets: Array.isArray(wf.bullets) ? (wf.bullets as string[]) : [],
+      nextAdjustment: wf.nextAdjustment,
+      generatedAt: wf.generatedAt.toISOString(),
+    };
   }
 
-  // Batch-load HR analytics for done sessions with Strava links
+  // HR analytics: load streams only after links are resolved
   const hrAnalyticsBySession: Record<string, HrAnalytics> = {};
   {
-    // Collect primary activity IDs for done sessions
     const primaryActivityIds: string[] = [];
     const activityIdToSessionId: Record<string, string> = {};
     const sessionIntensityById: Record<string, string> = {};
@@ -280,33 +314,23 @@ export default async function WeekPage() {
     }
   }
 
-  // Generate weekly nutrition focus in parallel with session data assembly
-  let weeklyNutritionFocus: WeeklyNutritionFocus | null = null;
-  try {
-    weeklyNutritionFocus = await generateWeeklyNutritionFocus({
-      sessions: plan.sessions.map((s) => ({
-        dateStr: toDateStr(s.scheduledDate),
-        intensity: s.intensity,
-        durationMin: s.durationMin,
-        notes: s.notes,
-      })),
-      nutritionProfile: nutritionProfileRaw
-        ? {
-            nutritionGoal: nutritionProfileRaw.nutritionGoal,
-            currentMealPattern: nutritionProfileRaw.currentMealPattern,
-            stomachSensitive: nutritionProfileRaw.stomachSensitive,
-            caffeineSensitive: nutritionProfileRaw.caffeineSensitive,
-            preferredFoods: nutritionProfileRaw.preferredFoods,
-            avoidFoods: nutritionProfileRaw.avoidFoods,
-            supplements: nutritionProfileRaw.supplements,
-            cookingTimePreference: nutritionProfileRaw.cookingTimePreference,
-            calorieGoal: nutritionProfileRaw.calorieGoal,
-            estimatedRestDayCalories: nutritionProfileRaw.estimatedRestDayCalories,
-          }
-        : null,
-    });
-  } catch {
-    weeklyNutritionFocus = null;
+  // Weekly nutrition: use cache if inputs unchanged, otherwise generate and cache
+  let weeklyNutritionFocus: WeeklyNutritionFocus | null = cachedWeeklyNutrition;
+  if (!weeklyNutritionFocus) {
+    if (process.env.NODE_ENV !== "production") console.time("[week] weekly-nutrition generate");
+    try {
+      weeklyNutritionFocus = await generateWeeklyNutritionFocus(weeklyNutritionInput);
+      void setCachedInsight({
+        userId: USER_ID,
+        kind: "weekly-nutrition",
+        scopeKey: planId,
+        inputHash: weeklyNutritionHash,
+        payload: weeklyNutritionFocus,
+      });
+    } catch {
+      weeklyNutritionFocus = null;
+    }
+    if (process.env.NODE_ENV !== "production") console.timeEnd("[week] weekly-nutrition generate");
   }
 
   const sessionsByDate: Record<string, SessionProp[]> = {};
