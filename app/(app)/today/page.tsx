@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { SessionCard } from "@/components/session-card";
@@ -9,10 +10,9 @@ import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { generateNutritionAdvice } from "@/lib/ai/nutrition-advice";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { estimateDayEnergy } from "@/lib/nutrition/energy-estimate";
-import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
+import { timed } from "@/lib/perf";
 import type { NutritionAdvice, MealTimingItem } from "@/lib/ai/nutrition-advice";
 import type { DayEnergyEstimate } from "@/lib/nutrition/energy-estimate";
-import type { HrAnalytics } from "@/lib/analytics/hr-stream";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
 import type { ReadinessProp } from "@/components/daily-readiness-card";
@@ -82,8 +82,29 @@ function buildImplicationLine(
   return null;
 }
 
+// Only fields needed for card rendering — excludes rawJson and stream data
+const ACTIVITY_SELECT = {
+  id: true,
+  stravaActivityId: true,
+  name: true,
+  sportType: true,
+  startDate: true,
+  distance: true,
+  movingTime: true,
+  elapsedTime: true,
+  totalElevationGain: true,
+  averageSpeed: true,
+  averageHeartrate: true,
+  maxHeartrate: true,
+} as const;
+
 export default async function TodayPage() {
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
+  const pageStart = Date.now();
+
+  // ── Step 1: user (needed for timezone to compute todayStr) ──────────────────
+  const user = await timed("today/user", () =>
+    prisma.user.findUniqueOrThrow({ where: { id: USER_ID } })
+  );
 
   const todayStr = new Intl.DateTimeFormat("en-CA", {
     timeZone: user.timezone,
@@ -92,18 +113,22 @@ export default async function TodayPage() {
     day: "2-digit",
   }).format(new Date());
 
-  if (await activateDraftIfReady(USER_ID, todayStr)) {
-    redirect("/today");
-  }
-
   const [y, m, d] = todayStr.split("-").map(Number);
   const todayDate = new Date(Date.UTC(y, m - 1, d));
 
-  const stravaConnection = await prisma.stravaConnection.findUnique({ where: { userId: USER_ID } });
-  const stravaConnected = !!stravaConnection;
-
-  const [sessions, injuryCheckIns, readinessRecord, nextPlannedSession, nutritionProfileRaw] =
-    await Promise.all([
+  // ── Step 2: all data queries in parallel (1 DB round trip) ──────────────────
+  const [
+    didActivate,
+    stravaConnectionRaw,
+    sessions,
+    injuryCheckIns,
+    readinessRecord,
+    nextPlannedSession,
+    nutritionProfileRaw,
+  ] = await timed("today/batch", () =>
+    Promise.all([
+      activateDraftIfReady(USER_ID, todayStr),
+      prisma.stravaConnection.findUnique({ where: { userId: USER_ID } }),
       prisma.trainingSession.findMany({
         where: {
           userId: USER_ID,
@@ -112,7 +137,11 @@ export default async function TodayPage() {
         },
         include: {
           checkIn: true,
-          stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
+          stravaLinks: {
+            // select only fields needed by ExecutionSummaryBlock — skip rawJson
+            include: { activity: { select: ACTIVITY_SELECT } },
+            orderBy: { createdAt: "asc" },
+          },
           workoutPlan: true,
           workoutFeedback: true,
         },
@@ -133,50 +162,18 @@ export default async function TodayPage() {
           status: "planned",
           scheduledDate: { gt: todayDate },
         },
+        select: { intensity: true, notes: true },
         orderBy: { scheduledDate: "asc" },
       }),
       prisma.nutritionProfile.findUnique({ where: { userId: USER_ID } }),
-    ]);
-
-  // ── HR Analytics: batch-load streams for done sessions with Strava ──
-  const primaryActivityIds = sessions
-    .filter((s) => (s.status === "done" || !!s.checkIn) && s.stravaLinks.length > 0)
-    .map((s) => (s.stravaLinks.find((l) => l.isPrimary) ?? s.stravaLinks[0])?.activity?.id)
-    .filter((id): id is string => !!id);
-
-  const [streamsRaw, trainingProfile] = await Promise.all([
-    primaryActivityIds.length > 0
-      ? prisma.stravaActivityStream.findMany({
-          where: { stravaActivityId: { in: primaryActivityIds } },
-          select: { stravaActivityId: true, time: true, heartrate: true },
-        })
-      : Promise.resolve([]),
-    primaryActivityIds.length > 0
-      ? prisma.userTrainingProfile.findUnique({ where: { userId: USER_ID } })
-      : Promise.resolve(null),
-  ]);
-
-  const streamsByActivityId = Object.fromEntries(
-    streamsRaw.map((s) => [s.stravaActivityId, s])
+    ])
   );
 
-  const hrAnalyticsBySession: Record<string, HrAnalytics> = {};
-  for (const s of sessions) {
-    if (s.stravaLinks.length === 0) continue;
-    const primaryLink = s.stravaLinks.find((l) => l.isPrimary) ?? s.stravaLinks[0];
-    const stream = streamsByActivityId[primaryLink.activity.id];
-    if (!stream) continue;
-    const { time, heartrate } = stream;
-    if (!Array.isArray(time) || !Array.isArray(heartrate)) continue;
-    const analytics = buildHrAnalytics(
-      time as number[],
-      heartrate as number[],
-      trainingProfile,
-      s.intensity
-    );
-    if (analytics) hrAnalyticsBySession[s.id] = analytics;
-  }
+  if (didActivate) redirect("/today");
 
+  const stravaConnected = !!stravaConnectionRaw;
+
+  // ── Step 3: nutrition cache check ───────────────────────────────────────────
   const sessionInputs = sessions.map((s) => ({
     intensity: s.intensity,
     durationMin: s.durationMin,
@@ -230,31 +227,39 @@ export default async function TodayPage() {
 
   const nutritionHash = hashInputs({ date: todayStr, ...nutritionAdviceInput });
 
-  let nutritionAdvice: NutritionAdvice | null =
-    await getCachedInsight<NutritionAdvice>({
+  const nutritionAdvice = await timed("today/nutrition-cache", () =>
+    getCachedInsight<NutritionAdvice>({
       userId: USER_ID,
       kind: "daily-nutrition",
       scopeKey: todayStr,
       inputHash: nutritionHash,
-    });
+    })
+  );
 
+  // Cache miss → schedule generation AFTER response is sent (non-blocking)
   if (!nutritionAdvice) {
-    if (process.env.NODE_ENV !== "production") console.time("[today] nutrition-advice generate");
-    try {
-      nutritionAdvice = await generateNutritionAdvice(nutritionAdviceInput);
-      void setCachedInsight({
-        userId: USER_ID,
-        kind: "daily-nutrition",
-        scopeKey: todayStr,
-        inputHash: nutritionHash,
-        payload: nutritionAdvice,
-      });
-    } catch {
-      nutritionAdvice = null;
-    }
-    if (process.env.NODE_ENV !== "production") console.timeEnd("[today] nutrition-advice generate");
+    const capturedInput = nutritionAdviceInput;
+    const capturedHash = nutritionHash;
+    after(async () => {
+      try {
+        const result = await generateNutritionAdvice(capturedInput);
+        await setCachedInsight({
+          userId: USER_ID,
+          kind: "daily-nutrition",
+          scopeKey: todayStr,
+          inputHash: capturedHash,
+          payload: result,
+        });
+      } catch {
+        // non-fatal — will retry on next navigation
+      }
+    });
   }
 
+  if (process.env.NODE_ENV !== "production")
+    console.log(`[perf] today/total: ${Date.now() - pageStart}ms`);
+
+  // ── Build props ─────────────────────────────────────────────────────────────
   const props: SessionProp[] = sessions.map((s) => ({
     id: s.id,
     scheduledDate: s.scheduledDate.toISOString().split("T")[0],
@@ -316,7 +321,8 @@ export default async function TodayPage() {
           generatedAt: s.workoutFeedback.generatedAt.toISOString(),
         } satisfies WorkoutFeedbackProp)
       : null,
-    hrAnalytics: hrAnalyticsBySession[s.id] ?? null,
+    // HR analytics not loaded on card view — user can analyze stream on session detail
+    hrAnalytics: null,
     nutritionAdvice,
   }));
 
@@ -389,12 +395,6 @@ export default async function TodayPage() {
   );
 }
 
-const GOAL_LABELS: Record<string, string> = {
-  maintain: "Maintain",
-  slight_surplus: "Slight surplus",
-  slight_deficit: "Slight deficit",
-};
-
 function EnergyRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-xs text-green-800">
@@ -445,13 +445,11 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
 
   return (
     <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-2">
-      {/* Focus */}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Nutrition today</p>
         <p className="text-xs font-medium text-green-700 mt-0.5">{advice.summary}</p>
       </div>
 
-      {/* Energy estimate */}
       {hasEnergy && (
         <div className="rounded bg-green-100/60 px-2.5 py-2 space-y-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-green-500">Energy estimate</p>
@@ -464,7 +462,6 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
         </div>
       )}
 
-      {/* Meal timing */}
       {hasMeals && (
         <div className="space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-green-500">Meal timing</p>
@@ -481,7 +478,6 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
         </div>
       )}
 
-      {/* Before / During / After */}
       {(hasBefore || hasDuring || hasAfter) && (
         <div className="space-y-1">
           {hasBefore && advice.before.map((b, i) => (
@@ -502,7 +498,6 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
         </div>
       )}
 
-      {/* Hydration */}
       {advice.hydration.length > 0 && (
         <div className="space-y-0.5">
           {advice.hydration.map((h, i) => (
@@ -511,12 +506,10 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
         </div>
       )}
 
-      {/* Timing note */}
       {advice.timingNote && (
         <p className="text-xs text-green-600 italic">{advice.timingNote}</p>
       )}
 
-      {/* Missing energy callout */}
       {!hasEnergy && (
         <p className="text-[10px] text-green-500 italic">
           Add rest-day calorie target in Settings → Nutrition Profile for rough energy estimates.
@@ -525,3 +518,4 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
     </div>
   );
 }
+

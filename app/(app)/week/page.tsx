@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { SessionCard } from "@/components/session-card";
@@ -9,9 +10,8 @@ import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
-import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
+import { timed } from "@/lib/perf";
 import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
-import type { HrAnalytics } from "@/lib/analytics/hr-stream";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
 import type { IssueItem } from "@/components/active-issues";
@@ -20,6 +20,7 @@ import type { StravaLinkProp } from "@/components/strava-panel";
 // Explicit type covering only what this page uses — bypasses Prisma 6 inference bug
 // when two same-model findFirst calls are in the same Promise.all.
 type PlanWithSessions = {
+  id: string;
   startsAt: Date;
   focusSummary: string | null;
   changeExplanation: string | null;
@@ -57,12 +58,33 @@ const READINESS_TAG_LABELS: Record<string, string> = {
   stomach: "Stomach",
 };
 
+// Only fields needed for card rendering — excludes rawJson and stream data
+const ACTIVITY_SELECT = {
+  id: true,
+  stravaActivityId: true,
+  name: true,
+  sportType: true,
+  startDate: true,
+  distance: true,
+  movingTime: true,
+  elapsedTime: true,
+  totalElevationGain: true,
+  averageSpeed: true,
+  averageHeartrate: true,
+  maxHeartrate: true,
+} as const;
+
 function toDateStr(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
 export default async function WeekPage() {
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
+  const pageStart = Date.now();
+
+  // ── Step 1: user (needed for timezone) ─────────────────────────────────────
+  const user = await timed("week/user", () =>
+    prisma.user.findUniqueOrThrow({ where: { id: USER_ID } })
+  );
 
   const todayStr = new Intl.DateTimeFormat("en-CA", {
     timeZone: user.timezone,
@@ -71,73 +93,75 @@ export default async function WeekPage() {
     day: "2-digit",
   }).format(new Date());
 
-  // Shared rollover — activates next-week draft if its Monday has arrived.
-  // Fires from any main route so the user never sees a stale active plan.
-  if (await activateDraftIfReady(USER_ID, todayStr)) {
-    redirect("/week");
-  }
-
-  const stravaConnection = await prisma.stravaConnection.findUnique({ where: { userId: USER_ID } });
-  const stravaConnected = !!stravaConnection;
-
-  const [planRaw, draftPlan, injuryCheckIns] = await Promise.all([
-    prisma.trainingPlan.findFirst({
-      where: { userId: USER_ID, status: "active" },
-      include: {
-        sessions: {
-          include: { checkIn: true },
-          orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
-        },
-      },
-    }),
-    prisma.trainingPlan.findFirst({
-      where: { userId: USER_ID, status: "draft" },
-      orderBy: { startsAt: "desc" },
-      include: {
-        sessions: {
-          include: { checkIn: true },
-          orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
-        },
-      },
-    }),
-    prisma.checkIn.findMany({
-      where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
-      include: { session: true },
-      orderBy: { occurredAt: "desc" },
-    }),
-  ]);
-
-  // Readiness chip: only today's non-ok signal is relevant on the week view.
-  // Yesterday's readiness is stale — hide it so it doesn't linger as a false warning.
   const todayDate = new Date(todayStr + "T00:00:00Z");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pc = prisma as any;
 
-  const [latestReadiness, nutritionProfileRaw] = await Promise.all([
-    planRaw
-      ? pc.dailyReadiness.findFirst({
-          where: {
-            userId: USER_ID,
-            date: { gte: todayDate },
-            category: { not: "ok" },
+  // ── Step 2: all independent queries in parallel (1 DB round trip) ───────────
+  const [
+    didActivate,
+    stravaConnectionRaw,
+    planRaw,
+    draftPlan,
+    injuryCheckIns,
+    nutritionProfileRaw,
+    latestReadiness,
+  ] = await timed("week/batch1", () =>
+    Promise.all([
+      activateDraftIfReady(USER_ID, todayStr),
+      prisma.stravaConnection.findUnique({ where: { userId: USER_ID } }),
+      prisma.trainingPlan.findFirst({
+        where: { userId: USER_ID, status: "active" },
+        include: {
+          sessions: {
+            include: { checkIn: true },
+            orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
           },
-          orderBy: { date: "desc" },
-        }) as Promise<{ id: string; category: string; feelScore: number; tags: unknown } | null>
-      : Promise.resolve(null),
-    pc.nutritionProfile.findUnique({ where: { userId: USER_ID } }) as Promise<{
-      nutritionGoal: string | null;
-      currentMealPattern: string | null;
-      stomachSensitive: boolean;
-      caffeineSensitive: boolean;
-      preferredFoods: string | null;
-      avoidFoods: string | null;
-      supplements: string | null;
-      cookingTimePreference: string | null;
-      calorieGoal: string | null;
-      estimatedRestDayCalories: number | null;
-    } | null>,
-  ]);
+        },
+      }),
+      prisma.trainingPlan.findFirst({
+        where: { userId: USER_ID, status: "draft" },
+        orderBy: { startsAt: "desc" },
+        include: {
+          sessions: {
+            include: { checkIn: true },
+            orderBy: [{ scheduledDate: "asc" }, { preferredSlot: "asc" }],
+          },
+        },
+      }),
+      prisma.checkIn.findMany({
+        where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
+        include: { session: true },
+        orderBy: { occurredAt: "desc" },
+      }),
+      pc.nutritionProfile.findUnique({ where: { userId: USER_ID } }) as Promise<{
+        nutritionGoal: string | null;
+        currentMealPattern: string | null;
+        stomachSensitive: boolean;
+        caffeineSensitive: boolean;
+        preferredFoods: string | null;
+        avoidFoods: string | null;
+        supplements: string | null;
+        cookingTimePreference: string | null;
+        calorieGoal: string | null;
+        estimatedRestDayCalories: number | null;
+      } | null>,
+      // latestReadiness moved into batch — safe to always query
+      pc.dailyReadiness.findFirst({
+        where: {
+          userId: USER_ID,
+          date: { gte: todayDate },
+          category: { not: "ok" },
+        },
+        orderBy: { date: "desc" },
+      }) as Promise<{ id: string; category: string; feelScore: number; tags: unknown } | null>,
+    ])
+  );
+
+  if (didActivate) redirect("/week");
+
+  const stravaConnected = !!stravaConnectionRaw;
 
   const activeIssues: IssueItem[] = injuryCheckIns
     .filter((ci) => categorizeCheckIn(ci.feelScore, ci.notes) === "injury")
@@ -152,6 +176,8 @@ export default async function WeekPage() {
     }));
 
   if (!planRaw) {
+    if (process.env.NODE_ENV !== "production")
+      console.log(`[perf] week/total (no plan): ${Date.now() - pageStart}ms`);
     return (
       <main className="p-4 space-y-4">
         <h1 className="mb-4 text-xl font-bold">Week</h1>
@@ -167,11 +193,11 @@ export default async function WeekPage() {
 
   // Cast through unknown — Prisma 6 loses fields when same model appears twice in Promise.all
   const plan = planRaw as unknown as PlanWithSessions;
-  const planId = planRaw!.id;
+  const planId = plan.id;
 
   const sessionIds = plan.sessions.map((s) => s.id);
 
-  // Compute weekly nutrition hash before batch queries so the cache check can run in parallel
+  // Compute weekly nutrition hash from plan sessions + nutrition profile
   const weeklyNutritionInput = {
     sessions: plan.sessions.map((s) => ({
       dateStr: toDateStr(s.scheduledDate),
@@ -196,34 +222,98 @@ export default async function WeekPage() {
   };
   const weeklyNutritionHash = hashInputs(weeklyNutritionInput);
 
-  // Run all batch queries + cache check in parallel (3 sequential RTTs → 1)
-  type LinkRow = { id: string; sessionId: string; isPrimary: boolean; activity: { id: string; stravaActivityId: string; name: string; sportType: string; startDate: Date; distance: number; movingTime: number; elapsedTime: number; totalElevationGain: number; averageSpeed: number; averageHeartrate: number | null; maxHeartrate: number | null } };
-  type WpRow = { id: string; sessionId: string; planType: string; goal: string; target: string | null; blocks: unknown; rules: unknown; alternatives: unknown; summary: string | null };
-  type WfRow = { id: string; sessionId: string; adherenceLabel: string; summary: string; bullets: unknown; nextAdjustment: string | null; generatedAt: Date };
+  // ── Step 3: session-dependent queries in parallel (1 DB round trip) ─────────
+  type LinkRow = {
+    id: string;
+    sessionId: string;
+    isPrimary: boolean;
+    activity: {
+      id: string;
+      stravaActivityId: string;
+      name: string;
+      sportType: string;
+      startDate: Date;
+      distance: number;
+      movingTime: number;
+      elapsedTime: number;
+      totalElevationGain: number;
+      averageSpeed: number;
+      averageHeartrate: number | null;
+      maxHeartrate: number | null;
+    };
+  };
+  type WpRow = {
+    id: string;
+    sessionId: string;
+    planType: string;
+    goal: string;
+    target: string | null;
+    blocks: unknown;
+    rules: unknown;
+    alternatives: unknown;
+    summary: string | null;
+  };
+  type WfRow = {
+    id: string;
+    sessionId: string;
+    adherenceLabel: string;
+    summary: string;
+    bullets: unknown;
+    nextAdjustment: string | null;
+    generatedAt: Date;
+  };
 
-  const [allLinksRaw, allWp, allWf, cachedWeeklyNutrition] = await Promise.all([
-    stravaConnected
-      ? pc.sessionStravaActivityLink.findMany({
-          where: { sessionId: { in: sessionIds } },
-          include: { activity: true },
-          orderBy: { createdAt: "asc" },
-        }) as Promise<LinkRow[]>
-      : Promise.resolve([] as LinkRow[]),
-    pc.sessionWorkoutPlan.findMany({
-      where: { sessionId: { in: sessionIds } },
-    }) as Promise<WpRow[]>,
-    pc.sessionWorkoutFeedback.findMany({
-      where: { sessionId: { in: sessionIds } },
-    }) as Promise<WfRow[]>,
-    getCachedInsight<WeeklyNutritionFocus>({
-      userId: USER_ID,
-      kind: "weekly-nutrition",
-      scopeKey: planId,
-      inputHash: weeklyNutritionHash,
-    }),
-  ]);
+  const [allLinksRaw, allWp, allWf, cachedWeeklyNutrition] = await timed("week/batch2", () =>
+    Promise.all([
+      stravaConnected
+        ? (pc.sessionStravaActivityLink.findMany({
+            where: { sessionId: { in: sessionIds } },
+            // select only fields needed for card rendering — excludes rawJson
+            include: { activity: { select: ACTIVITY_SELECT } },
+            orderBy: { createdAt: "asc" },
+          }) as Promise<LinkRow[]>)
+        : Promise.resolve([] as LinkRow[]),
+      pc.sessionWorkoutPlan.findMany({
+        where: { sessionId: { in: sessionIds } },
+      }) as Promise<WpRow[]>,
+      pc.sessionWorkoutFeedback.findMany({
+        where: { sessionId: { in: sessionIds } },
+      }) as Promise<WfRow[]>,
+      getCachedInsight<WeeklyNutritionFocus>({
+        userId: USER_ID,
+        kind: "weekly-nutrition",
+        scopeKey: planId,
+        inputHash: weeklyNutritionHash,
+      }),
+    ])
+  );
 
-  // Build session lookup maps
+  // Cache miss → schedule generation AFTER response is sent (non-blocking)
+  const weeklyNutritionFocus: WeeklyNutritionFocus | null = cachedWeeklyNutrition;
+  if (!weeklyNutritionFocus) {
+    const capturedInput = weeklyNutritionInput;
+    const capturedHash = weeklyNutritionHash;
+    const capturedPlanId = planId;
+    after(async () => {
+      try {
+        const result = await generateWeeklyNutritionFocus(capturedInput);
+        await setCachedInsight({
+          userId: USER_ID,
+          kind: "weekly-nutrition",
+          scopeKey: capturedPlanId,
+          inputHash: capturedHash,
+          payload: result,
+        });
+      } catch {
+        // non-fatal — will retry on next navigation
+      }
+    });
+  }
+
+  if (process.env.NODE_ENV !== "production")
+    console.log(`[perf] week/total: ${Date.now() - pageStart}ms`);
+
+  // ── Build lookup maps ────────────────────────────────────────────────────────
   const stravaLinksBySession: Record<string, StravaLinkProp[]> = {};
   for (const l of allLinksRaw) {
     if (!stravaLinksBySession[l.sessionId]) stravaLinksBySession[l.sessionId] = [];
@@ -273,66 +363,6 @@ export default async function WeekPage() {
     };
   }
 
-  // HR analytics: load streams only after links are resolved
-  const hrAnalyticsBySession: Record<string, HrAnalytics> = {};
-  {
-    const primaryActivityIds: string[] = [];
-    const activityIdToSessionId: Record<string, string> = {};
-    const sessionIntensityById: Record<string, string> = {};
-
-    for (const s of plan.sessions) {
-      const links = stravaLinksBySession[s.id] ?? [];
-      if (links.length === 0) continue;
-      const primaryLink = links.find((l) => l.isPrimary) ?? links[0];
-      primaryActivityIds.push(primaryLink.activity.id);
-      activityIdToSessionId[primaryLink.activity.id] = s.id;
-      sessionIntensityById[s.id] = s.intensity;
-    }
-
-    if (primaryActivityIds.length > 0) {
-      const [streamsRaw, trainingProfile] = await Promise.all([
-        pc.stravaActivityStream.findMany({
-          where: { stravaActivityId: { in: primaryActivityIds } },
-          select: { stravaActivityId: true, time: true, heartrate: true },
-        }) as Promise<Array<{ stravaActivityId: string; time: unknown; heartrate: unknown }>>,
-        pc.userTrainingProfile.findUnique({ where: { userId: USER_ID } }) as Promise<{ restingHr: number | null; maxHr: number | null; easyHrMin: number | null; easyHrMax: number | null; tempoHrMin: number | null; tempoHrMax: number | null; thresholdHr: number | null; zoneMethod: string | null } | null>,
-      ]);
-
-      for (const stream of streamsRaw) {
-        const sessionId = activityIdToSessionId[stream.stravaActivityId];
-        if (!sessionId) continue;
-        const { time, heartrate } = stream;
-        if (!Array.isArray(time) || !Array.isArray(heartrate)) continue;
-        const analytics = buildHrAnalytics(
-          time as number[],
-          heartrate as number[],
-          trainingProfile,
-          sessionIntensityById[sessionId] ?? "moderate"
-        );
-        if (analytics) hrAnalyticsBySession[sessionId] = analytics;
-      }
-    }
-  }
-
-  // Weekly nutrition: use cache if inputs unchanged, otherwise generate and cache
-  let weeklyNutritionFocus: WeeklyNutritionFocus | null = cachedWeeklyNutrition;
-  if (!weeklyNutritionFocus) {
-    if (process.env.NODE_ENV !== "production") console.time("[week] weekly-nutrition generate");
-    try {
-      weeklyNutritionFocus = await generateWeeklyNutritionFocus(weeklyNutritionInput);
-      void setCachedInsight({
-        userId: USER_ID,
-        kind: "weekly-nutrition",
-        scopeKey: planId,
-        inputHash: weeklyNutritionHash,
-        payload: weeklyNutritionFocus,
-      });
-    } catch {
-      weeklyNutritionFocus = null;
-    }
-    if (process.env.NODE_ENV !== "production") console.timeEnd("[week] weekly-nutrition generate");
-  }
-
   const sessionsByDate: Record<string, SessionProp[]> = {};
   for (const s of plan.sessions) {
     const key = s.scheduledDate.toISOString().split("T")[0];
@@ -359,12 +389,13 @@ export default async function WeekPage() {
       stravaConnected,
       workoutPlan: workoutPlansBySession[s.id] ?? null,
       workoutFeedback: workoutFeedbacksBySession[s.id] ?? null,
-      hrAnalytics: hrAnalyticsBySession[s.id] ?? null,
+      // HR analytics not loaded on card view — user can analyze stream on session detail
+      hrAnalytics: null,
     });
   }
 
   const weekDays = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(plan.startsAt);
+    const d = new Date(planRaw.startsAt);
     d.setUTCDate(d.getUTCDate() + i);
     return d.toISOString().split("T")[0];
   });

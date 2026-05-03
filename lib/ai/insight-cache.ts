@@ -25,7 +25,18 @@ export async function getCachedInsight<T>(params: {
         },
       },
     });
-    if (!cached || cached.inputHash !== params.inputHash) return null;
+    if (!cached) {
+      if (process.env.NODE_ENV !== "production")
+        console.log(`[cache] ${params.kind} miss (no record) scope=${params.scopeKey}`);
+      return null;
+    }
+    if (cached.inputHash !== params.inputHash) {
+      if (process.env.NODE_ENV !== "production")
+        console.log(`[cache] ${params.kind} miss (hash mismatch) scope=${params.scopeKey} stored=${cached.inputHash.slice(0,8)} want=${params.inputHash.slice(0,8)}`);
+      return null;
+    }
+    if (process.env.NODE_ENV !== "production")
+      console.log(`[cache] ${params.kind} hit scope=${params.scopeKey}`);
     return cached.payload as T;
   } catch {
     return null;
