@@ -18,6 +18,15 @@ type RawStreamEntry = {
   resolution: string;
 };
 
+export class StravaStreamError extends Error {
+  statusCode: number;
+  constructor(message: string, statusCode: number) {
+    super(message);
+    this.name = "StravaStreamError";
+    this.statusCode = statusCode;
+  }
+}
+
 function extractNumbers(entry: RawStreamEntry | undefined): number[] {
   if (!entry || !Array.isArray(entry.data)) return [];
   return entry.data.filter((v): v is number => typeof v === "number");
@@ -27,14 +36,31 @@ export async function fetchActivityStreams(
   stravaExternalId: string,
   accessToken: string
 ): Promise<StravaStreamData | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
   const keys = "time,heartrate,distance,velocity_smooth,altitude,cadence,watts";
   const url = `${STRAVA_API}/activities/${stravaExternalId}/streams?keys=${keys}&key_by_type=true`;
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if ((err as Error).name === "AbortError") {
+      const e = new Error("Strava stream fetch timed out");
+      e.name = "AbortError";
+      throw e;
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
+
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Strava streams fetch failed (${res.status})`);
+  if (!res.ok) throw new StravaStreamError(`Strava streams fetch failed (${res.status})`, res.status);
 
   const raw: Record<string, RawStreamEntry> = await res.json();
 

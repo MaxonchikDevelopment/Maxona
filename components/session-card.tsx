@@ -465,7 +465,7 @@ export function SessionCard({
             </div>
           ) : (session.stravaLinks?.length ?? 0) > 0 && primaryActivityId ? (
             <div className="border-t pt-2">
-              <AnalyzeStreamButton activityId={primaryActivityId} />
+              <AnalyzeStreamButton activityId={primaryActivityId} sessionId={session.id} />
             </div>
           ) : null}
 

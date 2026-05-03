@@ -1,10 +1,27 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-export function AnalyzeStreamButton({ activityId }: { activityId: string }) {
+type StreamStatus = "idle" | "loading" | "done" | "no_stream" | "error";
+
+type StreamResponse = {
+  ok: boolean;
+  status?: "created" | "existing" | "no_stream" | "error";
+  message?: string;
+  hasHeartrate?: boolean;
+  sampleCount?: number;
+};
+
+export function AnalyzeStreamButton({
+  activityId,
+  sessionId,
+}: {
+  activityId: string;
+  sessionId?: string;
+}) {
   const router = useRouter();
-  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const [state, setState] = useState<StreamStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function handleAnalyze() {
@@ -14,17 +31,50 @@ export function AnalyzeStreamButton({ activityId }: { activityId: string }) {
       const res = await fetch(`/api/strava/activities/${activityId}/streams`, {
         method: "POST",
       });
-      const data = await res.json();
+      const data: StreamResponse = await res.json();
+
       if (!res.ok || !data.ok) {
-        setErrorMsg(data.reason ?? data.error ?? "Failed to fetch stream");
+        setErrorMsg(data.message ?? "Failed to fetch stream.");
         setState("error");
         return;
       }
+
+      if (data.status === "no_stream") {
+        setState("no_stream");
+        return;
+      }
+
+      // "created" or "existing" — stream is available
       router.refresh();
+      setState("done");
     } catch {
-      setErrorMsg("Network error");
+      setErrorMsg("Network error. Try again.");
       setState("error");
     }
+  }
+
+  if (state === "done") {
+    return (
+      <div className="space-y-1">
+        <p className="text-[11px] text-green-600">Stream saved.</p>
+        {sessionId && (
+          <Link
+            href={`/sessions/${sessionId}`}
+            className="text-[11px] text-indigo-500 underline"
+          >
+            View HR analytics →
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (state === "no_stream") {
+    return (
+      <p className="text-[11px] text-gray-400">
+        No detailed stream available for this activity.
+      </p>
+    );
   }
 
   return (
@@ -36,7 +86,7 @@ export function AnalyzeStreamButton({ activityId }: { activityId: string }) {
       >
         {state === "loading" ? "Fetching stream…" : "Analyze Strava stream"}
       </button>
-      {errorMsg && (
+      {state === "error" && errorMsg && (
         <p className="text-[11px] text-red-500">{errorMsg}</p>
       )}
     </div>
