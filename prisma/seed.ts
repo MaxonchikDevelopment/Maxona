@@ -1,14 +1,29 @@
 import { PrismaClient, DayOfWeek } from "@prisma/client";
+import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  const ownerLogin = process.env.OWNER_LOGIN ?? "maxon";
+  const rawPassword =
+    process.env.OWNER_PASSWORD ?? process.env.AUTH_PASSWORD ?? "MaxonaLocal2026!";
+  const passwordHash = await hash(rawPassword, 12);
+
   const user = await prisma.user.upsert({
     where: { id: "user_maxon" },
-    update: {},
+    update: {
+      login: ownerLogin,
+      passwordHash,
+      isActive: true,
+      preferredLanguage: "en",
+    },
     create: {
       id: "user_maxon",
       name: "Maxon",
+      login: ownerLogin,
+      passwordHash,
+      isActive: true,
+      preferredLanguage: "en",
       timezone: "Europe/Warsaw",
       constraints: {
         maxContinuousTrainingMinutes: 240,
@@ -39,7 +54,7 @@ async function main() {
     data: windows.map((w) => ({ ...w, userId: user.id })),
   });
 
-  console.log("Seed complete — user:", user.id);
+  console.log("Seed complete — user:", user.id, "login:", user.login);
 }
 
 main()

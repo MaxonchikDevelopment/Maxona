@@ -10,17 +10,38 @@ All variables are **server-only** except `NEXT_PUBLIC_APP_URL`.
 | `DATABASE_URL` | Supabase pooler URL (`?pgbouncer=true`). Use port 6543. |
 | `DIRECT_URL` | Supabase direct URL (no pooler). Port 5432. Required for Prisma migrations. |
 | `ANTHROPIC_API_KEY` | Anthropic API key. Rotate before production. |
-| `AUTH_PASSWORD` | Middleware password for the single-user app. Rotate before production. |
+| `OWNER_LOGIN` | Username for the owner account (used by `prisma db seed`). Example: `maxon`. |
+| `OWNER_PASSWORD` | Plain password for the owner account (used by `prisma db seed` to generate a bcrypt hash). Never stored plain. Rotate before production. |
+| `SESSION_SECRET` | At least 32-character random string used to sign session tokens (HMAC-SHA256). Generate with `openssl rand -hex 32`. Rotate before production. |
 | `NEXT_PUBLIC_APP_URL` | Full origin of the deployed app — must include `https://` and have **no trailing slash**. Example: `https://maxona-ai.vercel.app`. The app uses this to construct all Strava redirect URIs at runtime. |
 | `STRAVA_CLIENT_ID` | Strava app client ID. |
 | `STRAVA_CLIENT_SECRET` | Strava app client secret. Rotate before production. |
 | `STRAVA_WEBHOOK_VERIFY_TOKEN` | Random string used to verify Strava webhook subscriptions. |
+
+### Legacy (remove after Phase B)
+
+| Variable | Description |
+|---|---|
+| `AUTH_PASSWORD` | Single-password auth used before Phase A. Kept temporarily to validate existing sessions during the 30-day cookie lifetime after Phase A deploy. **Remove from all environments after Phase B is deployed and all old `maxona_auth` cookies have expired.** |
 
 ### Optional
 
 | Variable | Description |
 |---|---|
 | `ANTHROPIC_MODEL` | Claude model ID. Defaults to `claude-sonnet-4-6`. |
+
+### Adding new beta users
+
+To add a friend's account (no UI — owner manages manually via script):
+
+```bash
+# Run against the production DB using DIRECT_URL
+DATABASE_URL="<direct_url>" DIRECT_URL="<direct_url>" \
+  npx tsx scripts/add-user.ts --login=anna --password=secret --name=Anna --timezone=Europe/Warsaw
+```
+
+> `scripts/add-user.ts` is implemented in Phase C. For now, add users directly in the DB
+> or by temporarily editing the seed and running `npx prisma db seed`.
 
 ### Per-environment values
 
@@ -92,9 +113,11 @@ DIRECT_URL="<direct_url>" DATABASE_URL="<direct_url>" npm run db:deploy
 ## Security checklist before going live
 
 - [ ] Rotate `ANTHROPIC_API_KEY`
-- [ ] Rotate `AUTH_PASSWORD` (use a strong random string, not a memorizable password)
+- [ ] Set `OWNER_PASSWORD` to a strong random string
+- [ ] Set `SESSION_SECRET` to at least 32 random chars (`openssl rand -hex 32`)
 - [ ] Rotate `STRAVA_CLIENT_SECRET`
 - [ ] Rotate `STRAVA_WEBHOOK_VERIFY_TOKEN`
+- [ ] Remove `AUTH_PASSWORD` after Phase B is deployed (30 days grace period for cookie expiry)
 - [ ] Confirm `NEXT_PUBLIC_APP_URL` is `https://maxona-ai.vercel.app` in Vercel env vars
 - [ ] Confirm `NEXT_PUBLIC_APP_URL` is `http://localhost:3000` in `.env.local`
 - [ ] Confirm Strava app Authorization Callback Domain is `maxona-ai.vercel.app`

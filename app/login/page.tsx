@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,13 +17,13 @@ export default function LoginPage() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ login, password }),
     });
 
     if (res.ok) {
       router.push("/today");
     } else {
-      setError("Incorrect password");
+      setError("Invalid login or password");
       setLoading(false);
     }
   }
@@ -32,12 +33,21 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
         <h1 className="text-2xl font-bold">Maxona</h1>
         <input
+          type="text"
+          value={login}
+          onChange={(e) => setLogin(e.target.value)}
+          placeholder="Login"
+          autoComplete="username"
+          className="w-full rounded border px-3 py-2"
+          autoFocus
+        />
+        <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
+          autoComplete="current-password"
           className="w-full rounded border px-3 py-2"
-          autoFocus
         />
         {error && <p className="text-sm text-red-500">{error}</p>}
         <button

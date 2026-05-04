@@ -71,12 +71,16 @@ enum ScheduleEventSource {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  timezone    String   @default("Europe/Warsaw")
-  constraints Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String
+  login            String?  @unique
+  passwordHash     String?
+  isActive         Boolean  @default(true)
+  preferredLanguage String  @default("en")
+  timezone         String   @default("Europe/Warsaw")
+  constraints      Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   availabilityWindows AvailabilityWindow[]
   scheduleEvents      ScheduleEvent[]
