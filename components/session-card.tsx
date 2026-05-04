@@ -125,33 +125,33 @@ function WorkoutPlanBlock({
   const previewBlocks = plan.blocks.slice(0, 3);
 
   return (
-    <div className="border-t pt-2 space-y-1.5">
+    <div className="border-t border-zinc-100 pt-2.5 space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-indigo-500">
           Workout plan
         </span>
         <div className="flex items-center gap-2">
           <Link
             href={`/sessions/${sessionId}`}
-            className="text-[10px] text-indigo-400 underline"
+            className="text-[10px] text-indigo-400 underline hover:text-indigo-600 transition-colors"
           >
             Coach view
           </Link>
           <button
             onClick={onRegenerate}
             disabled={regenerating}
-            className="text-[10px] text-gray-400 underline disabled:opacity-40"
+            className="text-[10px] text-zinc-400 underline disabled:opacity-40 hover:text-zinc-600 transition-colors"
           >
             {regenerating ? "Generating…" : "Regenerate"}
           </button>
         </div>
       </div>
 
-      <p className="text-xs font-medium text-gray-700">{plan.goal}</p>
+      <p className="text-xs font-medium text-zinc-700">{plan.goal}</p>
       {plan.target && (
         <p className="text-xs font-medium text-indigo-600">{plan.target}</p>
       )}
-      <p className="text-[10px] text-gray-400 leading-relaxed">
+      <p className="text-[10px] text-zinc-400 leading-relaxed">
         {[
           ...previewBlocks.map((b) => `${b.label} ${b.durationMin}m`),
           ...(plan.blocks.length > 3 ? [`+${plan.blocks.length - 3} more`] : []),
@@ -160,7 +160,7 @@ function WorkoutPlanBlock({
 
       <button
         onClick={() => setOpen((v) => !v)}
-        className="text-[10px] text-indigo-400 underline"
+        className="text-[10px] text-indigo-400 underline hover:text-indigo-600 transition-colors"
       >
         {open ? "Hide details" : "Show full plan"}
       </button>
@@ -169,49 +169,49 @@ function WorkoutPlanBlock({
         <div className="space-y-2">
           <div className="space-y-1.5">
             {plan.blocks.map((block, i) => (
-              <div key={i} className="rounded bg-gray-50 px-2 py-1">
+              <div key={i} className="rounded-xl bg-zinc-50 border border-zinc-100 px-2.5 py-1.5">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-medium text-gray-700">{block.label}</span>
-                  <span className="text-[10px] text-gray-400">— {block.durationMin}m</span>
+                  <span className="text-xs font-medium text-zinc-700">{block.label}</span>
+                  <span className="text-[10px] text-zinc-400">— {block.durationMin}m</span>
                   {block.zone && (
                     <span className="text-[10px] text-indigo-400">{block.zone}</span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-500 mt-0.5">{block.description}</p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">{block.description}</p>
               </div>
             ))}
           </div>
           {plan.rules.length > 0 && (
             <div className="space-y-0.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Rules</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Rules</p>
               {plan.rules.map((r, i) => (
-                <p key={i} className="text-[11px] text-gray-500">• {r}</p>
+                <p key={i} className="text-[11px] text-zinc-500">• {r}</p>
               ))}
             </div>
           )}
           {plan.alternatives && plan.alternatives.length > 0 && (
             <div className="space-y-0.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Alternatives</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Alternatives</p>
               {plan.alternatives.map((a, i) => (
-                <p key={i} className="text-[11px] text-gray-500">• {a}</p>
+                <p key={i} className="text-[11px] text-zinc-500">• {a}</p>
               ))}
             </div>
           )}
           {nutritionAdvice && (
-            <div className="rounded border border-green-100 bg-green-50 px-2 py-1.5 space-y-0.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Fueling</p>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 space-y-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Fueling</p>
               {nutritionAdvice.before.map((b, i) => (
-                <p key={i} className="text-[11px] text-green-800">
+                <p key={i} className="text-[11px] text-emerald-800">
                   <span className="font-medium">Before:</span> {b}
                 </p>
               ))}
               {nutritionAdvice.during.map((d, i) => (
-                <p key={i} className="text-[11px] text-green-800">
+                <p key={i} className="text-[11px] text-emerald-800">
                   <span className="font-medium">During:</span> {d}
                 </p>
               ))}
               {nutritionAdvice.after.map((a, i) => (
-                <p key={i} className="text-[11px] text-green-800">
+                <p key={i} className="text-[11px] text-emerald-800">
                   <span className="font-medium">After:</span> {a}
                 </p>
               ))}
@@ -398,6 +398,15 @@ export function SessionCard({
   const hint = !isResolved && !coachAdvice ? staticHint(category, checkIn?.feelScore ?? 4) : null;
   const isPositiveAdvice = (checkIn?.feelScore ?? 0) >= 5;
 
+  const intensityBorder =
+    session.intensity === "hard"
+      ? "border-l-red-400"
+      : session.intensity === "easy"
+      ? "border-l-emerald-400"
+      : session.intensity === "moderate"
+      ? "border-l-amber-400"
+      : "border-l-zinc-200";
+
   // ── Compact collapsed card (past done/skipped sessions) ──────────────────
   if (!cardExpanded) {
     const primaryLink =
@@ -411,29 +420,29 @@ export function SessionCard({
     const hasBadges = (session.stravaLinks?.length ?? 0) > 0 || isInjury;
 
     return (
-      <div className="rounded border px-3 py-2.5 space-y-1">
+      <div className={`rounded-2xl bg-white border border-zinc-100 border-l-[3px] ${intensityBorder} shadow-card px-3 py-2.5 space-y-1`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <span className="text-sm font-medium capitalize">{session.intensity}</span>
-            <span className="text-xs text-gray-500">
+            <span className="text-sm font-semibold capitalize text-zinc-800">{session.intensity}</span>
+            <span className="text-xs text-zinc-400">
               {session.durationMin} min · {session.preferredSlot}
             </span>
             {session.planningType === "fixed" && (
-              <span className="rounded bg-gray-100 px-1 text-xs text-gray-500">fixed</span>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">fixed</span>
             )}
             {session.planningType === "preferred" && (
-              <span className="rounded bg-blue-50 px-1 text-xs text-blue-500">optional</span>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-500">optional</span>
             )}
             {session.planningType === "manual" && (
-              <span className="rounded bg-purple-50 px-1 text-xs text-purple-500">manual</span>
+              <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-500">manual</span>
             )}
             <span
               className={`text-xs font-medium ${
                 session.status === "skipped"
-                  ? "text-gray-400"
+                  ? "text-zinc-400"
                   : isResolved
-                  ? "text-gray-400"
-                  : "text-green-600"
+                  ? "text-zinc-400"
+                  : "text-emerald-600"
               }`}
             >
               {session.status === "skipped"
@@ -447,31 +456,31 @@ export function SessionCard({
           </div>
           <button
             onClick={() => setCardExpanded(true)}
-            className="shrink-0 text-gray-400 hover:text-gray-600 leading-none"
+            className="shrink-0 text-zinc-300 hover:text-zinc-500 leading-none transition-colors"
             aria-label="Show details"
           >
             ↓
           </button>
         </div>
         {session.notes && (
-          <p className="text-xs text-gray-500 line-clamp-1">{session.notes}</p>
+          <p className="text-xs text-zinc-500 line-clamp-1">{session.notes}</p>
         )}
         {compactExecLine && (
-          <p className="text-xs text-gray-600">{compactExecLine}</p>
+          <p className="text-xs text-zinc-600">{compactExecLine}</p>
         )}
         {coachTakeaway && !isResolved && (
-          <p className="text-xs text-gray-500 italic line-clamp-2">{coachTakeaway}</p>
+          <p className="text-xs text-zinc-500 italic line-clamp-2">{coachTakeaway}</p>
         )}
         {hasBadges && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5">
             {(session.stravaLinks?.length ?? 0) > 0 && (
-              <span className="text-[10px] text-orange-500">Strava ✓</span>
+              <span className="text-[10px] font-medium text-orange-500">Strava ✓</span>
             )}
             {isInjury && !isResolved && (
-              <span className="text-[10px] font-medium text-red-500">Issue open</span>
+              <span className="text-[10px] font-semibold text-red-500">Issue open</span>
             )}
             {isInjury && isResolved && (
-              <span className="text-[10px] text-gray-400">Issue resolved</span>
+              <span className="text-[10px] text-zinc-400">Issue resolved</span>
             )}
           </div>
         )}
@@ -480,28 +489,28 @@ export function SessionCard({
   }
 
   return (
-    <div className="space-y-2 rounded border p-4">
+    <div className={`space-y-2 rounded-2xl bg-white border border-zinc-100 border-l-[3px] ${intensityBorder} shadow-card p-4`}>
       {/* ── Session header ── */}
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium capitalize">{session.intensity}</span>
-          <span className="ml-2 text-sm text-gray-500">
+        <div className="min-w-0 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold capitalize text-zinc-800">{session.intensity}</span>
+          <span className="text-xs text-zinc-400">
             {session.durationMin} min · {session.preferredSlot}
           </span>
           {session.planningType === "fixed" && (
-            <span className="ml-2 rounded bg-gray-100 px-1 text-xs text-gray-500">fixed</span>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">fixed</span>
           )}
           {session.planningType === "preferred" && (
-            <span className="ml-2 rounded bg-blue-50 px-1 text-xs text-blue-500">optional</span>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-500">optional</span>
           )}
           {session.planningType === "manual" && (
-            <span className="ml-2 rounded bg-purple-50 px-1 text-xs text-purple-500">manual</span>
+            <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-500">manual</span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {done ? (
             <>
-              <span className={`text-sm ${isResolved ? "text-gray-400" : "text-green-600"}`}>
+              <span className={`text-sm font-medium ${isResolved ? "text-zinc-400" : "text-emerald-600"}`}>
                 {isResolved
                   ? "Done · resolved"
                   : checkIn
@@ -509,20 +518,20 @@ export function SessionCard({
                   : "Done"}
               </span>
               {!editing && (
-                <button onClick={startEdit} className="text-xs text-gray-400 underline">
+                <button onClick={startEdit} className="text-xs text-zinc-400 underline hover:text-zinc-600 transition-colors">
                   edit
                 </button>
               )}
             </>
           ) : isFuture ? (
-            <span className="text-xs text-gray-400">Upcoming</span>
+            <span className="text-xs text-zinc-400">Upcoming</span>
           ) : (
             <button
               onClick={() => {
                 setEditing(false);
                 setOpen(true);
               }}
-              className="text-sm text-blue-600"
+              className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
             >
               Check in
             </button>
@@ -530,7 +539,7 @@ export function SessionCard({
           {shouldCollapse && (
             <button
               onClick={() => setCardExpanded(false)}
-              className="text-gray-300 hover:text-gray-600 leading-none"
+              className="text-zinc-300 hover:text-zinc-500 leading-none transition-colors"
               aria-label="Collapse"
             >
               ↑
@@ -540,7 +549,7 @@ export function SessionCard({
       </div>
 
       {session.notes && (
-        <p className="text-sm text-gray-600">{session.notes}</p>
+        <p className="text-sm text-zinc-600">{session.notes}</p>
       )}
 
       {done ? (
@@ -555,9 +564,9 @@ export function SessionCard({
                 <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
               )}
               {coachAdvice && !isResolved && (
-                <div className={`rounded px-2 py-1.5 ${isPositiveAdvice ? "bg-green-50" : "bg-amber-50"}`}>
-                  <p className={`text-xs font-medium mb-0.5 ${isPositiveAdvice ? "text-green-700" : "text-amber-700"}`}>Coach</p>
-                  <p className={`text-xs whitespace-pre-line ${isPositiveAdvice ? "text-green-800" : "text-amber-800"}`}>{stripMarkdownBold(coachAdvice)}</p>
+                <div className={`rounded-xl px-3 py-2 ${isPositiveAdvice ? "bg-emerald-50 border border-emerald-100" : "bg-amber-50 border border-amber-100"}`}>
+                  <p className={`text-[10px] font-semibold uppercase tracking-widest mb-0.5 ${isPositiveAdvice ? "text-emerald-600" : "text-amber-600"}`}>Coach</p>
+                  <p className={`text-xs whitespace-pre-line ${isPositiveAdvice ? "text-emerald-800" : "text-amber-800"}`}>{stripMarkdownBold(coachAdvice)}</p>
                 </div>
               )}
               {hint && (
@@ -684,11 +693,11 @@ export function SessionCard({
               nutritionAdvice={nutritionAdvice}
             />
           ) : (
-            <div className="border-t pt-2">
+            <div className="border-t border-zinc-100 pt-2.5">
               <button
                 onClick={generatePlan}
                 disabled={planGenerating}
-                className="text-xs text-indigo-500 underline disabled:opacity-40"
+                className="text-xs text-indigo-500 underline disabled:opacity-40 hover:text-indigo-700 transition-colors"
               >
                 {planGenerating ? "Generating plan…" : "Plan workout"}
               </button>
@@ -712,15 +721,17 @@ export function SessionCard({
 
       {/* Check-in / edit form */}
       {open && (
-        <div className="space-y-2 border-t pt-2">
-          <p className="text-xs text-gray-400">How did it feel? (1 = terrible, 6 = great)</p>
+        <div className="space-y-2.5 border-t border-zinc-100 pt-3">
+          <p className="text-xs text-zinc-400">How did it feel? (1 = terrible, 6 = great)</p>
           <div className="flex gap-2">
             {[1, 2, 3, 4, 5, 6].map((n) => (
               <button
                 key={n}
                 onClick={() => setFeelScore(n)}
-                className={`h-8 w-8 rounded border text-sm ${
-                  feelScore === n ? "bg-black text-white" : ""
+                className={`h-9 w-9 rounded-xl border text-sm font-medium transition-colors ${
+                  feelScore === n
+                    ? "bg-zinc-900 text-white border-zinc-900"
+                    : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
                 }`}
               >
                 {n}
@@ -732,22 +743,22 @@ export function SessionCard({
             placeholder="Notes (optional — mention injuries if any)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full rounded border px-2 py-1 text-sm"
+            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
           />
           <div className="flex gap-2">
             <button
               onClick={editing ? updateCheckIn : submitCheckIn}
               disabled={submitting}
-              className="flex-1 rounded bg-black py-1 text-sm text-white disabled:opacity-50"
+              className="flex-1 rounded-xl bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-zinc-800 transition-colors"
             >
-              {submitting ? "Saving..." : editing ? "Update" : "Save"}
+              {submitting ? "Saving…" : editing ? "Update" : "Save"}
             </button>
             <button
               onClick={() => {
                 setOpen(false);
                 setEditing(false);
               }}
-              className="rounded border px-3 py-1 text-sm"
+              className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
             >
               Cancel
             </button>

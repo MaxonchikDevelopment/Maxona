@@ -13,6 +13,7 @@ import { generateNutritionAdvice } from "@/lib/ai/nutrition-advice";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { estimateDayEnergy } from "@/lib/nutrition/energy-estimate";
 import { timed } from "@/lib/perf";
+import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
 import type { NutritionAdvice, MealTimingItem } from "@/lib/ai/nutrition-advice";
 import type { DayEnergyEstimate } from "@/lib/nutrition/energy-estimate";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
@@ -112,6 +113,17 @@ export default async function TodayPage() {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+  }).format(new Date());
+
+  const dayName = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    timeZone: user.timezone,
+  }).format(new Date());
+
+  const dayDisplay = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: user.timezone,
   }).format(new Date());
 
   const [y, m, d] = todayStr.split("-").map(Number);
@@ -373,41 +385,103 @@ export default async function TodayPage() {
 
   const implicationLine = buildImplicationLine(readinessProp, activeIssues, todayCheckIn, nextPlanned);
 
+  const readinessScore = readinessProp?.feelScore;
+  const readinessPillClass =
+    !readinessScore
+      ? null
+      : readinessScore >= 5
+      ? "bg-emerald-100 text-emerald-700"
+      : readinessScore <= 2
+      ? "bg-red-100 text-red-700"
+      : readinessScore <= 3
+      ? "bg-amber-100 text-amber-700"
+      : "bg-zinc-100 text-zinc-600";
+
+  const totalMin = props.reduce((t, s) => t + s.durationMin, 0);
+
   return (
-    <main className="p-4 space-y-3">
-      <h1 className="text-xl font-bold">Today</h1>
-      {isNewUser && <OnboardingCard />}
-      <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
-      {props.length === 0 ? (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-500">Rest day — nothing scheduled.</p>
-          {nutritionAdvice && <NutritionCard advice={nutritionAdvice} />}
-          <ManualSessionForm defaultDate={todayStr} />
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {props.map((s) => (
-            <SessionCard key={s.id} session={s} todayStr={todayStr} />
-          ))}
-          {implicationLine && (
-            <div className="flex items-start gap-1.5 rounded bg-amber-50 px-2.5 py-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-500 shrink-0 mt-0.5">Recovery</span>
-              <p className="text-xs text-amber-700">{implicationLine}</p>
+    <main className="min-h-screen px-4 pt-0 pb-24">
+      {/* ── Hero header ─────────────────────────────────────────────── */}
+      <div className="pt-6 pb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Today</p>
+            <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">{dayName}</h1>
+            <p className="text-sm text-zinc-500 mt-1">{dayDisplay}</p>
+          </div>
+          {readinessPillClass && (
+            <div className={`rounded-full px-3 py-1.5 text-sm font-semibold mt-1 shrink-0 ${readinessPillClass}`}>
+              {readinessScore}/6
             </div>
           )}
-          {nutritionAdvice && <NutritionCard advice={nutritionAdvice} />}
-          <ManualSessionForm defaultDate={todayStr} />
         </div>
-      )}
-      <ActiveIssues initialIssues={activeIssues} />
+        {props.length > 0 && (
+          <p className="text-xs text-zinc-500 mt-2.5">
+            {props.length} session{props.length > 1 ? "s" : ""} · {totalMin} min
+          </p>
+        )}
+      </div>
+
+      {/* ── Page content ────────────────────────────────────────────── */}
+      <PageWrapper>
+        <div className="space-y-3">
+          {isNewUser && <OnboardingCard />}
+          <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
+
+          {props.length === 0 ? (
+            <StaggerList className="space-y-3">
+              <StaggerItem>
+                <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-4">
+                  <p className="text-sm font-medium text-zinc-700">Rest day</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">Nothing scheduled — recovery time</p>
+                </div>
+              </StaggerItem>
+              {nutritionAdvice && (
+                <StaggerItem>
+                  <NutritionCard advice={nutritionAdvice} />
+                </StaggerItem>
+              )}
+              <StaggerItem>
+                <ManualSessionForm defaultDate={todayStr} />
+              </StaggerItem>
+            </StaggerList>
+          ) : (
+            <StaggerList className="space-y-3">
+              {props.map((s) => (
+                <StaggerItem key={s.id}>
+                  <SessionCard session={s} todayStr={todayStr} />
+                </StaggerItem>
+              ))}
+              {implicationLine && (
+                <StaggerItem>
+                  <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-500 shrink-0 mt-0.5">Recovery</span>
+                    <p className="text-xs text-amber-700">{implicationLine}</p>
+                  </div>
+                </StaggerItem>
+              )}
+              {nutritionAdvice && (
+                <StaggerItem>
+                  <NutritionCard advice={nutritionAdvice} />
+                </StaggerItem>
+              )}
+              <StaggerItem>
+                <ManualSessionForm defaultDate={todayStr} />
+              </StaggerItem>
+            </StaggerList>
+          )}
+
+          <ActiveIssues initialIssues={activeIssues} />
+        </div>
+      </PageWrapper>
     </main>
   );
 }
 
 function EnergyRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between text-xs text-green-800">
-      <span className="text-green-600">{label}</span>
+    <div className="flex justify-between text-xs text-emerald-800">
+      <span className="text-emerald-600">{label}</span>
       <span className="font-medium tabular-nums">{value}</span>
     </div>
   );
@@ -417,24 +491,24 @@ function MealRow({ meal }: { meal: MealTimingItem }) {
   const hasItems = (meal.items?.length ?? 0) > 0;
   return (
     <div className="space-y-0.5">
-      <div className="flex gap-2 text-xs text-green-800">
-        <span className="shrink-0 font-medium text-green-600 w-10">{meal.time}</span>
+      <div className="flex gap-2 text-xs text-emerald-800">
+        <span className="shrink-0 font-medium text-emerald-600 w-10">{meal.time}</span>
         <span className="flex-1">
           <span className="font-medium">{meal.label}</span>
           {" — "}
           {meal.suggestion}
           {meal.approxCalories != null && (
-            <span className="text-green-600"> (~{meal.approxCalories} kcal)</span>
+            <span className="text-emerald-600"> (~{meal.approxCalories} kcal)</span>
           )}
         </span>
       </div>
       {hasItems && (
         <div className="ml-12 space-y-0.5">
           {meal.items!.map((item, i) => (
-            <p key={i} className="text-[11px] text-green-700">
+            <p key={i} className="text-[11px] text-emerald-700">
               · {item.name} — {item.amount}
               {item.kcal != null && (
-                <span className="text-green-500"> ({item.kcal} kcal)</span>
+                <span className="text-emerald-500"> ({item.kcal} kcal)</span>
               )}
             </p>
           ))}
@@ -453,35 +527,35 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
   const mealTotal = advice.mealTiming.reduce((sum, m) => sum + (m.approxCalories ?? 0), 0);
 
   return (
-    <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-2">
+    <div className="rounded-2xl bg-emerald-50/70 border border-emerald-100 px-4 py-3 space-y-2.5">
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Nutrition today</p>
-        <p className="text-xs font-medium text-green-700 mt-0.5">{advice.summary}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600 mb-0.5">Nutrition today</p>
+        <p className="text-xs font-medium text-emerald-800">{advice.summary}</p>
       </div>
 
       {hasEnergy && (
-        <div className="rounded bg-green-100/60 px-2.5 py-2 space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-green-500">Energy estimate</p>
+        <div className="rounded-xl bg-emerald-100/50 px-3 py-2 space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Energy estimate</p>
           <EnergyRow label="Passive" value={`≈${advice.energy!.passiveCalories.toLocaleString()} kcal`} />
           {advice.energy!.activeCalories > 0 && (
             <EnergyRow label="Training" value={`+${advice.energy!.activeCalories.toLocaleString()} kcal`} />
           )}
           <EnergyRow label="Target today" value={`≈${advice.energy!.targetCalories.toLocaleString()} kcal`} />
-          <p className="text-[10px] text-green-500 italic">{advice.energy!.balanceNote}</p>
+          <p className="text-[10px] text-emerald-600 italic">{advice.energy!.balanceNote}</p>
         </div>
       )}
 
       {hasMeals && (
         <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-green-500">Meal timing</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Meal timing</p>
           {advice.mealTiming.map((meal, i) => (
             <MealRow key={i} meal={meal} />
           ))}
           {mealTotal > 0 && hasEnergy && (
-            <p className="text-[11px] text-green-700 font-medium border-t border-green-100 pt-1">
+            <p className="text-[11px] text-emerald-800 font-medium border-t border-emerald-100 pt-1">
               Meal total ≈ {mealTotal.toLocaleString()} kcal · Target ≈ {advice.energy!.targetCalories.toLocaleString()} kcal
               {" · "}
-              <span className="font-normal text-green-600">{advice.energy!.balanceNote}</span>
+              <span className="font-normal text-emerald-600">{advice.energy!.balanceNote}</span>
             </p>
           )}
         </div>
@@ -490,17 +564,17 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
       {(hasBefore || hasDuring || hasAfter) && (
         <div className="space-y-1">
           {hasBefore && advice.before.map((b, i) => (
-            <p key={i} className="text-xs text-green-800">
+            <p key={i} className="text-xs text-emerald-800">
               <span className="font-medium">Before:</span> {b}
             </p>
           ))}
           {hasDuring && advice.during.map((d, i) => (
-            <p key={i} className="text-xs text-green-800">
+            <p key={i} className="text-xs text-emerald-800">
               <span className="font-medium">During:</span> {d}
             </p>
           ))}
           {hasAfter && advice.after.map((a, i) => (
-            <p key={i} className="text-xs text-green-800">
+            <p key={i} className="text-xs text-emerald-800">
               <span className="font-medium">After:</span> {a}
             </p>
           ))}
@@ -510,17 +584,17 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
       {advice.hydration.length > 0 && (
         <div className="space-y-0.5">
           {advice.hydration.map((h, i) => (
-            <p key={i} className="text-xs text-green-800">· {h}</p>
+            <p key={i} className="text-xs text-emerald-800">· {h}</p>
           ))}
         </div>
       )}
 
       {advice.timingNote && (
-        <p className="text-xs text-green-600 italic">{advice.timingNote}</p>
+        <p className="text-xs text-emerald-700 italic">{advice.timingNote}</p>
       )}
 
       {!hasEnergy && (
-        <p className="text-[10px] text-green-500 italic">
+        <p className="text-[10px] text-emerald-600 italic">
           Add rest-day calorie target in Settings → Nutrition Profile for rough energy estimates.
         </p>
       )}
