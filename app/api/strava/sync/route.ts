@@ -1,14 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { syncStravaActivities } from "@/lib/strava/sync";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
-const USER_ID = "user_maxon";
+export async function POST(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-export async function POST(request: Request) {
   const { searchParams } = new URL(request.url);
   const force = searchParams.get("force") === "1";
 
   try {
-    const result = await syncStravaActivities(USER_ID, force);
+    const result = await syncStravaActivities(userId, force);
 
     if (result.notConnected) {
       return NextResponse.json({ error: "Not connected to Strava" }, { status: 401 });

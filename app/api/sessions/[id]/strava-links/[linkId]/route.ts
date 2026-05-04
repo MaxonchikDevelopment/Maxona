@@ -1,15 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 // Detach an activity link
 export async function DELETE(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string; linkId: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id, linkId } = await params;
-  const session = await prisma.trainingSession.findFirst({ where: { id, userId: USER_ID } });
+  const session = await prisma.trainingSession.findFirst({ where: { id, userId } });
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.sessionStravaActivityLink.deleteMany({
@@ -20,13 +22,16 @@ export async function DELETE(
 
 // Toggle isPrimary — sets this link as primary, demotes others
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string; linkId: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id, linkId } = await params;
   const { isPrimary } = await request.json();
 
-  const session = await prisma.trainingSession.findFirst({ where: { id, userId: USER_ID } });
+  const session = await prisma.trainingSession.findFirst({ where: { id, userId } });
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   if (isPrimary) {

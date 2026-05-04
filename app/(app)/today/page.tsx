@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { requireSessionUserIdFromCookies } from "@/lib/auth/session";
 import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { DailyReadinessCard } from "@/components/daily-readiness-card";
@@ -19,8 +20,6 @@ import type { ReadinessProp } from "@/components/daily-readiness-card";
 import type { IssueItem } from "@/components/active-issues";
 
 export const dynamic = "force-dynamic";
-
-const USER_ID = "user_maxon";
 
 function buildImplicationLine(
   readiness: ReadinessProp | null,
@@ -99,11 +98,12 @@ const ACTIVITY_SELECT = {
 } as const;
 
 export default async function TodayPage() {
+  const userId = await requireSessionUserIdFromCookies();
   const pageStart = Date.now();
 
   // ── Step 1: user (needed for timezone to compute todayStr) ──────────────────
   const user = await timed("today/user", () =>
-    prisma.user.findUniqueOrThrow({ where: { id: USER_ID } })
+    prisma.user.findUniqueOrThrow({ where: { id: userId } })
   );
 
   const todayStr = new Intl.DateTimeFormat("en-CA", {
@@ -127,11 +127,11 @@ export default async function TodayPage() {
     nutritionProfileRaw,
   ] = await timed("today/batch", () =>
     Promise.all([
-      activateDraftIfReady(USER_ID, todayStr),
-      prisma.stravaConnection.findUnique({ where: { userId: USER_ID } }),
+      activateDraftIfReady(userId, todayStr),
+      prisma.stravaConnection.findUnique({ where: { userId: userId } }),
       prisma.trainingSession.findMany({
         where: {
-          userId: USER_ID,
+          userId: userId,
           scheduledDate: todayDate,
           plan: { status: "active" },
         },
@@ -148,16 +148,16 @@ export default async function TodayPage() {
         orderBy: { preferredSlot: "asc" },
       }),
       prisma.checkIn.findMany({
-        where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
+        where: { userId: userId, resolvedAt: null, feelScore: { lte: 3 } },
         include: { session: true },
         orderBy: { occurredAt: "desc" },
       }),
       prisma.dailyReadiness.findUnique({
-        where: { userId_date: { userId: USER_ID, date: todayDate } },
+        where: { userId_date: { userId: userId, date: todayDate } },
       }),
       prisma.trainingSession.findFirst({
         where: {
-          userId: USER_ID,
+          userId: userId,
           plan: { status: "active" },
           status: "planned",
           scheduledDate: { gt: todayDate },
@@ -165,7 +165,7 @@ export default async function TodayPage() {
         select: { intensity: true, notes: true },
         orderBy: { scheduledDate: "asc" },
       }),
-      prisma.nutritionProfile.findUnique({ where: { userId: USER_ID } }),
+      prisma.nutritionProfile.findUnique({ where: { userId: userId } }),
     ])
   );
 
@@ -229,7 +229,7 @@ export default async function TodayPage() {
 
   const nutritionAdvice = await timed("today/nutrition-cache", () =>
     getCachedInsight<NutritionAdvice>({
-      userId: USER_ID,
+      userId: userId,
       kind: "daily-nutrition",
       scopeKey: todayStr,
       inputHash: nutritionHash,
@@ -244,7 +244,7 @@ export default async function TodayPage() {
       try {
         const result = await generateNutritionAdvice(capturedInput);
         await setCachedInsight({
-          userId: USER_ID,
+          userId: userId,
           kind: "daily-nutrition",
           scopeKey: todayStr,
           inputHash: capturedHash,

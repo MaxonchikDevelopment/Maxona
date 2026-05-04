@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import { requireSessionUserIdFromCookies } from "@/lib/auth/session";
 import Link from "next/link";
 import { buildHrZones } from "@/lib/training/zones";
 import { deriveWorkoutIntent } from "@/lib/ai/workout-plan";
@@ -13,8 +14,6 @@ import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section"
 import type { WorkoutBlock } from "@/components/session-card";
 
 export const dynamic = "force-dynamic";
-
-const USER_ID = "user_maxon";
 
 function intensityChip(intensity: string) {
   if (intensity === "easy") return "bg-green-50 text-green-700";
@@ -59,10 +58,11 @@ export default async function SessionCoachViewPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const userId = await requireSessionUserIdFromCookies();
   const { id } = await params;
 
   const session = await prisma.trainingSession.findFirst({
-    where: { id, userId: USER_ID },
+    where: { id, userId },
     include: {
       checkIn: true,
       workoutPlan: true,
@@ -77,7 +77,7 @@ export default async function SessionCoachViewPage({
   if (!session) notFound();
 
   const trainingProfile = await prisma.userTrainingProfile.findUnique({
-    where: { userId: USER_ID },
+    where: { userId },
   });
 
   const plan = session.workoutPlan;

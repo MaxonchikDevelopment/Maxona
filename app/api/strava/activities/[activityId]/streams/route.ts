@@ -1,20 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getValidAccessToken } from "@/lib/strava/client";
 import { fetchActivityStreams, StravaStreamError } from "@/lib/strava/streams";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 type Params = { params: Promise<{ activityId: string }> };
 
 // activityId = internal StravaActivity.id (cuid)
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { activityId } = await params;
 
   const activity = await prisma.stravaActivity.findFirst({
-    where: { id: activityId, userId: USER_ID },
+    where: { id: activityId, userId },
     select: { id: true, stream: true },
   });
   if (!activity) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -34,12 +36,15 @@ export async function GET(_request: Request, { params }: Params) {
   });
 }
 
-export async function POST(_request: Request, { params }: Params) {
+export async function POST(request: NextRequest, { params }: Params) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { activityId } = await params;
   console.log(`[strava-stream] start activityId=${activityId}`);
 
   const activity = await prisma.stravaActivity.findFirst({
-    where: { id: activityId, userId: USER_ID },
+    where: { id: activityId, userId },
     select: {
       id: true,
       stravaActivityId: true,
@@ -63,7 +68,7 @@ export async function POST(_request: Request, { params }: Params) {
     });
   }
 
-  const token = await getValidAccessToken(USER_ID);
+  const token = await getValidAccessToken(userId);
   if (!token) {
     console.log(`[strava-stream] no token activityId=${activityId}`);
     return NextResponse.json(
@@ -131,7 +136,7 @@ export async function POST(_request: Request, { params }: Params) {
   await prisma.stravaActivityStream.upsert({
     where: { stravaActivityId: activityId },
     create: {
-      userId: USER_ID,
+      userId,
       stravaActivityId: activityId,
       time: streams.time,
       heartrate: streams.heartrate,

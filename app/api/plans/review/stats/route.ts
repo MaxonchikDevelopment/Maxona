@@ -1,9 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deriveExecutionSummary } from "@/lib/execution-summary";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 type SessionResult = {
   id: string;
@@ -25,9 +24,12 @@ type SessionResult = {
   } | null;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const plan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "active" },
+    where: { userId, status: "active" },
     include: {
       sessions: {
         include: {
@@ -42,7 +44,7 @@ export async function GET() {
   if (!plan) return NextResponse.json(null);
 
   const readinessRecords = await prisma.dailyReadiness.findMany({
-    where: { userId: USER_ID, date: { gte: plan.startsAt, lte: plan.endsAt } },
+    where: { userId, date: { gte: plan.startsAt, lte: plan.endsAt } },
   });
 
   const sessions = plan.sessions;
@@ -145,14 +147,12 @@ export async function GET() {
     });
   }
 
-  // Adherence
   const adherenceByCount = totalPlanned > 0 ? Math.round((done / totalPlanned) * 100) : 0;
   const adherenceByDuration =
     hasAnyStrava && doneDurationWithStrava > 0
       ? Math.round((actualMovingMin / doneDurationWithStrava) * 100)
       : null;
 
-  // Signals from readiness records
   const lowReadinessDays = readinessRecords.filter((r) => r.feelScore <= 3).length;
   const readinessFatigue = readinessRecords.filter((r) => r.category === "fatigue").length;
   const readinessInjury = readinessRecords.filter((r) => r.category === "injury").length;
@@ -181,7 +181,6 @@ export async function GET() {
   else if (fatigueDays >= 2) mainLimiter = "Recurring fatigue";
   else if (lowReadinessDays >= 3) mainLimiter = "Consistently low readiness";
 
-  // Carry-forward bullets — purely deterministic
   const carryForward: string[] = [];
 
   if (unresolvedIssues > 0) {

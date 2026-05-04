@@ -1,14 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateWorkoutFeedback } from "@/lib/ai/workout-feedback";
 import { deriveExecutionSummary } from "@/lib/execution-summary";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const feedback = await prisma.sessionWorkoutFeedback.findUnique({
     where: { sessionId: id },
@@ -17,13 +19,16 @@ export async function GET(
 }
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
 
   const session = await prisma.trainingSession.findFirst({
-    where: { id, userId: USER_ID },
+    where: { id, userId },
     include: {
       checkIn: true,
       workoutPlan: true,
@@ -101,7 +106,7 @@ export async function POST(
     where: { sessionId: id },
     create: {
       sessionId: id,
-      userId: USER_ID,
+      userId,
       adherenceLabel: result.adherenceLabel,
       summary: result.summary,
       bullets: result.bullets,

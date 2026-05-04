@@ -1,14 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateNextWeekDraft } from "@/lib/planner/orchestrator";
 import { checkCooldown } from "@/lib/rate-limit";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 import type { WeeklyReview } from "@/lib/ai/adapter";
 
-const USER_ID = "user_maxon";
+export async function GET(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-export async function GET() {
   const draft = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "draft" },
+    where: { userId, status: "draft" },
     orderBy: { startsAt: "desc" },
     include: {
       sessions: {
@@ -40,7 +42,10 @@ export async function GET() {
   });
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { allowed, retryAfterSec } = checkCooldown("plans:review", 30_000);
   if (!allowed) {
     return NextResponse.json(
@@ -52,7 +57,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const weeklyReview: WeeklyReview | undefined = body.weeklyReview ?? undefined;
 
-    const draft = await generateNextWeekDraft(weeklyReview);
+    const draft = await generateNextWeekDraft(userId, weeklyReview);
 
     return NextResponse.json({
       planId: draft.id,

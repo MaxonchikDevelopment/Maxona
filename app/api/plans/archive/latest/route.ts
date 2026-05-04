@@ -1,12 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deriveExecutionSummary } from "@/lib/execution-summary";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
-const USER_ID = "user_maxon";
+export async function GET(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-export async function GET() {
   const activePlan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "active" },
+    where: { userId, status: "active" },
     orderBy: { startsAt: "desc" },
   });
 
@@ -14,12 +16,9 @@ export async function GET() {
     ? activePlan.startsAt
     : new Date(new Date().toISOString().split("T")[0] + "T00:00:00Z");
 
-  // Both startsAt AND endsAt must be strictly before the active week start.
-  // This prevents a plan starting e.g. 2026-04-19 (with endsAt 2026-04-25)
-  // from being returned when the active week is 2026-04-20.
   const archivedPlan = await prisma.trainingPlan.findFirst({
     where: {
-      userId: USER_ID,
+      userId,
       status: "archived",
       startsAt: { lt: refDate },
       endsAt: { lt: refDate },
@@ -29,9 +28,6 @@ export async function GET() {
 
   if (!archivedPlan) return NextResponse.json(null);
 
-  // Prefer sessions belonging to the archived plan directly.
-  // Done sessions may have been moved to newer plans on rollover, so we fall
-  // back to a date-range query with strict bounds when the plan owns none.
   let rawSessions = await prisma.trainingSession.findMany({
     where: { planId: archivedPlan.id },
     include: {
@@ -44,7 +40,7 @@ export async function GET() {
   if (rawSessions.length === 0) {
     rawSessions = await prisma.trainingSession.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         AND: [
           { scheduledDate: { gte: archivedPlan.startsAt } },
           { scheduledDate: { lte: archivedPlan.endsAt } },
@@ -60,8 +56,6 @@ export async function GET() {
     });
   }
 
-  // Content-based dedup: repeated draft generations create ghost sessions with
-  // identical date + notes + duration + intensity + status.
   const seenKeys = new Set<string>();
   const deduped = rawSessions.filter((s) => {
     const key = `${s.scheduledDate.toISOString().split("T")[0]}|${s.notes ?? ""}|${s.durationMin}|${s.intensity}|${s.status}`;
@@ -70,7 +64,6 @@ export async function GET() {
     return true;
   });
 
-  // Per-day: prefer done/skipped over planned, max 2 per day, hard cap at 14.
   const byDate = new Map<string, typeof deduped>();
   for (const s of deduped) {
     const key = s.scheduledDate.toISOString().split("T")[0];

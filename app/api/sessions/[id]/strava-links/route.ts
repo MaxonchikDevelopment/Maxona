@@ -1,15 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 // List links for a session
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
-  const session = await prisma.trainingSession.findFirst({ where: { id, userId: USER_ID } });
+  const session = await prisma.trainingSession.findFirst({ where: { id, userId } });
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const links = await prisma.sessionStravaActivityLink.findMany({
@@ -23,9 +25,12 @@ export async function GET(
 // Attach a Strava activity to a session
 // Body: { stravaActivityId: string, isPrimary?: boolean }
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const { stravaActivityId, isPrimary = false } = await request.json();
 
@@ -34,17 +39,16 @@ export async function POST(
   }
 
   const [session, activity] = await Promise.all([
-    prisma.trainingSession.findFirst({ where: { id, userId: USER_ID } }),
+    prisma.trainingSession.findFirst({ where: { id, userId } }),
     prisma.stravaActivity.findUnique({ where: { id: stravaActivityId } }),
   ]);
 
   if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
   // Check activity exists and belongs to this user (prevents cross-user activity linking)
-  if (!activity || activity.userId !== USER_ID) {
+  if (!activity || activity.userId !== userId) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
-  // If marking as primary, demote any existing primary first
   if (isPrimary) {
     await prisma.sessionStravaActivityLink.updateMany({
       where: { sessionId: id, isPrimary: true },

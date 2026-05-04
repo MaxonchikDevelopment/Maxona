@@ -1,24 +1,29 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { categorizeCheckIn, inferTagsFromNotes, READINESS_TAGS } from "@/lib/checkin-utils";
 import { generateReadinessCoachAdvice } from "@/lib/ai/coach-advice";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 import type { ReadinessTag } from "@/lib/checkin-utils";
 
-const USER_ID = "user_maxon";
+export async function GET(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const date = searchParams.get("date");
   if (!date) return NextResponse.json({ error: "date required" }, { status: 400 });
 
   const record = await prisma.dailyReadiness.findUnique({
-    where: { userId_date: { userId: USER_ID, date: new Date(date + "T00:00:00Z") } },
+    where: { userId_date: { userId, date: new Date(date + "T00:00:00Z") } },
   });
 
   return NextResponse.json(record ?? null);
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await request.json();
   const { date, feelScore, notes, tags: userTags } = body;
 
@@ -42,9 +47,9 @@ export async function POST(request: Request) {
   const category = categorizeCheckIn(feelScore, trimmedNotes);
 
   const record = await prisma.dailyReadiness.upsert({
-    where: { userId_date: { userId: USER_ID, date: new Date(date + "T00:00:00Z") } },
+    where: { userId_date: { userId, date: new Date(date + "T00:00:00Z") } },
     create: {
-      userId: USER_ID,
+      userId,
       date: new Date(date + "T00:00:00Z"),
       feelScore,
       notes: trimmedNotes,
@@ -59,18 +64,16 @@ export async function POST(request: Request) {
     },
   });
 
-  // Check if athlete has any planned sessions today (readiness advice should not contradict the plan)
   const todayDateObj = new Date(date + "T00:00:00Z");
   const todaySessionCount = await prisma.trainingSession.count({
     where: {
-      userId: USER_ID,
+      userId,
       scheduledDate: todayDateObj,
       plan: { status: "active" },
       status: "planned",
     },
   });
 
-  // Silent neutral entry — no signal worth coaching on
   const isSilentNeutral = feelScore === 4 && !trimmedNotes && tags.length === 0;
   const coachAdvice = isSilentNeutral
     ? null

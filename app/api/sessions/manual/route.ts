@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 const VALID_INTENSITIES = ["easy", "moderate", "hard"] as const;
 const VALID_SLOTS = ["morning", "daytime", "afternoon", "evening"] as const;
@@ -14,7 +13,10 @@ function modalityLabel(m: Modality): string {
   return m.charAt(0).toUpperCase() + m.slice(1);
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   const activePlan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "active" },
+    where: { userId, status: "active" },
   });
   if (!activePlan) {
     return NextResponse.json({ error: "No active plan" }, { status: 404 });
@@ -52,7 +54,7 @@ export async function POST(request: Request) {
   const session = await prisma.trainingSession.create({
     data: {
       planId: activePlan.id,
-      userId: USER_ID,
+      userId,
       scheduledDate,
       preferredSlot,
       planningType: "manual",

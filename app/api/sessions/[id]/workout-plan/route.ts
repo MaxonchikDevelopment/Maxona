@@ -1,27 +1,32 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateWorkoutPlan } from "@/lib/ai/workout-plan";
 import { deriveExecutionSummary } from "@/lib/execution-summary";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const plan = await prisma.sessionWorkoutPlan.findUnique({ where: { sessionId: id } });
   return NextResponse.json(plan ?? null);
 }
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
 
   const session = await prisma.trainingSession.findFirst({
-    where: { id, userId: USER_ID },
+    where: { id, userId },
     include: {
       checkIn: true,
       stravaLinks: { include: { activity: true }, orderBy: { isPrimary: "desc" } },
@@ -32,11 +37,11 @@ export async function POST(
   }
 
   const [trainingProfile, hybridProfile, recentSessions] = await Promise.all([
-    prisma.userTrainingProfile.findUnique({ where: { userId: USER_ID } }),
-    prisma.hybridRaceProfile.findUnique({ where: { userId: USER_ID } }),
+    prisma.userTrainingProfile.findUnique({ where: { userId } }),
+    prisma.hybridRaceProfile.findUnique({ where: { userId } }),
     prisma.trainingSession.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         scheduledDate: { lt: session.scheduledDate },
         status: { in: ["done", "skipped"] },
       },
@@ -46,7 +51,6 @@ export async function POST(
     }),
   ]);
 
-  // Build Strava execution summary if activities are attached
   const stravaExecution = session.stravaLinks.length > 0
     ? deriveExecutionSummary(
         { durationMin: session.durationMin, notes: session.notes },
@@ -125,7 +129,7 @@ export async function POST(
     where: { sessionId: id },
     create: {
       sessionId: id,
-      userId: USER_ID,
+      userId,
       planType: result.planType,
       goal: result.goal,
       target: result.target,

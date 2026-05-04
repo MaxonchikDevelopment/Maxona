@@ -1,16 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
-const USER_ID = "user_maxon";
+export async function GET(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-export async function GET() {
-  const profile = await prisma.nutritionProfile.findUnique({
-    where: { userId: USER_ID },
-  });
+  const profile = await prisma.nutritionProfile.findUnique({ where: { userId } });
   return NextResponse.json(profile ?? null);
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(req);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json() as {
     dietNotes?: string | null;
     avoidFoods?: string | null;
@@ -52,8 +55,8 @@ export async function PATCH(req: Request) {
   };
 
   const profile = await prisma.nutritionProfile.upsert({
-    where: { userId: USER_ID },
-    create: { userId: USER_ID, ...data },
+    where: { userId },
+    create: { userId, ...data },
     update: data,
   });
 

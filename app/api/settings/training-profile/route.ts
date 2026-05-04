@@ -1,14 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
-const USER_ID = "user_maxon";
+export async function GET(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-export async function GET() {
-  const profile = await prisma.userTrainingProfile.findUnique({ where: { userId: USER_ID } });
+  const profile = await prisma.userTrainingProfile.findUnique({ where: { userId } });
   return NextResponse.json(profile ?? null);
 }
 
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await request.json();
 
   const data: Record<string, unknown> = {};
@@ -22,8 +27,8 @@ export async function PATCH(request: Request) {
   if (body.zoneMethod !== undefined) data.zoneMethod = body.zoneMethod;
 
   const profile = await prisma.userTrainingProfile.upsert({
-    where: { userId: USER_ID },
-    create: { userId: USER_ID, ...data },
+    where: { userId },
+    create: { userId, ...data },
     update: data,
   });
 

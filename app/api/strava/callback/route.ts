@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { exchangeCode } from "@/lib/strava/client";
 import { prisma } from "@/lib/prisma";
-
-const USER_ID = "user_maxon";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 
 function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -15,6 +14,11 @@ function clearState(response: NextResponse): NextResponse {
 }
 
 export async function GET(request: NextRequest) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) {
+    return NextResponse.redirect(`${appUrl()}/login`);
+  }
+
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
@@ -39,9 +43,9 @@ export async function GET(request: NextRequest) {
     }
 
     await prisma.stravaConnection.upsert({
-      where: { userId: USER_ID },
+      where: { userId },
       create: {
-        userId: USER_ID,
+        userId,
         stravaAthleteId: String(tokens.athlete.id),
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,

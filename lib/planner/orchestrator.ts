@@ -23,8 +23,6 @@ import type {
   ReadinessEntry,
 } from "@/lib/ai/adapter";
 
-const USER_ID = "user_maxon";
-
 const RULES = [
   noConflictSchedule,
   noOutsideAvailability,
@@ -294,10 +292,11 @@ function buildChangeSummaryPayload({
 }
 
 export async function generateWeeklyPlan(
+  userId: string,
   replanReason?: string,
   weeklyReview?: WeeklyReview
 ) {
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
   const todayStr = localDateStr(user.timezone);
   const weekStart = currentWeekStart(user.timezone);
@@ -305,7 +304,7 @@ export async function generateWeeklyPlan(
   const weekEndStr = toDateStr(weekEnd);
 
   const activePlan = await prisma.trainingPlan.findFirst({
-    where: { userId: USER_ID, status: "active" },
+    where: { userId, status: "active" },
     orderBy: { createdAt: "desc" },
   });
 
@@ -341,11 +340,11 @@ export async function generateWeeklyPlan(
     weeklyReadinessList,
   ] = await Promise.all([
     prisma.goal.findMany({
-      where: { userId: USER_ID, status: "active", deletedAt: null },
+      where: { userId, status: "active", deletedAt: null },
     }),
     prisma.availabilityWindow.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         AND: [
           { OR: [{ validFrom: null }, { validFrom: { lte: weekEnd } }] },
           { OR: [{ validUntil: null }, { validUntil: { gte: weekStart } }] },
@@ -354,20 +353,20 @@ export async function generateWeeklyPlan(
     }),
     prisma.scheduleEvent.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         startsAt: { lt: addDays(weekStart, 7) },
         endsAt: { gte: weekStart },
       },
     }),
     prisma.trainingSession.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         scheduledDate: { gte: addDays(weekStart, -7), lt: weekStart },
       },
       include: { checkIn: true },
     }),
     prisma.recurringSession.findMany({
-      where: { userId: USER_ID, isActive: true },
+      where: { userId, isActive: true },
     }),
     // Previous plan's still-planned sessions — used for deterministic diff
     activePlan
@@ -376,7 +375,7 @@ export async function generateWeeklyPlan(
         })
       : Promise.resolve([]),
     prisma.dailyReadiness.findMany({
-      where: { userId: USER_ID, date: { gte: weekStart, lte: weekEnd } },
+      where: { userId, date: { gte: weekStart, lte: weekEnd } },
       orderBy: { date: "desc" },
     }),
   ]);
@@ -602,7 +601,7 @@ export async function generateWeeklyPlan(
 
     const newPlan = await tx.trainingPlan.create({
       data: {
-        userId: USER_ID,
+        userId,
         startsAt: weekStart,
         endsAt: weekEnd,
         status: "active",
@@ -639,7 +638,7 @@ export async function generateWeeklyPlan(
       await tx.trainingSession.createMany({
         data: validSessions.map((s) => ({
           planId: newPlan.id,
-          userId: USER_ID,
+          userId,
           scheduledDate: s.scheduledDate,
           preferredSlot: s.preferredSlot,
           planningType: s.planningType,
@@ -654,8 +653,8 @@ export async function generateWeeklyPlan(
   });
 }
 
-export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: USER_ID } });
+export async function generateNextWeekDraft(userId: string, weeklyReview?: WeeklyReview) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
   const todayStr = localDateStr(user.timezone);
   const thisWeekStart = currentWeekStart(user.timezone);
@@ -670,11 +669,11 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     recurringSessions,
   ] = await Promise.all([
     prisma.goal.findMany({
-      where: { userId: USER_ID, status: "active", deletedAt: null },
+      where: { userId, status: "active", deletedAt: null },
     }),
     prisma.availabilityWindow.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         AND: [
           { OR: [{ validFrom: null }, { validFrom: { lte: nextWeekEnd } }] },
           { OR: [{ validUntil: null }, { validUntil: { gte: nextWeekStart } }] },
@@ -683,20 +682,20 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
     }),
     prisma.scheduleEvent.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         startsAt: { lt: addDays(nextWeekStart, 7) },
         endsAt: { gte: nextWeekStart },
       },
     }),
     prisma.trainingSession.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         scheduledDate: { gte: thisWeekStart, lt: nextWeekStart },
       },
       include: { checkIn: true },
     }),
     prisma.recurringSession.findMany({
-      where: { userId: USER_ID, isActive: true },
+      where: { userId, isActive: true },
     }),
   ]);
 
@@ -884,7 +883,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
 
   // Archive any existing draft plans, then create the new draft
   await prisma.trainingPlan.updateMany({
-    where: { userId: USER_ID, status: "draft" },
+    where: { userId, status: "draft" },
     data: { status: "archived" },
   });
 
@@ -898,7 +897,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
 
   return prisma.trainingPlan.create({
     data: {
-      userId: USER_ID,
+      userId,
       startsAt: nextWeekStart,
       endsAt: nextWeekEnd,
       status: "draft",
@@ -910,7 +909,7 @@ export async function generateNextWeekDraft(weeklyReview?: WeeklyReview) {
       },
       sessions: {
         create: validSessions.map((s) => ({
-          userId: USER_ID,
+          userId,
           scheduledDate: s.scheduledDate,
           preferredSlot: s.preferredSlot,
           planningType: s.planningType,

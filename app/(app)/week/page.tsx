@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { requireSessionUserIdFromCookies } from "@/lib/auth/session";
 import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { ReplanButton } from "@/components/replan-button";
@@ -45,8 +46,6 @@ type PlanWithSessions = {
 
 export const dynamic = "force-dynamic";
 
-const USER_ID = "user_maxon";
-
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const READINESS_TAG_LABELS: Record<string, string> = {
@@ -79,11 +78,12 @@ function toDateStr(d: Date) {
 }
 
 export default async function WeekPage() {
+  const userId = await requireSessionUserIdFromCookies();
   const pageStart = Date.now();
 
   // ── Step 1: user (needed for timezone) ─────────────────────────────────────
   const user = await timed("week/user", () =>
-    prisma.user.findUniqueOrThrow({ where: { id: USER_ID } })
+    prisma.user.findUniqueOrThrow({ where: { id: userId } })
   );
 
   const todayStr = new Intl.DateTimeFormat("en-CA", {
@@ -109,10 +109,10 @@ export default async function WeekPage() {
     latestReadiness,
   ] = await timed("week/batch1", () =>
     Promise.all([
-      activateDraftIfReady(USER_ID, todayStr),
-      prisma.stravaConnection.findUnique({ where: { userId: USER_ID } }),
+      activateDraftIfReady(userId, todayStr),
+      prisma.stravaConnection.findUnique({ where: { userId: userId } }),
       prisma.trainingPlan.findFirst({
-        where: { userId: USER_ID, status: "active" },
+        where: { userId: userId, status: "active" },
         include: {
           sessions: {
             include: { checkIn: true },
@@ -121,7 +121,7 @@ export default async function WeekPage() {
         },
       }),
       prisma.trainingPlan.findFirst({
-        where: { userId: USER_ID, status: "draft" },
+        where: { userId: userId, status: "draft" },
         orderBy: { startsAt: "desc" },
         include: {
           sessions: {
@@ -131,11 +131,11 @@ export default async function WeekPage() {
         },
       }),
       prisma.checkIn.findMany({
-        where: { userId: USER_ID, resolvedAt: null, feelScore: { lte: 3 } },
+        where: { userId: userId, resolvedAt: null, feelScore: { lte: 3 } },
         include: { session: true },
         orderBy: { occurredAt: "desc" },
       }),
-      pc.nutritionProfile.findUnique({ where: { userId: USER_ID } }) as Promise<{
+      pc.nutritionProfile.findUnique({ where: { userId: userId } }) as Promise<{
         nutritionGoal: string | null;
         currentMealPattern: string | null;
         stomachSensitive: boolean;
@@ -150,7 +150,7 @@ export default async function WeekPage() {
       // latestReadiness moved into batch — safe to always query
       pc.dailyReadiness.findFirst({
         where: {
-          userId: USER_ID,
+          userId: userId,
           date: { gte: todayDate },
           category: { not: "ok" },
         },
@@ -280,7 +280,7 @@ export default async function WeekPage() {
         where: { sessionId: { in: sessionIds } },
       }) as Promise<WfRow[]>,
       getCachedInsight<WeeklyNutritionFocus>({
-        userId: USER_ID,
+        userId: userId,
         kind: "weekly-nutrition",
         scopeKey: planId,
         inputHash: weeklyNutritionHash,
@@ -298,7 +298,7 @@ export default async function WeekPage() {
       try {
         const result = await generateWeeklyNutritionFocus(capturedInput);
         await setCachedInsight({
-          userId: USER_ID,
+          userId: userId,
           kind: "weekly-nutrition",
           scopeKey: capturedPlanId,
           inputHash: capturedHash,

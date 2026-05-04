@@ -1,5 +1,7 @@
 // Pure Web Crypto — no Node.js builtins. Safe in Edge Runtime, Node.js, and server components.
 import type { NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 export const SESSION_COOKIE = "maxona_session";
 const SESSION_DURATION_SEC = 60 * 60 * 24 * 30; // 30 days
@@ -77,4 +79,26 @@ export async function getSessionUserIdFromRequest(request: NextRequest): Promise
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return (await verifySessionToken(token))?.userId ?? null;
+}
+
+// For API route handlers — returns userId or throws if no valid session.
+export async function requireSessionUserIdFromRequest(request: NextRequest): Promise<string> {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) throw new Error("Unauthorized");
+  return userId;
+}
+
+// For server components/pages — reads maxona_session from Next.js cookie store.
+export async function getSessionUserIdFromCookies(): Promise<string | null> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  return (await verifySessionToken(token))?.userId ?? null;
+}
+
+// For server pages — redirects to /login if no valid session.
+export async function requireSessionUserIdFromCookies(): Promise<string> {
+  const userId = await getSessionUserIdFromCookies();
+  if (!userId) redirect("/login");
+  return userId;
 }

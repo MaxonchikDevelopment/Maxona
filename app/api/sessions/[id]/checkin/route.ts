@@ -1,12 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCoachAdvice } from "@/lib/ai/coach-advice";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import type { WorkoutAnalytics, StravaSessionMetrics } from "@/lib/ai/coach-advice";
 import { getValidAccessToken, fetchActivityDetail } from "@/lib/strava/client";
+import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 import type { StravaSplitMetric } from "@/lib/strava/client";
-
-const USER_ID = "user_maxon";
 
 function computePaceCV(splits: StravaSplitMetric[]): number | null {
   const complete = splits.filter((s) => s.distance >= 800 && s.moving_time > 0);
@@ -18,7 +17,7 @@ function computePaceCV(splits: StravaSplitMetric[]): number | null {
   return Math.sqrt(variance) / mean;
 }
 
-async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number): Promise<StravaSessionMetrics | undefined> {
+async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number, userId: string): Promise<StravaSessionMetrics | undefined> {
   const links = await prisma.sessionStravaActivityLink.findMany({
     where: { sessionId },
     include: { activity: true },
@@ -26,8 +25,7 @@ async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number)
   });
   if (links.length === 0) return undefined;
 
-  // Try to enrich rawJson with split data from the Strava detail endpoint (non-fatal)
-  const token = await getValidAccessToken(USER_ID).catch(() => null);
+  const token = await getValidAccessToken(userId).catch(() => null);
 
   const enriched = await Promise.all(
     links.map(async (l) => {
@@ -50,7 +48,6 @@ async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number)
 
   const acts = enriched.map((e) => e.a);
 
-  // HR reliability filter (sensor noise / watch glitch)
   const hrs = acts
     .filter((a) => a.averageHeartrate != null && a.averageHeartrate >= 50 && a.averageHeartrate <= 220)
     .map((a) => a.averageHeartrate!);
@@ -71,14 +68,12 @@ async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number)
     ? (totalMovingTime / 60) - plannedDurationMin
     : null;
 
-  // Pace CV from the primary (first-ordered) activity splits only
   const primaryDetail = enriched[0]?.detail;
   const splitsRaw = primaryDetail?.splits_metric;
   const paceConsistencyCV = Array.isArray(splitsRaw)
     ? computePaceCV(splitsRaw as StravaSplitMetric[])
     : null;
 
-  // Suffer score: sum across all attached activities
   const sufferScores = enriched
     .map((e) => (e.detail as Record<string, unknown> | null)?.suffer_score)
     .filter((s): s is number => typeof s === "number" && s > 0);
@@ -105,7 +100,7 @@ async function fetchStravaMetrics(sessionId: string, plannedDurationMin: number)
 }
 
 function weekStartFromDate(date: Date): Date {
-  const dow = date.getUTCDay(); // 0=Sun, 1=Mon
+  const dow = date.getUTCDay();
   const daysFromMonday = dow === 0 ? 6 : dow - 1;
   const result = new Date(date);
   result.setUTCDate(result.getUTCDate() - daysFromMonday);
@@ -116,7 +111,8 @@ async function buildCheckInContext(
   sessionId: string,
   session: { scheduledDate: Date; intensity: string; durationMin: number; notes: string | null },
   feelScore: number,
-  notes: string | null
+  notes: string | null,
+  userId: string
 ): Promise<{
   recentContext: Array<{ date: string; intensity: string; notes: string | null; feelScore?: number; category?: string }>;
   analytics: WorkoutAnalytics;
@@ -126,7 +122,7 @@ async function buildCheckInContext(
   const [thisWeekDoneSessions, nextPlannedSession] = await Promise.all([
     prisma.trainingSession.findMany({
       where: {
-        userId: USER_ID,
+        userId,
         plan: { status: "active" },
         scheduledDate: { gte: weekStart },
         status: { in: ["done", "skipped"] },
@@ -137,7 +133,7 @@ async function buildCheckInContext(
     }),
     prisma.trainingSession.findFirst({
       where: {
-        userId: USER_ID,
+        userId,
         plan: { status: "active" },
         status: "planned",
         scheduledDate: { gt: session.scheduledDate },
@@ -162,7 +158,6 @@ async function buildCheckInContext(
   const minutesDoneThisWeek =
     thisWeekDoneSessions.reduce((sum, s) => sum + s.durationMin, 0) + session.durationMin;
 
-  // Most recently completed session before current (by scheduledDate)
   const lastDone = [...thisWeekDoneSessions].sort(
     (a, b) => b.scheduledDate.getTime() - a.scheduledDate.getTime()
   )[0];
@@ -217,9 +212,12 @@ async function buildCheckInContext(
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const { feelScore, notes } = await request.json();
 
@@ -232,7 +230,7 @@ export async function POST(
   }
 
   const session = await prisma.trainingSession.findFirst({
-    where: { id, userId: USER_ID },
+    where: { id, userId },
   });
   if (!session) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -243,7 +241,7 @@ export async function POST(
       where: { sessionId: id },
       create: {
         sessionId: id,
-        userId: USER_ID,
+        userId,
         occurredAt: new Date(),
         feelScore,
         notes: notes?.trim() || null,
@@ -260,12 +258,11 @@ export async function POST(
     }),
   ]);
 
-  // Generate coach advice (non-blocking)
   {
     const category = categorizeCheckIn(feelScore, notes?.trim() || null);
     const [{ recentContext, analytics }, stravaMetrics] = await Promise.all([
-      buildCheckInContext(id, session, feelScore, notes?.trim() || null),
-      fetchStravaMetrics(id, session.durationMin),
+      buildCheckInContext(id, session, feelScore, notes?.trim() || null, userId),
+      fetchStravaMetrics(id, session.durationMin, userId),
     ]);
 
     const coachAdvice = await generateCoachAdvice({
@@ -296,14 +293,17 @@ export async function POST(
 }
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserIdFromRequest(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const body = await request.json();
 
   const session = await prisma.trainingSession.findFirst({
-    where: { id, userId: USER_ID },
+    where: { id, userId },
     include: { checkIn: true },
   });
   if (!session?.checkIn) {
@@ -339,7 +339,6 @@ export async function PATCH(
     const newFeelScore = typeof body.feelScore === "number" ? body.feelScore : existing.feelScore;
     const newNotes = "notes" in body ? (body.notes?.trim() || null) : existing.notes;
 
-    // Auto-unresolve only applies to low feel scores
     if (newFeelScore <= 3 && existing.resolvedAt && body.resolved !== true) {
       if (process.env.NODE_ENV !== "production") {
         console.log(`[checkin] auto-unresolving ${existing.id} — feelScore=${newFeelScore} is still low`);
@@ -349,8 +348,8 @@ export async function PATCH(
 
     const category = categorizeCheckIn(newFeelScore, newNotes);
     const [{ recentContext, analytics }, stravaMetrics] = await Promise.all([
-      buildCheckInContext(id, session, newFeelScore, newNotes),
-      fetchStravaMetrics(id, session.durationMin),
+      buildCheckInContext(id, session, newFeelScore, newNotes, userId),
+      fetchStravaMetrics(id, session.durationMin, userId),
     ]);
 
     const coachAdvice = await generateCoachAdvice({
