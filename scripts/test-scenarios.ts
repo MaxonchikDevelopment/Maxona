@@ -16,7 +16,21 @@
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-const USER_ID = "user_maxon";
+
+function parseCliArgs(): { positional: string[]; flags: Record<string, string> } {
+  const args = process.argv.slice(2);
+  const flags: Record<string, string> = {};
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const m = args[i].match(/^--([a-zA-Z]+)(?:=(.+))?$/);
+    if (m) flags[m[1]] = m[2] ?? args[++i] ?? "";
+    else positional.push(args[i]);
+  }
+  return { positional, flags };
+}
+
+const { positional: cliPositional, flags: cliFlags } = parseCliArgs();
+const USER_ID = cliFlags.userId ?? process.env.SCRIPT_USER_ID ?? "user_maxon";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -388,7 +402,7 @@ async function scenarioReset() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-const scenario = process.argv[2];
+const scenario = cliPositional[0];
 
 const scenarios: Record<string, () => Promise<void>> = {
   rollover: scenarioRollover,

@@ -18,7 +18,17 @@
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-const USER_ID = "user_maxon";
+
+function resolveUserId(): string {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const m = args[i].match(/^--userId(?:=(.+))?$/);
+    if (m) return m[1] ?? args[i + 1] ?? "user_maxon";
+  }
+  return process.env.SCRIPT_USER_ID ?? "user_maxon";
+}
+
+const USER_ID = resolveUserId();
 
 const SYNTHETIC_FOCUS_PATTERNS = [
   "Old week — should be archived on rollover",

@@ -30,18 +30,51 @@ All variables are **server-only** except `NEXT_PUBLIC_APP_URL`.
 |---|---|
 | `ANTHROPIC_MODEL` | Claude model ID. Defaults to `claude-sonnet-4-6`. |
 
-### Adding new beta users
+### Managing private beta users
 
-To add a friend's account (no UI — owner manages manually via script):
+There is no public registration. The owner creates and manages beta accounts from the CLI.
+Each user's data is fully isolated — all DB queries are scoped by `userId` at the
+application layer. Beta users share the owner's `ANTHROPIC_API_KEY`.
+
+#### Add a beta user
 
 ```bash
-# Run against the production DB using DIRECT_URL
-DATABASE_URL="<direct_url>" DIRECT_URL="<direct_url>" \
-  npx tsx scripts/add-user.ts --login=anna --password=secret --name=Anna --timezone=Europe/Warsaw
+# Local dev (env vars from .env.local)
+DATABASE_URL="$DATABASE_URL" npm run user:add -- \
+  --login markus --password "StrongPassword123!" \
+  --name "Markus" --timezone "Europe/Berlin" --language "ru"
+
+# Against production DB (use DIRECT_URL, not the pooler)
+DATABASE_URL="<direct_url>" npm run user:add -- \
+  --login markus --password "StrongPassword123!" \
+  --name "Markus" --timezone "Europe/Berlin" --language "en"
 ```
 
-> `scripts/add-user.ts` is implemented in Phase C. For now, add users directly in the DB
-> or by temporarily editing the seed and running `npx prisma db seed`.
+Options:
+- `--login` — required; lowercased, must be unique
+- `--password` — required; min 10 characters; never printed or stored plain
+- `--name` — required
+- `--timezone` — IANA timezone string; defaults to `Europe/Berlin`
+- `--language` — `en` | `ru` | `uk`; defaults to `en`
+
+The created user starts with empty data (no plans, goals, or settings copied from the owner).
+
+#### List all users
+
+```bash
+DATABASE_URL="$DATABASE_URL" npm run user:list
+```
+
+Prints id, login, name, language, timezone, isActive, createdAt. Never prints password or hash.
+
+#### Deactivate a user
+
+```bash
+DATABASE_URL="$DATABASE_URL" npm run user:deactivate -- --login markus
+```
+
+Sets `isActive = false`. The user can no longer log in but all their data is preserved.
+Does not delete plans, sessions, Strava connection, or any other data.
 
 ### Per-environment values
 

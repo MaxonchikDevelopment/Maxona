@@ -72,6 +72,34 @@ Enabling RLS without `FORCE ROW LEVEL SECURITY` does not restrict superuser acce
 - All API routes are behind middleware; no public API surface for data endpoints.
 - The Strava OAuth callback validates a `state` cookie to prevent CSRF.
 
+## Private Beta User Model
+
+Maxona supports a small number of manually provisioned beta users. There is no public
+registration, OAuth, or self-service account creation.
+
+**Password storage:**
+- Passwords are hashed with `bcryptjs`, cost factor 12.
+- The plain password is never stored, logged, or printed by any script.
+- `passwordHash` is never included in any script output or API response.
+
+**User isolation (application layer):**
+- Every Prisma query for user-owned data includes a `userId` filter derived from the
+  verified session token. This is the primary isolation mechanism.
+- A beta user's session cookie contains only their own `userId`; they cannot access
+  another user's data through any application route.
+
+**User isolation (database layer):**
+- RLS is enabled on all tables (see above) as defense-in-depth against direct
+  Supabase API access. This is **not** the main isolation layer for Prisma queries,
+  which run as the `postgres` superuser and bypass RLS. RLS protects against the
+  Supabase `anon`/`authenticated` roles only.
+
+**Owner-managed provisioning:**
+- New accounts are created via `scripts/add-beta-user.ts` by the owner.
+- Deactivation via `scripts/deactivate-user.ts` sets `isActive = false`;
+  the login route rejects inactive users.
+- Data is never deleted on deactivation.
+
 ## Supabase Anon/Public Key Policy
 
 - The Supabase anon key **must not** be added to any client component or frontend bundle.
