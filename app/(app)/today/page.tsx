@@ -6,6 +6,7 @@ import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { DailyReadinessCard } from "@/components/daily-readiness-card";
 import { ManualSessionForm } from "@/components/manual-session-form";
+import { OnboardingCard } from "@/components/onboarding-card";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { generateNutritionAdvice } from "@/lib/ai/nutrition-advice";
@@ -125,6 +126,9 @@ export default async function TodayPage() {
     readinessRecord,
     nextPlannedSession,
     nutritionProfileRaw,
+    anyPlanRow,
+    anyGoalRow,
+    anySessionRow,
   ] = await timed("today/batch", () =>
     Promise.all([
       activateDraftIfReady(userId, todayStr),
@@ -166,12 +170,16 @@ export default async function TodayPage() {
         orderBy: { scheduledDate: "asc" },
       }),
       prisma.nutritionProfile.findUnique({ where: { userId: userId } }),
+      prisma.trainingPlan.findFirst({ where: { userId: userId }, select: { id: true } }),
+      prisma.goal.findFirst({ where: { userId: userId, deletedAt: null }, select: { id: true } }),
+      prisma.trainingSession.findFirst({ where: { userId: userId }, select: { id: true } }),
     ])
   );
 
   if (didActivate) redirect("/today");
 
   const stravaConnected = !!stravaConnectionRaw;
+  const isNewUser = !stravaConnected && !anyPlanRow && !anyGoalRow && !anySessionRow;
 
   // ── Step 3: nutrition cache check ───────────────────────────────────────────
   const sessionInputs = sessions.map((s) => ({
@@ -368,6 +376,7 @@ export default async function TodayPage() {
   return (
     <main className="p-4 space-y-3">
       <h1 className="text-xl font-bold">Today</h1>
+      {isNewUser && <OnboardingCard />}
       <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
       {props.length === 0 ? (
         <div className="space-y-2">

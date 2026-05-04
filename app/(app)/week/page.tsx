@@ -6,6 +6,7 @@ import { SessionCard } from "@/components/session-card";
 import { ActiveIssues } from "@/components/active-issues";
 import { ReplanButton } from "@/components/replan-button";
 import { ManualSessionForm } from "@/components/manual-session-form";
+import { OnboardingCard } from "@/components/onboarding-card";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
@@ -107,6 +108,8 @@ export default async function WeekPage() {
     injuryCheckIns,
     nutritionProfileRaw,
     latestReadiness,
+    anyGoalRow,
+    anySessionRow,
   ] = await timed("week/batch1", () =>
     Promise.all([
       activateDraftIfReady(userId, todayStr),
@@ -156,12 +159,15 @@ export default async function WeekPage() {
         },
         orderBy: { date: "desc" },
       }) as Promise<{ id: string; category: string; feelScore: number; tags: unknown } | null>,
+      prisma.goal.findFirst({ where: { userId: userId, deletedAt: null }, select: { id: true } }),
+      prisma.trainingSession.findFirst({ where: { userId: userId }, select: { id: true } }),
     ])
   );
 
   if (didActivate) redirect("/week");
 
   const stravaConnected = !!stravaConnectionRaw;
+  const isNewUser = !stravaConnected && !planRaw && !draftPlan && !anyGoalRow && !anySessionRow;
 
   const activeIssues: IssueItem[] = injuryCheckIns
     .filter((ci) => categorizeCheckIn(ci.feelScore, ci.notes) === "injury")
@@ -181,6 +187,7 @@ export default async function WeekPage() {
     return (
       <main className="p-4 space-y-4">
         <h1 className="mb-4 text-xl font-bold">Week</h1>
+        {isNewUser && <OnboardingCard />}
         <ActiveIssues initialIssues={activeIssues} />
         <p className="text-gray-500">No active plan.</p>
         <ReplanButton mode="generate" />
@@ -406,6 +413,8 @@ export default async function WeekPage() {
         <h1 className="text-xl font-bold">Week</h1>
         <ReplanButton mode="replan" />
       </div>
+
+      {isNewUser && <OnboardingCard />}
 
       {latestReadiness && (
         <div className="flex flex-wrap items-center gap-1.5 rounded bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
