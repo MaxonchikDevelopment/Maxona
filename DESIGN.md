@@ -385,3 +385,38 @@ Today and Week are the reference standard. Every other main page (Settings, Goal
 - HR zones grouped by zone with color-coded labels (emerald → amber → red) and a gradient strip visual.
 - HYROX constraints compact: max/week + preferred days on same row.
 - Helper copy at top: "Start with Training Profile + Nutrition. Advanced scheduling is optional."
+
+---
+
+## Sprint 7 — Strava + Settings Usability Rules
+
+### Strava multi-activity aggregation
+- Multiple Strava activities attached to one session must aggregate in display: combined distance, moving time, elevation; weighted-average HR; max HR = max of all.
+- `CompactMetricPills` always aggregates all linked activities. A compact "N activities" badge appears when more than one is linked.
+- `ExecutionSummaryBlock` already aggregates (passes all links to `deriveExecutionSummary`).
+
+### Automatic stream fetch
+- Stream fetch is triggered immediately after an activity is attached (fire-and-forget via `POST /api/strava/activities/[id]/streams`).
+- Do NOT fetch streams on page render or during layout — only after explicit user attach action.
+- Manual "Fetch HR stream" button (`AnalyzeStreamButton`) remains as fallback.
+- If stream already exists, the route is a no-op (returns `status: "existing"`).
+
+### Inline mini analytics
+- When `session.hrAnalytics` exists, session cards (Today/Week) show a compact `MiniHrSparkline` — SVG line chart only, no zone bars, no stat grid.
+- `SessionAnalytics` (full view with zones, stat cards, insights) is reserved for session detail pages.
+- If stream is not available, the metric pills + `AnalyzeStreamButton` fallback are shown.
+
+### Desktop nav
+- Fixed position (`fixed top-0 left-0 right-0`), centered floating glass pill (`flex justify-center`).
+- `pointer-events-none` on wrapper, `pointer-events-auto` on pill — gradient never clips.
+- Layout container adds `lg:pt-14` to clear the fixed nav.
+
+### Settings — what belongs where
+- Helper line ("Start with Training Profile + Nutrition…") removed — visual hierarchy makes the order clear.
+- Training Profile: primary inputs (Resting HR, Max HR, Threshold HR, Zone method) always visible. Advanced zone bounds (Easy min/max, Tempo min/max) collapsed unless values exist.
+- Training Constraints: compact inline chip-style inputs for Running/Cycling defaults; HYROX section centered with day chips centered.
+- Nutrition Profile: all long text fields use `<textarea>` with natural wrapping. No horizontal scrolling. Fields grouped: Routine · Training fueling · Foods that work · Energy estimate · Supplements & notes.
+- Advanced Scheduling remains collapsed by default — does not dominate the Settings view.
+
+### Capitalization
+- View-layer only; stored values are lowercase and unchanged.

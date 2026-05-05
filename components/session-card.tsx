@@ -10,7 +10,6 @@ import type { StravaLinkProp, StravaActivitySummary } from "@/components/strava-
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
 import { WorkoutFeedbackSection } from "@/components/workout-feedback-section";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
-import { SessionAnalytics } from "@/components/session-analytics";
 import { AnalyzeStreamButton } from "@/components/analyze-stream-button";
 import type { HrAnalytics } from "@/lib/analytics/hr-stream";
 import type { NutritionAdvice } from "@/lib/ai/nutrition-advice";
@@ -111,45 +110,61 @@ function buildCompactExecLine(a: StravaActivitySummary): string {
 }
 
 function CompactMetricPills({ links }: { links: StravaLinkProp[] }) {
-  const primary = links.find((l) => l.isPrimary) ?? links[0];
-  if (!primary) return null;
-  const a = primary.activity;
+  if (links.length === 0) return null;
+  const isMulti = links.length > 1;
+
+  // Aggregate all linked activities
+  const totalDistanceM = links.reduce((s, l) => s + l.activity.distance, 0);
+  const totalMovingTimeSec = links.reduce((s, l) => s + l.activity.movingTime, 0);
+  const totalElevationM = links.reduce((s, l) => s + l.activity.totalElevationGain, 0);
+
+  // Weighted-by-time average HR; max HR is the max across all
+  const hrEntries = links
+    .filter((l) => l.activity.averageHeartrate != null && l.activity.movingTime > 0)
+    .map((l) => ({ hr: l.activity.averageHeartrate!, t: l.activity.movingTime }));
+  const avgHR =
+    hrEntries.length > 0
+      ? Math.round(hrEntries.reduce((s, e) => s + e.hr * e.t, 0) / hrEntries.reduce((s, e) => s + e.t, 0))
+      : null;
+
+  const sportTypes = links.map((l) => l.activity.sportType.toLowerCase());
+  const isRunning = sportTypes.some((s) => /run/i.test(s));
+  const isCycling = !isRunning && sportTypes.some((s) => /ride|cycling|cycle|bike/i.test(s));
 
   const pills: Array<{ label: string; value: string }> = [];
 
-  if (a.distance > 0) {
-    const km = a.distance / 1000;
-    pills.push({ label: "Dist", value: km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(a.distance)} m` });
+  if (totalDistanceM > 0) {
+    const km = totalDistanceM / 1000;
+    pills.push({ label: "Dist", value: km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(totalDistanceM)} m` });
   }
-  if (a.movingTime > 0) {
-    const h = Math.floor(a.movingTime / 3600);
-    const m = Math.floor((a.movingTime % 3600) / 60);
+  if (totalMovingTimeSec > 0) {
+    const h = Math.floor(totalMovingTimeSec / 3600);
+    const m = Math.floor((totalMovingTimeSec % 3600) / 60);
     pills.push({ label: "Time", value: h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ""}` : `${m} min` });
   }
-  if (a.distance > 0 && a.movingTime > 0) {
-    const st = a.sportType.toLowerCase();
-    if (st.includes("run")) {
-      const secPerKm = a.movingTime / (a.distance / 1000);
+  if (totalDistanceM > 0 && totalMovingTimeSec > 0) {
+    if (isRunning) {
+      const secPerKm = totalMovingTimeSec / (totalDistanceM / 1000);
       const pm = Math.floor(secPerKm / 60);
       const ps = Math.round(secPerKm % 60);
       pills.push({ label: "Pace", value: `${pm}:${String(ps).padStart(2, "0")} /km` });
-    } else {
-      const kph = (a.distance / 1000) / (a.movingTime / 3600);
+    } else if (isCycling) {
+      const kph = (totalDistanceM / 1000) / (totalMovingTimeSec / 3600);
       pills.push({ label: "Speed", value: `${kph.toFixed(1)} km/h` });
     }
   }
-  if (a.averageHeartrate) {
-    pills.push({ label: "Avg HR", value: `${Math.round(a.averageHeartrate)} bpm` });
+  if (avgHR) {
+    pills.push({ label: "Avg HR", value: `${avgHR} bpm` });
   }
-  if (a.totalElevationGain > 20) {
-    pills.push({ label: "Elev", value: `+${Math.round(a.totalElevationGain)} m` });
+  if (totalElevationM > 20) {
+    pills.push({ label: "Elev", value: `+${Math.round(totalElevationM)} m` });
   }
 
   if (pills.length === 0) return null;
 
   return (
     <div className="rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2.5">
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
+      <div className="flex flex-wrap gap-x-5 gap-y-2 items-end">
         {pills.slice(0, 5).map((pill) => (
           <div key={pill.label} className="flex flex-col gap-0.5">
             <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-400">
@@ -160,7 +175,51 @@ function CompactMetricPills({ links }: { links: StravaLinkProp[] }) {
             </span>
           </div>
         ))}
+        {isMulti && (
+          <span className="text-[9px] font-medium text-orange-400 pb-0.5">
+            {links.length} activities
+          </span>
+        )}
       </div>
+    </div>
+  );
+}
+
+function MiniHrSparkline({ analytics }: { analytics: import("@/lib/analytics/hr-stream").HrAnalytics }) {
+  const { chart } = analytics;
+  const { points, avgHr, peakHr } = chart;
+  if (points.length < 2) return null;
+
+  const W = 300;
+  const H = 44;
+  const PAD = { l: 0, r: 0, t: 4, b: 4 };
+  const innerW = W;
+  const innerH = H - PAD.t - PAD.b;
+  const maxMin = points[points.length - 1].minute;
+  const rawMin = Math.min(...points.map((p) => p.hr));
+  const rawMax = Math.max(...points.map((p) => p.hr));
+  const yMin = Math.max(30, rawMin - 5);
+  const yMax = Math.min(230, rawMax + 5);
+  const yRange = yMax - yMin || 1;
+
+  function toX(m: number) { return (m / (maxMin || 1)) * innerW; }
+  function toY(hr: number) { return PAD.t + innerH - ((hr - yMin) / yRange) * innerH; }
+
+  const polyline = points.map((p) => `${toX(p.minute)},${toY(p.hr)}`).join(" ");
+  const avgY = toY(avgHr);
+
+  return (
+    <div className="rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-semibold uppercase tracking-widest text-indigo-400">HR</span>
+        <span className="text-[10px] text-zinc-400 tabular-nums">
+          avg {avgHr}{peakHr > avgHr + 5 ? ` · peak ${peakHr}` : ""} bpm
+        </span>
+      </div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible block">
+        <line x1={0} y1={avgY} x2={W} y2={avgY} stroke="#c7d2fe" strokeWidth={0.8} strokeDasharray="3,3" />
+        <polyline points={polyline} fill="none" stroke="#6366f1" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
     </div>
   );
 }
@@ -687,11 +746,9 @@ export function SessionCard({
             />
           )}
 
-          {/* HR Analytics — auto-shown when stream exists */}
+          {/* Mini HR sparkline — shown inline when stream exists */}
           {session.hrAnalytics ? (
-            <div className="border-t pt-2">
-              <SessionAnalytics analytics={session.hrAnalytics} />
-            </div>
+            <MiniHrSparkline analytics={session.hrAnalytics} />
           ) : (session.stravaLinks?.length ?? 0) > 0 && primaryActivityId ? (
             <div className="border-t pt-2">
               <AnalyzeStreamButton activityId={primaryActivityId} sessionId={session.id} />

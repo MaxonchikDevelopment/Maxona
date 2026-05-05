@@ -202,6 +202,9 @@ export function SettingsClient({
   const [thresholdHr, setThresholdHr] = useState(String(ip?.thresholdHr ?? ""));
   const [zoneMethod, setZoneMethod] = useState(ip?.zoneMethod ?? "estimated");
   const [trainingProfileSaved, setTrainingProfileSaved] = useState(false);
+  const [showAdvancedHrZones, setShowAdvancedHrZones] = useState(
+    !!(ip?.easyHrMin || ip?.easyHrMax || ip?.tempoHrMin || ip?.tempoHrMax)
+  );
 
   const saveTrainingProfile = useMutation({
     mutationFn: () =>
@@ -438,21 +441,27 @@ export function SettingsClient({
     <div className={cardCls}>
       <div className="space-y-0.5">
         <p className={sectionHeadingCls}>Training profile</p>
-        <p className="text-xs text-zinc-400">HR zones for personalised workout plans.</p>
+        <p className="text-xs text-zinc-400">HR profile for personalised workout plans.</p>
       </div>
 
-      {/* HR ladder visual */}
-      <div className="rounded-xl bg-gradient-to-r from-zinc-50 via-emerald-50/60 via-amber-50/40 to-red-50/60 border border-zinc-100 px-3 py-2">
-        <div className="flex items-center text-[9px] font-semibold uppercase tracking-wide">
-          <span className="flex-1 text-zinc-400">Rest</span>
-          <span className="flex-1 text-emerald-600">Easy</span>
-          <span className="flex-1 text-amber-600">Tempo</span>
-          <span className="flex-1 text-red-600">Threshold</span>
-          <span className="flex-1 text-right text-red-800">Max</span>
+      {/* Visual HR zone track */}
+      <div className="space-y-1.5 py-1">
+        <div className="flex gap-0.5 rounded-xl overflow-hidden">
+          <div className="flex-1 bg-slate-100 px-1.5 py-2 text-center text-[9px] font-semibold text-slate-500">Rest</div>
+          <div className="flex-[2] bg-emerald-100 px-1.5 py-2 text-center text-[9px] font-semibold text-emerald-600">Easy</div>
+          <div className="flex-[2] bg-amber-100 px-1.5 py-2 text-center text-[9px] font-semibold text-amber-600">Tempo</div>
+          <div className="flex-[1.5] bg-orange-100 px-1.5 py-2 text-center text-[9px] font-semibold text-orange-600">Threshold</div>
+          <div className="flex-1 bg-red-100 px-1.5 py-2 text-center text-[9px] font-semibold text-red-700">Max</div>
         </div>
+        {(restingHr || maxHr) && (
+          <div className="flex justify-between text-[10px] text-zinc-400 px-0.5">
+            {restingHr ? <span>{restingHr} bpm</span> : <span />}
+            {maxHr && <span className="text-red-400 font-medium">{maxHr} bpm</span>}
+          </div>
+        )}
       </div>
 
-      {/* Resting / Max */}
+      {/* Primary inputs: Resting HR + Max HR */}
       <div className="grid grid-cols-2 gap-3">
         <label className="space-y-1">
           <span className={labelCls}>Resting HR</span>
@@ -464,40 +473,10 @@ export function SettingsClient({
         </label>
       </div>
 
-      {/* Easy zone */}
-      <div className="space-y-1.5">
-        <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">Easy zone</p>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-1">
-            <span className={labelCls}>Min BPM</span>
-            <input type="number" value={easyHrMin} onChange={(e) => setEasyHrMin(e.target.value)} placeholder="e.g. 130" className={inputCls} />
-          </label>
-          <label className="space-y-1">
-            <span className={labelCls}>Max BPM</span>
-            <input type="number" value={easyHrMax} onChange={(e) => setEasyHrMax(e.target.value)} placeholder="e.g. 150" className={inputCls} />
-          </label>
-        </div>
-      </div>
-
-      {/* Tempo zone */}
-      <div className="space-y-1.5">
-        <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Tempo zone</p>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-1">
-            <span className={labelCls}>Min BPM</span>
-            <input type="number" value={tempoHrMin} onChange={(e) => setTempoHrMin(e.target.value)} placeholder="e.g. 151" className={inputCls} />
-          </label>
-          <label className="space-y-1">
-            <span className={labelCls}>Max BPM</span>
-            <input type="number" value={tempoHrMax} onChange={(e) => setTempoHrMax(e.target.value)} placeholder="e.g. 165" className={inputCls} />
-          </label>
-        </div>
-      </div>
-
       {/* Threshold + zone method */}
       <div className="grid grid-cols-2 gap-3">
         <label className="space-y-1">
-          <span className={labelCls + " text-red-600"}>Threshold HR</span>
+          <span className={labelCls}>Threshold HR</span>
           <input type="number" value={thresholdHr} onChange={(e) => setThresholdHr(e.target.value)} placeholder="e.g. 166" className={inputCls} />
         </label>
         <label className="space-y-1">
@@ -507,6 +486,47 @@ export function SettingsClient({
             <option value="manual">Manual</option>
           </select>
         </label>
+      </div>
+
+      {/* Advanced HR zones — collapsed unless values exist */}
+      <div>
+        <button
+          onClick={() => setShowAdvancedHrZones((v) => !v)}
+          className="text-[10px] text-zinc-400 hover:text-zinc-600 transition-colors"
+        >
+          {showAdvancedHrZones ? "▲ Hide manual zone bounds" : "▼ Manual zone bounds (optional)"}
+        </button>
+        {showAdvancedHrZones && (
+          <div className="mt-3 space-y-3 pt-3 border-t border-zinc-100">
+            <p className="text-[10px] text-zinc-400">Override estimated zone bounds with exact BPM values.</p>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">Easy zone</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span className={labelCls}>Min BPM</span>
+                  <input type="number" value={easyHrMin} onChange={(e) => setEasyHrMin(e.target.value)} placeholder="e.g. 130" className={inputCls} />
+                </label>
+                <label className="space-y-1">
+                  <span className={labelCls}>Max BPM</span>
+                  <input type="number" value={easyHrMax} onChange={(e) => setEasyHrMax(e.target.value)} placeholder="e.g. 150" className={inputCls} />
+                </label>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Tempo zone</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span className={labelCls}>Min BPM</span>
+                  <input type="number" value={tempoHrMin} onChange={(e) => setTempoHrMin(e.target.value)} placeholder="e.g. 151" className={inputCls} />
+                </label>
+                <label className="space-y-1">
+                  <span className={labelCls}>Max BPM</span>
+                  <input type="number" value={tempoHrMax} onChange={(e) => setTempoHrMax(e.target.value)} placeholder="e.g. 165" className={inputCls} />
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <button
@@ -519,10 +539,14 @@ export function SettingsClient({
     </div>
   );
 
+  const compactChipInputCls =
+    "flex items-center gap-1 rounded-xl border border-zinc-200 bg-zinc-50 px-2.5 py-1.5";
+
   const TrainingConstraintsSection = (
     <div className={cardCls}>
       <p className={sectionHeadingCls}>Training constraints</p>
 
+      {/* Weekly limits */}
       <div className="grid grid-cols-2 gap-3">
         <label className="space-y-1">
           <span className={labelCls}>Max continuous (min)</span>
@@ -554,66 +578,89 @@ export function SettingsClient({
         </div>
       </div>
 
-      {/* Running */}
+      {/* Running defaults — compact chip-style inputs */}
       <div className="space-y-2 pt-1 border-t border-zinc-100">
-        <p className="text-xs font-semibold text-zinc-500">Running</p>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Easy (km)", value: easyRunKm, set: setEasyRunKm, placeholder: "e.g. 10" },
-            { label: "Tempo (km)", value: tempoRunKm, set: setTempoRunKm, placeholder: "e.g. 10" },
-            { label: "Long run (km)", value: longRunKm, set: setLongRunKm, placeholder: "e.g. 21" },
-            { label: "Long run (min)", value: longRunDuration, set: setLongRunDuration, placeholder: "e.g. 110" },
-          ].map(({ label, value, set, placeholder }) => (
-            <label key={label} className="space-y-1">
-              <span className={labelCls}>{label}</span>
-              <input type="number" value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} className={inputCls} />
-            </label>
-          ))}
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-xs font-semibold text-zinc-500">Running defaults</p>
+          <p className="text-[10px] text-zinc-400">Planner adapts as needed</p>
         </div>
-      </div>
-
-      {/* Cycling */}
-      <div className="space-y-2 pt-1 border-t border-zinc-100">
-        <p className="text-xs font-semibold text-zinc-500">Cycling</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="flex flex-wrap gap-2">
           {[
-            { label: "Easy (min)", value: easyRideDuration, set: setEasyRideDuration, placeholder: "e.g. 60" },
-            { label: "Long (min)", value: longRideDuration, set: setLongRideDuration, placeholder: "e.g. 120" },
-            { label: "Min (min)", value: minCyclingDuration, set: setMinCyclingDuration, placeholder: "e.g. 60" },
-          ].map(({ label, value, set, placeholder }) => (
-            <label key={label} className="space-y-1">
-              <span className={labelCls}>{label}</span>
-              <input type="number" value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} className={inputCls} />
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* HYROX — compact: max + days in same row */}
-      <div className="space-y-2 pt-1 border-t border-zinc-100">
-        <p className="text-xs font-semibold text-zinc-500">HYROX</p>
-        <div className="flex items-start gap-4 flex-wrap">
-          <label className="space-y-1 w-24 shrink-0">
-            <span className={labelCls}>Max / week</span>
-            <input type="number" value={maxHyrox} onChange={(e) => setMaxHyrox(e.target.value)} placeholder="e.g. 2" className={inputCls} />
-          </label>
-          <div className="flex-1 min-w-0">
-            <p className={labelCls + " mb-2"}>Preferred days</p>
-            <div className="flex flex-wrap gap-1.5">
-              {DAYS.map((d) => (
-                <label
-                  key={d}
-                  className={`flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium cursor-pointer transition-colors ${
-                    hyroxDays.includes(d)
-                      ? "bg-zinc-900 text-white border-zinc-900"
-                      : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                  }`}
-                >
-                  <input type="checkbox" checked={hyroxDays.includes(d)} onChange={() => toggleHyroxDay(d)} className="sr-only" />
-                  {DAY_LABELS[d]}
-                </label>
-              ))}
+            { label: "Easy", value: easyRunKm, set: setEasyRunKm, unit: "km", placeholder: "10" },
+            { label: "Tempo", value: tempoRunKm, set: setTempoRunKm, unit: "km", placeholder: "10" },
+            { label: "Long", value: longRunKm, set: setLongRunKm, unit: "km", placeholder: "21" },
+            { label: "Long run", value: longRunDuration, set: setLongRunDuration, unit: "min", placeholder: "110" },
+          ].map(({ label, value, set, unit, placeholder }) => (
+            <div key={label} className={compactChipInputCls}>
+              <span className="text-[10px] font-medium text-zinc-500 shrink-0 select-none">{label}</span>
+              <input
+                type="number"
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                placeholder={placeholder}
+                className="w-10 bg-transparent text-sm font-semibold text-zinc-800 placeholder-zinc-300 focus:outline-none text-center"
+              />
+              <span className="text-[10px] text-zinc-400 shrink-0">{unit}</span>
             </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Cycling defaults */}
+      <div className="space-y-2 pt-1 border-t border-zinc-100">
+        <p className="text-xs font-semibold text-zinc-500">Cycling defaults</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: "Easy ride", value: easyRideDuration, set: setEasyRideDuration, placeholder: "60" },
+            { label: "Long ride", value: longRideDuration, set: setLongRideDuration, placeholder: "120" },
+            { label: "Min ride", value: minCyclingDuration, set: setMinCyclingDuration, placeholder: "45" },
+          ].map(({ label, value, set, placeholder }) => (
+            <div key={label} className={compactChipInputCls}>
+              <span className="text-[10px] font-medium text-zinc-500 shrink-0 select-none">{label}</span>
+              <input
+                type="number"
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                placeholder={placeholder}
+                className="w-10 bg-transparent text-sm font-semibold text-zinc-800 placeholder-zinc-300 focus:outline-none text-center"
+              />
+              <span className="text-[10px] text-zinc-400 shrink-0">min</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* HYROX — centered compact group */}
+      <div className="space-y-2.5 pt-1 border-t border-zinc-100 text-center">
+        <p className="text-xs font-semibold text-zinc-500">HYROX</p>
+        <div className="flex justify-center">
+          <div className={compactChipInputCls}>
+            <span className="text-[10px] font-medium text-zinc-500 shrink-0 select-none">Max / week</span>
+            <input
+              type="number"
+              value={maxHyrox}
+              onChange={(e) => setMaxHyrox(e.target.value)}
+              placeholder="2"
+              className="w-8 bg-transparent text-sm font-semibold text-zinc-800 placeholder-zinc-300 focus:outline-none text-center"
+            />
+          </div>
+        </div>
+        <div>
+          <p className={labelCls + " text-center mb-2"}>Preferred days</p>
+          <div className="flex flex-wrap justify-center gap-1.5">
+            {DAYS.map((d) => (
+              <label
+                key={d}
+                className={`flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium cursor-pointer transition-colors ${
+                  hyroxDays.includes(d)
+                    ? "bg-zinc-900 text-white border-zinc-900"
+                    : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                }`}
+              >
+                <input type="checkbox" checked={hyroxDays.includes(d)} onChange={() => toggleHyroxDay(d)} className="sr-only" />
+                {DAY_LABELS[d]}
+              </label>
+            ))}
           </div>
         </div>
       </div>
@@ -629,6 +676,9 @@ export function SettingsClient({
   );
 
   // ── Nutrition Profile card ────────────────────────────────────────────────
+  const textareaCls =
+    "w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300 resize-none";
+
   const NutritionSection = (
     <div className={cardCls}>
       <div className="space-y-0.5">
@@ -641,53 +691,119 @@ export function SettingsClient({
         <p className="text-xs font-semibold text-zinc-500">Routine</p>
         <label className="space-y-1 block">
           <span className={labelCls}>Current meal pattern</span>
-          <input type="text" value={nutMealPattern} onChange={(e) => setNutMealPattern(e.target.value)} placeholder="e.g. 3 meals, skip breakfast, IF 16:8…" className={inputCls} />
+          <textarea
+            value={nutMealPattern}
+            onChange={(e) => setNutMealPattern(e.target.value)}
+            placeholder="e.g. 3 meals, skip breakfast, IF 16:8…"
+            rows={2}
+            className={textareaCls}
+          />
         </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Nutrition goal</span>
-          <input type="text" value={nutGoal} onChange={(e) => setNutGoal(e.target.value)} placeholder="e.g. better energy, avoid under-fueling…" className={inputCls} />
+          <textarea
+            value={nutGoal}
+            onChange={(e) => setNutGoal(e.target.value)}
+            placeholder="e.g. better energy, avoid under-fueling…"
+            rows={2}
+            className={textareaCls}
+          />
         </label>
       </div>
 
-      {/* Pre-workout tolerance */}
+      {/* Training fueling */}
       <div className="space-y-2.5 pt-1 border-t border-zinc-100">
-        <p className="text-xs font-semibold text-zinc-500">Pre-workout tolerance</p>
-        <label className="space-y-1 block w-32">
-          <span className={labelCls}>Min gap after main meal (h)</span>
-          <input type="number" min={1} max={6} value={nutMealGap} onChange={(e) => setNutMealGap(e.target.value)} placeholder="e.g. 2" className={inputCls} />
-        </label>
+        <p className="text-xs font-semibold text-zinc-500">Training fueling</p>
+        <div className="flex flex-wrap gap-3 items-end">
+          <label className="space-y-1">
+            <span className={labelCls}>Min gap after main meal (h)</span>
+            <input
+              type="number"
+              min={1}
+              max={6}
+              value={nutMealGap}
+              onChange={(e) => setNutMealGap(e.target.value)}
+              placeholder="2"
+              className="w-20 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+            />
+          </label>
+          <div className="flex flex-col gap-1.5 pb-0.5">
+            <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
+              <input type="checkbox" checked={nutStomach} onChange={(e) => setNutStomach(e.target.checked)} className="rounded border-zinc-300" />
+              <span>Stomach sensitive</span>
+              <span className="text-xs text-zinc-400">— light pre-workout only</span>
+            </label>
+            <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
+              <input type="checkbox" checked={nutCaffeine} onChange={(e) => setNutCaffeine(e.target.checked)} className="rounded border-zinc-300" />
+              Caffeine sensitive
+            </label>
+          </div>
+        </div>
         <label className="space-y-1 block">
           <span className={labelCls}>Pre-workout snack tolerance</span>
-          <input type="text" value={nutSnackTolerance} onChange={(e) => setNutSnackTolerance(e.target.value)} placeholder="e.g. handles solid food fine, liquid only…" className={inputCls} />
+          <textarea
+            value={nutSnackTolerance}
+            onChange={(e) => setNutSnackTolerance(e.target.value)}
+            placeholder="e.g. handles solid food fine, liquid only within 1h…"
+            rows={2}
+            className={textareaCls}
+          />
         </label>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-            <input type="checkbox" checked={nutStomach} onChange={(e) => setNutStomach(e.target.checked)} className="rounded border-zinc-300" />
-            Stomach sensitive
-            <span className="text-xs text-zinc-400">— very light pre-workout</span>
-          </label>
-          <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-            <input type="checkbox" checked={nutCaffeine} onChange={(e) => setNutCaffeine(e.target.checked)} className="rounded border-zinc-300" />
-            Caffeine sensitive
-          </label>
-        </div>
       </div>
 
-      {/* Foods */}
+      {/* Foods that work */}
       <div className="space-y-2.5 pt-1 border-t border-zinc-100">
         <p className="text-xs font-semibold text-zinc-500">Foods that work</p>
-        {[
-          { label: "Preferred foods / staples", value: nutPreferredFoods, set: setNutPreferredFoods, placeholder: "e.g. oats, eggs, rice, sweet potato…" },
-          { label: "Foods to avoid", value: nutAvoidFoods, set: setNutAvoidFoods, placeholder: "e.g. dairy, gluten, nuts…" },
-          { label: "Preferred pre-workout snack", value: nutPreSnack, set: setNutPreSnack, placeholder: "e.g. banana + peanut butter" },
-          { label: "Preferred breakfast", value: nutBreakfast, set: setNutBreakfast, placeholder: "e.g. oats with fruit" },
-          { label: "Preferred post-workout meal", value: nutPostMeal, set: setNutPostMeal, placeholder: "e.g. rice + chicken + veggies" },
-        ].map(({ label, value, set, placeholder }) => (
-          <label key={label} className="space-y-1 block">
-            <span className={labelCls}>{label}</span>
-            <input type="text" value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} className={inputCls} />
-          </label>
-        ))}
+        <label className="space-y-1 block">
+          <span className={labelCls}>Preferred foods / staples</span>
+          <textarea
+            value={nutPreferredFoods}
+            onChange={(e) => setNutPreferredFoods(e.target.value)}
+            placeholder="e.g. oats, eggs, rice, sweet potato…"
+            rows={2}
+            className={textareaCls}
+          />
+        </label>
+        <label className="space-y-1 block">
+          <span className={labelCls}>Foods to avoid</span>
+          <textarea
+            value={nutAvoidFoods}
+            onChange={(e) => setNutAvoidFoods(e.target.value)}
+            placeholder="e.g. dairy, gluten, nuts…"
+            rows={2}
+            className={textareaCls}
+          />
+        </label>
+        <label className="space-y-1 block">
+          <span className={labelCls}>Preferred pre-workout snack</span>
+          <textarea
+            value={nutPreSnack}
+            onChange={(e) => setNutPreSnack(e.target.value)}
+            placeholder="e.g. banana + peanut butter"
+            rows={2}
+            className={textareaCls}
+          />
+        </label>
+        <label className="space-y-1 block">
+          <span className={labelCls}>Preferred breakfast</span>
+          <textarea
+            value={nutBreakfast}
+            onChange={(e) => setNutBreakfast(e.target.value)}
+            placeholder="e.g. oats with fruit"
+            rows={2}
+            className={textareaCls}
+          />
+        </label>
+        <label className="space-y-1 block">
+          <span className={labelCls}>Preferred post-workout meal</span>
+          <textarea
+            value={nutPostMeal}
+            onChange={(e) => setNutPostMeal(e.target.value)}
+            placeholder="e.g. rice + chicken + veggies"
+            rows={2}
+            className={textareaCls}
+          />
+        </label>
       </div>
 
       {/* Energy estimate */}
@@ -696,40 +812,76 @@ export function SettingsClient({
           <p className="text-xs font-semibold text-zinc-500">Energy estimate</p>
           <p className="text-[10px] text-zinc-400 mt-0.5">Rough daily guidance only — not calorie tracking.</p>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-wrap gap-3 items-end">
           <label className="space-y-1">
             <span className={labelCls}>Body weight (kg)</span>
-            <input type="number" min={30} max={200} step={0.5} value={nutBodyWeight} onChange={(e) => setNutBodyWeight(e.target.value)} placeholder="e.g. 78" className={inputCls} />
+            <input
+              type="number"
+              min={30}
+              max={200}
+              step={0.5}
+              value={nutBodyWeight}
+              onChange={(e) => setNutBodyWeight(e.target.value)}
+              placeholder="78"
+              className="w-24 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+            />
           </label>
           <label className="space-y-1">
             <span className={labelCls}>Rest-day calories</span>
-            <input type="number" min={1000} max={5000} step={50} value={nutRestCalories} onChange={(e) => setNutRestCalories(e.target.value)} placeholder="e.g. 2300" className={inputCls} />
+            <input
+              type="number"
+              min={1000}
+              max={5000}
+              step={50}
+              value={nutRestCalories}
+              onChange={(e) => setNutRestCalories(e.target.value)}
+              placeholder="2300"
+              className="w-28 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className={labelCls}>Calorie goal</span>
+            <select value={nutCalorieGoal} onChange={(e) => setNutCalorieGoal(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+              <option value="maintain">Maintain</option>
+              <option value="slight_surplus">Slight surplus</option>
+              <option value="slight_deficit">Slight deficit</option>
+            </select>
           </label>
         </div>
-        <label className="space-y-1 block">
-          <span className={labelCls}>Calorie goal</span>
-          <select value={nutCalorieGoal} onChange={(e) => setNutCalorieGoal(e.target.value)} className={selectCls}>
-            <option value="maintain">Maintain</option>
-            <option value="slight_surplus">Slight surplus</option>
-            <option value="slight_deficit">Slight deficit</option>
-          </select>
-        </label>
       </div>
 
-      {/* Optional details */}
+      {/* Supplements & notes */}
       <div className="space-y-2.5 pt-1 border-t border-zinc-100">
-        <p className="text-xs font-semibold text-zinc-500">Optional details</p>
+        <p className="text-xs font-semibold text-zinc-500">Supplements & notes</p>
         <label className="space-y-1 block">
           <span className={labelCls}>Supplements</span>
-          <input type="text" value={nutSupplements} onChange={(e) => setNutSupplements(e.target.value)} placeholder="e.g. creatine, magnesium, vitamin D…" className={inputCls} />
+          <textarea
+            value={nutSupplements}
+            onChange={(e) => setNutSupplements(e.target.value)}
+            placeholder="e.g. creatine, magnesium, vitamin D…"
+            rows={2}
+            className={textareaCls}
+          />
         </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Cooking style / time preference</span>
-          <input type="text" value={nutCookingPref} onChange={(e) => setNutCookingPref(e.target.value)} placeholder="e.g. quick meals under 20 min…" className={inputCls} />
+          <textarea
+            value={nutCookingPref}
+            onChange={(e) => setNutCookingPref(e.target.value)}
+            placeholder="e.g. quick meals under 20 min…"
+            rows={2}
+            className={textareaCls}
+          />
         </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Diet notes</span>
-          <textarea value={nutDietNotes} onChange={(e) => setNutDietNotes(e.target.value)} placeholder="e.g. plant-based, low-carb, intermittent fasting…" rows={2} className={inputCls + " resize-none"} />
+          <textarea
+            value={nutDietNotes}
+            onChange={(e) => setNutDietNotes(e.target.value)}
+            placeholder="e.g. plant-based, low-carb, intermittent fasting…"
+            rows={2}
+            className={textareaCls}
+          />
         </label>
       </div>
 
@@ -970,9 +1122,6 @@ export function SettingsClient({
       </div>
 
       <PageWrapper>
-        {/* Helper copy */}
-        <p className="text-xs text-zinc-400 mb-4">Start with <strong className="text-zinc-600">Training Profile</strong> + <strong className="text-zinc-600">Nutrition</strong>. Advanced scheduling is optional.</p>
-
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
           {/* ── Main column: Nutrition Profile + Advanced scheduling ────── */}
           <StaggerList className="space-y-4">

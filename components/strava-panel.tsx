@@ -171,7 +171,15 @@ export function StravaPanel({
       const newLink: StravaLinkProp = await res.json();
       setLinks((prev) => [...prev, newLink]);
       setAvailable((prev) => prev.filter((a) => a.id !== activityId));
-      setPickerOpen(false); // Collapse picker after attach
+      setPickerOpen(false);
+
+      // Auto-fetch stream for the newly attached activity (fire-and-forget).
+      // Stream is saved to DB; the page refresh via onActivityAttached will pick it up.
+      // Manual "Fetch HR stream" button remains as fallback if this doesn't complete in time.
+      if (newLink.activity?.id) {
+        fetch(`/api/strava/activities/${newLink.activity.id}/streams`, { method: "POST" }).catch(() => {});
+      }
+
       onActivityAttached?.();
     } finally {
       setBusy(null);
