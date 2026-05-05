@@ -20,7 +20,7 @@ type PlanningTypeChipProps = { planningType: string; className?: string };
 export function PlanningTypeChip({ planningType, className = "" }: PlanningTypeChipProps) {
   const styles: Record<string, string> = {
     fixed: "bg-zinc-100 text-zinc-500",
-    preferred: "bg-blue-50 text-blue-500",
+    preferred: "bg-indigo-50 text-indigo-600",
     manual: "bg-purple-50 text-purple-500",
     generated: "",
   };

@@ -444,19 +444,27 @@ export function SettingsClient({
         <p className="text-xs text-zinc-400">HR profile for personalised workout plans.</p>
       </div>
 
-      {/* Visual HR zone track */}
-      <div className="space-y-1.5 py-1">
-        <div className="flex gap-0.5 rounded-xl overflow-hidden">
-          <div className="flex-1 bg-slate-100 px-1.5 py-2 text-center text-[9px] font-semibold text-slate-500">Rest</div>
-          <div className="flex-[2] bg-emerald-100 px-1.5 py-2 text-center text-[9px] font-semibold text-emerald-600">Easy</div>
-          <div className="flex-[2] bg-amber-100 px-1.5 py-2 text-center text-[9px] font-semibold text-amber-600">Tempo</div>
-          <div className="flex-[1.5] bg-orange-100 px-1.5 py-2 text-center text-[9px] font-semibold text-orange-600">Threshold</div>
-          <div className="flex-1 bg-red-100 px-1.5 py-2 text-center text-[9px] font-semibold text-red-700">Max</div>
+      {/* HR effort track */}
+      <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 pt-2.5 pb-2 space-y-1.5">
+        <div className="flex text-[9px] font-semibold uppercase tracking-widest">
+          <div className="flex-1 text-center text-zinc-400">Rest</div>
+          <div className="flex-[2] text-center text-emerald-600">Easy</div>
+          <div className="flex-[2] text-center text-amber-500">Tempo</div>
+          <div className="flex-[1.5] text-center text-orange-500">Thresh</div>
+          <div className="flex-1 text-center text-red-500">Max</div>
         </div>
-        {(restingHr || maxHr) && (
-          <div className="flex justify-between text-[10px] text-zinc-400 px-0.5">
-            {restingHr ? <span>{restingHr} bpm</span> : <span />}
-            {maxHr && <span className="text-red-400 font-medium">{maxHr} bpm</span>}
+        <div className="flex gap-px overflow-hidden rounded-full" style={{ height: 5 }}>
+          <div className="flex-1 bg-zinc-300" />
+          <div className="flex-[2] bg-emerald-300" />
+          <div className="flex-[2] bg-amber-300" />
+          <div className="flex-[1.5] bg-orange-300" />
+          <div className="flex-1 bg-red-400" />
+        </div>
+        {(restingHr || thresholdHr || maxHr) && (
+          <div className="flex justify-between text-[10px]">
+            <span className="text-zinc-400">{restingHr ? `${restingHr} bpm` : ""}</span>
+            <span className="text-amber-500">{thresholdHr ? `${thresholdHr} bpm` : ""}</span>
+            <span className="text-red-400">{maxHr ? `${maxHr} bpm` : ""}</span>
           </div>
         )}
       </div>
@@ -598,7 +606,7 @@ export function SettingsClient({
                 value={value}
                 onChange={(e) => set(e.target.value)}
                 placeholder={placeholder}
-                className="w-10 bg-transparent text-sm font-semibold text-zinc-800 placeholder-zinc-300 focus:outline-none text-center"
+                className="w-10 bg-transparent text-sm font-medium text-zinc-700 placeholder-zinc-300 focus:outline-none text-center"
               />
               <span className="text-[10px] text-zinc-400 shrink-0">{unit}</span>
             </div>
@@ -622,7 +630,7 @@ export function SettingsClient({
                 value={value}
                 onChange={(e) => set(e.target.value)}
                 placeholder={placeholder}
-                className="w-10 bg-transparent text-sm font-semibold text-zinc-800 placeholder-zinc-300 focus:outline-none text-center"
+                className="w-10 bg-transparent text-sm font-medium text-zinc-700 placeholder-zinc-300 focus:outline-none text-center"
               />
               <span className="text-[10px] text-zinc-400 shrink-0">min</span>
             </div>
@@ -641,7 +649,7 @@ export function SettingsClient({
               value={maxHyrox}
               onChange={(e) => setMaxHyrox(e.target.value)}
               placeholder="2"
-              className="w-8 bg-transparent text-sm font-semibold text-zinc-800 placeholder-zinc-300 focus:outline-none text-center"
+              className="w-8 bg-transparent text-sm font-medium text-zinc-700 placeholder-zinc-300 focus:outline-none text-center"
             />
           </div>
         </div>
@@ -714,9 +722,9 @@ export function SettingsClient({
       {/* Training fueling */}
       <div className="space-y-2.5 pt-1 border-t border-zinc-100">
         <p className="text-xs font-semibold text-zinc-500">Training fueling</p>
-        <div className="flex flex-wrap gap-3 items-end">
-          <label className="space-y-1">
-            <span className={labelCls}>Min gap after main meal (h)</span>
+        <label className="space-y-1 block">
+          <span className={labelCls}>Min gap after main meal (h)</span>
+          <div className="flex items-center gap-2">
             <input
               type="number"
               min={1}
@@ -724,20 +732,21 @@ export function SettingsClient({
               value={nutMealGap}
               onChange={(e) => setNutMealGap(e.target.value)}
               placeholder="2"
-              className="w-20 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+              className="w-16 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300"
             />
-          </label>
-          <div className="flex flex-col gap-1.5 pb-0.5">
-            <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-              <input type="checkbox" checked={nutStomach} onChange={(e) => setNutStomach(e.target.checked)} className="rounded border-zinc-300" />
-              <span>Stomach sensitive</span>
-              <span className="text-xs text-zinc-400">— light pre-workout only</span>
-            </label>
-            <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-              <input type="checkbox" checked={nutCaffeine} onChange={(e) => setNutCaffeine(e.target.checked)} className="rounded border-zinc-300" />
-              Caffeine sensitive
-            </label>
+            <span className="text-xs text-zinc-400">hours before training</span>
           </div>
+        </label>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
+            <input type="checkbox" checked={nutStomach} onChange={(e) => setNutStomach(e.target.checked)} className="rounded border-zinc-300" />
+            <span>Stomach sensitive</span>
+            <span className="text-xs text-zinc-400">— light pre-workout only</span>
+          </label>
+          <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
+            <input type="checkbox" checked={nutCaffeine} onChange={(e) => setNutCaffeine(e.target.checked)} className="rounded border-zinc-300" />
+            <span>Caffeine sensitive</span>
+          </label>
         </div>
         <label className="space-y-1 block">
           <span className={labelCls}>Pre-workout snack tolerance</span>
@@ -812,36 +821,38 @@ export function SettingsClient({
           <p className="text-xs font-semibold text-zinc-500">Energy estimate</p>
           <p className="text-[10px] text-zinc-400 mt-0.5">Rough daily guidance only — not calorie tracking.</p>
         </div>
-        <div className="flex flex-wrap gap-3 items-end">
-          <label className="space-y-1">
-            <span className={labelCls}>Body weight (kg)</span>
-            <input
-              type="number"
-              min={30}
-              max={200}
-              step={0.5}
-              value={nutBodyWeight}
-              onChange={(e) => setNutBodyWeight(e.target.value)}
-              placeholder="78"
-              className="w-24 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className={labelCls}>Rest-day calories</span>
-            <input
-              type="number"
-              min={1000}
-              max={5000}
-              step={50}
-              value={nutRestCalories}
-              onChange={(e) => setNutRestCalories(e.target.value)}
-              placeholder="2300"
-              className="w-28 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-            />
-          </label>
-          <label className="space-y-1">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="space-y-1">
+              <span className={labelCls}>Body weight (kg)</span>
+              <input
+                type="number"
+                min={30}
+                max={200}
+                step={0.5}
+                value={nutBodyWeight}
+                onChange={(e) => setNutBodyWeight(e.target.value)}
+                placeholder="78"
+                className={inputCls}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className={labelCls}>Rest-day calories</span>
+              <input
+                type="number"
+                min={1000}
+                max={5000}
+                step={50}
+                value={nutRestCalories}
+                onChange={(e) => setNutRestCalories(e.target.value)}
+                placeholder="2300"
+                className={inputCls}
+              />
+            </label>
+          </div>
+          <label className="space-y-1 block">
             <span className={labelCls}>Calorie goal</span>
-            <select value={nutCalorieGoal} onChange={(e) => setNutCalorieGoal(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+            <select value={nutCalorieGoal} onChange={(e) => setNutCalorieGoal(e.target.value)} className={selectCls}>
               <option value="maintain">Maintain</option>
               <option value="slight_surplus">Slight surplus</option>
               <option value="slight_deficit">Slight deficit</option>

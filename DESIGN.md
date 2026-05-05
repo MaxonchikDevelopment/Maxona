@@ -420,3 +420,43 @@ Today and Week are the reference standard. Every other main page (Settings, Goal
 
 ### Capitalization
 - View-layer only; stored values are lowercase and unchanged.
+
+---
+
+## Sprint 8 — Settings Visual Consistency Rules
+
+### Settings as a cockpit, not a spreadsheet
+- Settings should feel like a calm setup surface — not a clinical data-entry form.
+- Section headings follow the same ALL CAPS tracking-widest zinc-400 pattern used everywhere.
+- Sub-section labels use `text-xs font-semibold text-zinc-500` — one step quieter.
+- Save buttons sit at the bottom of their card with no additional decoration.
+
+### HR profile — visual but calm
+- Zone distribution is shown as a thin segmented effort track (5px height, rounded-full).
+- Zones are labeled above the track (not inside colored boxes): Rest / Easy / Tempo / Thresh / Max.
+- BPM anchor values (resting, threshold, max) appear below the track only when values are set.
+- Enclosed in a subtle `bg-zinc-50/60 border border-zinc-100 rounded-xl` panel.
+- No emoji, no heavy animation, no childish bar-chart look.
+- Advanced manual zone bounds (Easy min/max, Tempo min/max) stay collapsed unless values exist.
+
+### Numeric default cells — equal-size, quiet
+- Running / Cycling / HYROX defaults use compact inline chip cells (`rounded-xl border border-zinc-200 bg-zinc-50 px-2.5 py-1.5`).
+- Numeric values inside chips use `font-medium text-zinc-700` — not semibold, not zinc-800.
+- All chip inputs share consistent width (`w-10` standard, `w-8` for single-digit counters).
+- Unit labels use `text-[10px] text-zinc-400`.
+
+### Nutrition fields
+- Long text fields (meal pattern, goal, foods, snack tolerance, supplements) always use `<textarea>` — no horizontal scroll.
+- Compact numeric/select fields (body weight, rest-day calories, calorie goal) use a 2-col grid + full-width select row.
+- Checkboxes (stomach sensitive, caffeine sensitive) are on their own rows, not mixed into flex-wrap with inputs.
+
+### Advanced fields — optional, not dominant
+- Advanced Scheduling and Advanced HYROX defaults use `CollapsibleSection` — collapsed by default.
+- Collapsible header: `text-xs font-semibold text-zinc-500` with a muted `▲/▼` toggle label.
+- Content inside uses the same `rounded-xl bg-zinc-50 border border-zinc-100` card style as everywhere else.
+
+### Palette rules (Settings)
+- All neutrals: zinc-* (never gray-* or slate-*).
+- Coach / AI elements: indigo-50 / indigo-600.
+- Preferred planning type chip: `bg-indigo-50 text-indigo-600` (not blue).
+- Strava accent: orange-500 (handled by StravaSettings component).
