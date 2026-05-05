@@ -347,3 +347,41 @@ Today and Week are the reference standard. Every other main page (Settings, Goal
 - Flat text hierarchy — use zinc shade variation (zinc-900 → zinc-700 → zinc-500 → zinc-400)
 - Repeated identical white boxes with no visual hierarchy
 - AI-slop patterns: every section a purple card, every insight a gradient pill
+
+---
+
+## Sprint 6 — Usability, Nav, and Settings Polish
+
+### Nav
+- Desktop nav: floating glass pill (`bg-white/60 backdrop-blur-md`) positioned in page flow (`py-3`), not a sticky bar. Active item gets `bg-white/80 shadow-sm` background; underline indicator sits inside the pill at `bottom-0.5`.
+- Nav label: `/review` is labelled **"Review"** (not "Plan") — it shows current-week stats and the replan action.
+- Bottom nav (mobile): same "Review" label.
+
+### Hero headers
+- Tighter: `pt-4 pb-3` outer + `py-3` desktop wrapper (was `pt-6 pb-4` / `py-4`).
+- Day name and date on same baseline: `<h1>` + `<span>` in a flex row.
+- Session count subtitle moved up, inline under the day name row.
+- Readiness pill: `text-xs` (was `text-sm`), `px-2.5 py-1`.
+
+### Replan button
+- `rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100` — distinguishable from content cards, matches coach palette.
+
+### Label capitalization
+- `lib/format-labels.ts` — `formatIntensity`, `formatSlot`, `formatSportLabel` helpers.
+- Replace all `capitalize` CSS on intensity/slot with these helpers. Stored values (lowercase) are untouched.
+
+### Review page — column order
+- Mobile: action card first, stats below (stats are secondary to the action).
+- Desktop: action card in main column (left), stats in side rail (right).
+- Session details collapsible on desktop side rail to keep it compact.
+
+### Goals guidance card
+- Collapsed by default (shows first 2 tips). "▼ more" / "▲ less" toggle. Reduces initial noise.
+
+### Settings restructure
+- Column order: Nutrition Profile in main column on desktop; Training Profile + Constraints + Advanced HYROX in side rail.
+- Mobile order: Training Profile → Constraints → Nutrition → Advanced Scheduling → Advanced HYROX → Strava → Account.
+- `CollapsibleSection` wrapper for Advanced Scheduling and Advanced HYROX — start collapsed, reduce cognitive load.
+- HR zones grouped by zone with color-coded labels (emerald → amber → red) and a gradient strip visual.
+- HYROX constraints compact: max/week + preferred days on same row.
+- Helper copy at top: "Start with Training Profile + Nutrition. Advanced scheduling is optional."

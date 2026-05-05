@@ -10,6 +10,7 @@ import { OnboardingCard } from "@/components/onboarding-card";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
+import { formatIntensity, formatSlot } from "@/lib/format-labels";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { timed } from "@/lib/perf";
@@ -699,11 +700,11 @@ function DraftPreview({
                     className="rounded-xl border border-zinc-100 bg-white px-3 py-2"
                   >
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-medium capitalize text-zinc-600">
-                        {s.intensity}
+                      <span className="text-xs font-medium text-zinc-600">
+                        {formatIntensity(s.intensity)}
                       </span>
                       <span className="text-xs text-zinc-400">{s.durationMin} min</span>
-                      <span className="text-xs text-zinc-400 capitalize">{s.preferredSlot}</span>
+                      <span className="text-xs text-zinc-400">{formatSlot(s.preferredSlot)}</span>
                       {s.notes && (
                         <span className="text-xs text-zinc-500">{s.notes.split(":")[0]}</span>
                       )}

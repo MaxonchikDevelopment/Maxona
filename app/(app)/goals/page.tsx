@@ -30,18 +30,28 @@ function EmptyGoalsState({ onAddClick }: { onAddClick: () => void }) {
 }
 
 function GoalGuidanceCard() {
+  const [expanded, setExpanded] = useState(false);
+  const tips = [
+    "Specific discipline — HYROX, Running, Cycling",
+    "A target date gives the planner a timeline to work back from",
+    "Priority 1 = primary focus · lower priorities balance around it",
+    "Multiple active goals work — planner weights them by priority",
+  ];
+  const visible = expanded ? tips : tips.slice(0, 2);
+
   return (
-    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-4 py-3 space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-500">
-        What makes a useful goal
-      </p>
+    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-4 py-3 space-y-1.5">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-500">
+          Goal tips
+        </p>
+        <span className="text-[10px] text-indigo-400">{expanded ? "▲ less" : "▼ more"}</span>
+      </button>
       <ul className="space-y-1">
-        {[
-          "Specific discipline — HYROX, Running, Cycling",
-          "A target date gives the planner a timeline to work back from",
-          "Priority 1 = primary focus · lower priorities balance around it",
-          "Multiple active goals work — planner weights them by priority",
-        ].map((tip, i) => (
+        {visible.map((tip, i) => (
           <li key={i} className="text-xs text-indigo-800 flex items-start gap-1.5">
             <span className="text-indigo-300 mt-0.5 shrink-0 select-none">·</span>
             <span className="leading-relaxed">{tip}</span>

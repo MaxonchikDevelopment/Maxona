@@ -113,23 +113,31 @@ const saveBtnCls =
 const savedBtnCls =
   "rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white";
 
-// ── Section card wrapper ──────────────────────────────────────────────────────
-function SectionCard({
-  heading,
-  helper,
+// ── Collapsible section wrapper ───────────────────────────────────────────────
+function CollapsibleSection({
+  label,
   children,
+  defaultOpen = false,
 }: {
-  heading: string;
-  helper?: string;
+  label: string;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className={cardCls}>
-      <div className="space-y-0.5">
-        <p className={sectionHeadingCls}>{heading}</p>
-        {helper && <p className="text-xs text-zinc-400">{helper}</p>}
-      </div>
-      {children}
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <span className="text-xs font-semibold text-zinc-500">{label}</span>
+        <span className="text-[10px] text-zinc-400">{open ? "▲ hide" : "▼ show"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-4 border-t border-zinc-100 pt-3">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -424,715 +432,204 @@ export function SettingsClient({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring-sessions"] }),
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  return (
-    <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
-      {/* ── Hero header ──────────────────────────────────────────────── */}
-      <div className="pt-6 pb-4">
-        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Maxona</p>
-          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Settings</h1>
-          <p className="text-sm text-zinc-500 mt-1">Tune Maxona around your body, schedule, and constraints.</p>
+  // ── Shared sub-sections ───────────────────────────────────────────────────
+
+  const TrainingProfileSection = (
+    <div className={cardCls}>
+      <div className="space-y-0.5">
+        <p className={sectionHeadingCls}>Training profile</p>
+        <p className="text-xs text-zinc-400">HR zones for personalised workout plans.</p>
+      </div>
+
+      {/* HR ladder visual */}
+      <div className="rounded-xl bg-gradient-to-r from-zinc-50 via-emerald-50/60 via-amber-50/40 to-red-50/60 border border-zinc-100 px-3 py-2">
+        <div className="flex items-center text-[9px] font-semibold uppercase tracking-wide">
+          <span className="flex-1 text-zinc-400">Rest</span>
+          <span className="flex-1 text-emerald-600">Easy</span>
+          <span className="flex-1 text-amber-600">Tempo</span>
+          <span className="flex-1 text-red-600">Threshold</span>
+          <span className="flex-1 text-right text-red-800">Max</span>
         </div>
       </div>
 
-      <PageWrapper>
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
-          {/* ── Main column ─────────────────────────────────────────────── */}
-          <StaggerList className="space-y-4">
+      {/* Resting / Max */}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="space-y-1">
+          <span className={labelCls}>Resting HR</span>
+          <input type="number" value={restingHr} onChange={(e) => setRestingHr(e.target.value)} placeholder="e.g. 52" className={inputCls} />
+        </label>
+        <label className="space-y-1">
+          <span className={labelCls}>Max HR</span>
+          <input type="number" value={maxHr} onChange={(e) => setMaxHr(e.target.value)} placeholder="e.g. 185" className={inputCls} />
+        </label>
+      </div>
 
-            {/* Training Profile */}
-            <StaggerItem>
-              <SectionCard
-                heading="Training profile"
-                helper="HR zones used to personalise workout plans."
-              >
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: "Resting HR", value: restingHr, set: setRestingHr, placeholder: "e.g. 52" },
-                    { label: "Max HR", value: maxHr, set: setMaxHr, placeholder: "e.g. 185" },
-                    { label: "Easy HR min", value: easyHrMin, set: setEasyHrMin, placeholder: "e.g. 130" },
-                    { label: "Easy HR max", value: easyHrMax, set: setEasyHrMax, placeholder: "e.g. 150" },
-                    { label: "Tempo HR min", value: tempoHrMin, set: setTempoHrMin, placeholder: "e.g. 151" },
-                    { label: "Tempo HR max", value: tempoHrMax, set: setTempoHrMax, placeholder: "e.g. 165" },
-                    { label: "Threshold HR", value: thresholdHr, set: setThresholdHr, placeholder: "e.g. 166" },
-                  ].map(({ label, value, set, placeholder }) => (
-                    <label key={label} className="space-y-1">
-                      <span className={labelCls}>{label}</span>
-                      <input
-                        type="number"
-                        value={value}
-                        onChange={(e) => set(e.target.value)}
-                        placeholder={placeholder}
-                        className={inputCls}
-                      />
-                    </label>
-                  ))}
-                  <label className="space-y-1">
-                    <span className={labelCls}>Zone method</span>
-                    <select
-                      value={zoneMethod}
-                      onChange={(e) => setZoneMethod(e.target.value)}
-                      className={selectCls}
-                    >
-                      <option value="estimated">Estimated (Karvonen)</option>
-                      <option value="manual">Manual</option>
-                    </select>
-                  </label>
-                </div>
-                <button
-                  onClick={() => saveTrainingProfile.mutate()}
-                  disabled={saveTrainingProfile.isPending}
-                  className={trainingProfileSaved ? savedBtnCls : saveBtnCls}
-                >
-                  {trainingProfileSaved ? "Saved ✓" : saveTrainingProfile.isPending ? "Saving…" : "Save training profile"}
-                </button>
-              </SectionCard>
-            </StaggerItem>
-
-            {/* Training Constraints + Preferences */}
-            <StaggerItem>
-              <SectionCard heading="Training constraints & preferences">
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="space-y-1">
-                      <span className={labelCls}>Max continuous training (min)</span>
-                      <input
-                        type="number"
-                        value={maxMin}
-                        onChange={(e) => setMaxMin(e.target.value)}
-                        className={inputCls}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className={labelCls}>Weekly hours target</span>
-                      <input
-                        type="number"
-                        value={hoursTarget}
-                        onChange={(e) => setHoursTarget(e.target.value)}
-                        placeholder="e.g. 8"
-                        className={inputCls}
-                      />
-                    </label>
-                  </div>
-
-                  <div>
-                    <p className={labelCls + " mb-2"}>Allowed modalities</p>
-                    <div className="flex flex-wrap gap-2">
-                      {MODALITIES.map((m) => (
-                        <label
-                          key={m}
-                          className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
-                            modalities.includes(m)
-                              ? "bg-zinc-900 text-white border-zinc-900"
-                              : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={modalities.includes(m)}
-                            onChange={() => toggleModality(m)}
-                            className="sr-only"
-                          />
-                          <span className="capitalize">{m}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Running */}
-                <div className="space-y-2 pt-1 border-t border-zinc-100">
-                  <p className="text-xs font-semibold text-zinc-500">Running</p>
-                  <p className="text-[10px] text-zinc-400">Standard: 5, 10, 15, 21 km</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: "Easy run (km)", value: easyRunKm, set: setEasyRunKm, placeholder: "e.g. 10" },
-                      { label: "Tempo run (km)", value: tempoRunKm, set: setTempoRunKm, placeholder: "e.g. 10" },
-                      { label: "Long run (km)", value: longRunKm, set: setLongRunKm, placeholder: "e.g. 21" },
-                      { label: "Long run time (min)", value: longRunDuration, set: setLongRunDuration, placeholder: "e.g. 110" },
-                    ].map(({ label, value, set, placeholder }) => (
-                      <label key={label} className="space-y-1">
-                        <span className={labelCls}>{label}</span>
-                        <input
-                          type="number"
-                          value={value}
-                          onChange={(e) => set(e.target.value)}
-                          placeholder={placeholder}
-                          className={inputCls}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Cycling */}
-                <div className="space-y-2 pt-1 border-t border-zinc-100">
-                  <p className="text-xs font-semibold text-zinc-500">Cycling</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { label: "Easy ride (min)", value: easyRideDuration, set: setEasyRideDuration, placeholder: "e.g. 60" },
-                      { label: "Long ride (min)", value: longRideDuration, set: setLongRideDuration, placeholder: "e.g. 120" },
-                      { label: "Min ride (min)", value: minCyclingDuration, set: setMinCyclingDuration, placeholder: "e.g. 60" },
-                    ].map(({ label, value, set, placeholder }) => (
-                      <label key={label} className="space-y-1">
-                        <span className={labelCls}>{label}</span>
-                        <input
-                          type="number"
-                          value={value}
-                          onChange={(e) => set(e.target.value)}
-                          placeholder={placeholder}
-                          className={inputCls}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* HYROX */}
-                <div className="space-y-2 pt-1 border-t border-zinc-100">
-                  <p className="text-xs font-semibold text-zinc-500">HYROX</p>
-                  <label className="space-y-1 block w-32">
-                    <span className={labelCls}>Max per week</span>
-                    <input
-                      type="number"
-                      value={maxHyrox}
-                      onChange={(e) => setMaxHyrox(e.target.value)}
-                      placeholder="e.g. 2"
-                      className={inputCls}
-                    />
-                  </label>
-                  <div>
-                    <p className={labelCls + " mb-2"}>Preferred days</p>
-                    <div className="flex flex-wrap gap-2">
-                      {DAYS.map((d) => (
-                        <label
-                          key={d}
-                          className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
-                            hyroxDays.includes(d)
-                              ? "bg-zinc-900 text-white border-zinc-900"
-                              : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={hyroxDays.includes(d)}
-                            onChange={() => toggleHyroxDay(d)}
-                            className="sr-only"
-                          />
-                          {DAY_LABELS[d]}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Other */}
-                <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={avoidFriday}
-                    onChange={(e) => setAvoidFriday(e.target.checked)}
-                    className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-300"
-                  />
-                  Avoid Friday evening training
-                </label>
-
-                <button
-                  onClick={() => saveConstraints.mutate()}
-                  disabled={saveConstraints.isPending}
-                  className={constraintsSaved ? savedBtnCls : saveBtnCls}
-                >
-                  {constraintsSaved ? "Saved ✓" : saveConstraints.isPending ? "Saving…" : "Save preferences"}
-                </button>
-              </SectionCard>
-            </StaggerItem>
-
-            {/* Hybrid Race Profile */}
-            <StaggerItem>
-              <SectionCard
-                heading="Hybrid / HYROX profile"
-                helper="Default format for station-circuit workout plans. Typical: 3 rounds × 8 stations, 60s work / 20s transition."
-              >
-                <label className="space-y-1 block">
-                  <span className={labelCls}>Default format</span>
-                  <select
-                    value={hybridFormat}
-                    onChange={(e) => setHybridFormat(e.target.value)}
-                    className={selectCls}
-                  >
-                    {HYBRID_FORMATS.map((f) => (
-                      <option key={f.value} value={f.value}>{f.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hybridInclRun}
-                    onChange={(e) => setHybridInclRun(e.target.checked)}
-                    className="rounded border-zinc-300"
-                  />
-                  Include running between stations by default
-                </label>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <label className="space-y-1">
-                    <span className={labelCls}>Work (sec)</span>
-                    <input
-                      type="number"
-                      value={hybridWorkSec}
-                      onChange={(e) => setHybridWorkSec(e.target.value)}
-                      className={inputCls}
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className={labelCls}>Rest (sec)</span>
-                    <input
-                      type="number"
-                      value={hybridRestSec}
-                      onChange={(e) => setHybridRestSec(e.target.value)}
-                      className={inputCls}
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className={labelCls}>Rounds</span>
-                    <input
-                      type="number"
-                      value={hybridRounds}
-                      onChange={(e) => setHybridRounds(e.target.value)}
-                      className={inputCls}
-                    />
-                  </label>
-                </div>
-
-                <label className="space-y-1 block">
-                  <span className={labelCls}>Notes</span>
-                  <input
-                    type="text"
-                    value={hybridNotes}
-                    onChange={(e) => setHybridNotes(e.target.value)}
-                    placeholder="e.g. preferred equipment, race goal distance…"
-                    className={inputCls}
-                  />
-                </label>
-
-                <button
-                  onClick={() => saveHybridProfile.mutate()}
-                  disabled={saveHybridProfile.isPending}
-                  className={hybridProfileSaved ? savedBtnCls : saveBtnCls}
-                >
-                  {hybridProfileSaved ? "Saved ✓" : saveHybridProfile.isPending ? "Saving…" : "Save Hybrid profile"}
-                </button>
-              </SectionCard>
-            </StaggerItem>
-
-            {/* Availability Windows */}
-            <StaggerItem>
-              <SectionCard
-                heading="Availability windows"
-                helper="Recurring time slots when training is possible."
-              >
-                <div className="space-y-1.5">
-                  {windows.length === 0 && (
-                    <p className="text-xs text-zinc-400">No windows set.</p>
-                  )}
-                  {windows.map((w) => (
-                    <div
-                      key={w.id}
-                      className="flex items-center justify-between rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2"
-                    >
-                      <span className="text-sm font-medium text-zinc-700">{DAY_LABELS[w.dayOfWeek] ?? w.dayOfWeek}</span>
-                      <span className="text-xs text-zinc-500">{minsToTime(w.timeStartMin)}–{minsToTime(w.timeEndMin)}</span>
-                      <button
-                        onClick={() => delWindow.mutate(w.id)}
-                        className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2 items-end flex-wrap">
-                  <select
-                    value={newDay}
-                    onChange={(e) => setNewDay(e.target.value)}
-                    className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                  >
-                    {DAYS.map((d) => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
-                  </select>
-                  <input
-                    type="time"
-                    value={newStart}
-                    onChange={(e) => setNewStart(e.target.value)}
-                    className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                  />
-                  <input
-                    type="time"
-                    value={newEnd}
-                    onChange={(e) => setNewEnd(e.target.value)}
-                    className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                  />
-                  <button
-                    onClick={() => addWindow.mutate()}
-                    disabled={addWindow.isPending}
-                    className={saveBtnCls}
-                  >
-                    Add
-                  </button>
-                </div>
-              </SectionCard>
-            </StaggerItem>
-
-            {/* Schedule Blocks */}
-            <StaggerItem>
-              <SectionCard
-                heading="Schedule blocks"
-                helper="One-off periods when training is blocked."
-              >
-                <div className="space-y-1.5">
-                  {events.length === 0 && <p className="text-xs text-zinc-400">No blocks set.</p>}
-                  {events.map((ev) => (
-                    <div
-                      key={ev.id}
-                      className="flex items-start justify-between rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-mono text-zinc-600">{ev.startsAt.slice(0, 10)}</span>
-                          <span className="text-zinc-300">→</span>
-                          <span className="text-xs font-mono text-zinc-600">{ev.endsAt.slice(0, 10)}</span>
-                          <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-600">{ev.kind}</span>
-                        </div>
-                        {ev.note && <p className="text-xs text-zinc-500 mt-0.5">{ev.note}</p>}
-                      </div>
-                      <button
-                        onClick={() => delEvent.mutate(ev.id)}
-                        className="text-xs text-zinc-400 hover:text-red-500 transition-colors ml-2 shrink-0"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-2">
-                  <div className="flex gap-2 flex-wrap items-end">
-                    <div className="space-y-1">
-                      <span className={labelCls}>Start</span>
-                      <input
-                        type="datetime-local"
-                        value={evStart}
-                        onChange={(e) => setEvStart(e.target.value)}
-                        className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <span className={labelCls}>End</span>
-                      <input
-                        type="datetime-local"
-                        value={evEnd}
-                        onChange={(e) => setEvEnd(e.target.value)}
-                        className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <span className={labelCls}>Kind</span>
-                      <select
-                        value={evKind}
-                        onChange={(e) => setEvKind(e.target.value)}
-                        className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                      >
-                        {EVENT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <input
-                    type="text"
-                    value={evNote}
-                    onChange={(e) => setEvNote(e.target.value)}
-                    placeholder="Note (optional)"
-                    className={inputCls}
-                  />
-                  <button
-                    onClick={() => addEvent.mutate()}
-                    disabled={addEvent.isPending || !evStart || !evEnd}
-                    className={saveBtnCls}
-                  >
-                    {addEvent.isPending ? "Adding…" : "Add block"}
-                  </button>
-                </div>
-              </SectionCard>
-            </StaggerItem>
-
-            {/* Recurring Sessions */}
-            <StaggerItem>
-              <SectionCard
-                heading="Recurring sessions"
-                helper="Weekly fixed sessions (e.g. HYROX class). Fixed sessions are always included in the plan."
-              >
-                <div className="space-y-1.5">
-                  {recSessions.length === 0 && <p className="text-xs text-zinc-400">None set.</p>}
-                  {recSessions.map((rs) => (
-                    <div
-                      key={rs.id}
-                      className="flex items-start justify-between rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                          <span className="font-semibold text-zinc-700">{DAY_LABELS[rs.dayOfWeek] ?? rs.dayOfWeek}</span>
-                          <span className="text-zinc-400">·</span>
-                          <span className="capitalize text-zinc-600">{rs.preferredSlot}</span>
-                          <span className="text-zinc-400">·</span>
-                          <span className="text-zinc-600">{rs.durationMin} min</span>
-                          <span className="text-zinc-400">·</span>
-                          <span className="capitalize text-zinc-600">{rs.intensity}</span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                              rs.planningType === "fixed"
-                                ? "bg-zinc-100 text-zinc-600"
-                                : "bg-indigo-50 text-indigo-600"
-                            }`}
-                          >
-                            {rs.planningType === "fixed" ? "fixed" : "optional"}
-                          </span>
-                        </div>
-                        {rs.notes && <p className="text-xs text-zinc-500">{rs.notes}</p>}
-                      </div>
-                      <button
-                        onClick={() => delRecSession.mutate(rs.id)}
-                        className="text-xs text-zinc-400 hover:text-red-500 transition-colors ml-2 shrink-0"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-2">
-                  <div className="flex gap-2 items-end flex-wrap">
-                    <select
-                      value={rsDay}
-                      onChange={(e) => setRsDay(e.target.value)}
-                      className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                    >
-                      {DAYS.map((d) => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
-                    </select>
-                    <select
-                      value={rsSlot}
-                      onChange={(e) => setRsSlot(e.target.value)}
-                      className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                    >
-                      {SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <input
-                      type="number"
-                      value={rsDuration}
-                      onChange={(e) => setRsDuration(e.target.value)}
-                      placeholder="min"
-                      className="w-20 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                    />
-                    <select
-                      value={rsIntensity}
-                      onChange={(e) => setRsIntensity(e.target.value)}
-                      className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                    >
-                      {INTENSITIES.map((i) => <option key={i} value={i}>{i}</option>)}
-                    </select>
-                    <select
-                      value={rsPlanningType}
-                      onChange={(e) => setRsPlanningType(e.target.value)}
-                      className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300"
-                    >
-                      <option value="fixed">fixed</option>
-                      <option value="preferred">optional</option>
-                    </select>
-                  </div>
-                  <input
-                    type="text"
-                    value={rsNotes}
-                    onChange={(e) => setRsNotes(e.target.value)}
-                    placeholder='Notes, e.g. "HYROX group class"'
-                    className={inputCls}
-                  />
-                  <p className="text-[10px] text-zinc-400">
-                    <strong>fixed</strong> = always in plan · <strong>optional</strong> = planner chooses if useful
-                  </p>
-                  <button
-                    onClick={() => addRecSession.mutate()}
-                    disabled={addRecSession.isPending}
-                    className={saveBtnCls}
-                  >
-                    {addRecSession.isPending ? "Adding…" : "Add session"}
-                  </button>
-                </div>
-              </SectionCard>
-            </StaggerItem>
-
-          </StaggerList>
-
-          {/* ── Side rail ───────────────────────────────────────────────── */}
-          <aside className="hidden lg:flex lg:flex-col lg:gap-4 mt-0">
-            {/* Nutrition Profile — in side rail on desktop */}
-            <NutritionProfileCard
-              nutDietNotes={nutDietNotes} setNutDietNotes={setNutDietNotes}
-              nutAvoidFoods={nutAvoidFoods} setNutAvoidFoods={setNutAvoidFoods}
-              nutBreakfast={nutBreakfast} setNutBreakfast={setNutBreakfast}
-              nutPreSnack={nutPreSnack} setNutPreSnack={setNutPreSnack}
-              nutPostMeal={nutPostMeal} setNutPostMeal={setNutPostMeal}
-              nutCaffeine={nutCaffeine} setNutCaffeine={setNutCaffeine}
-              nutStomach={nutStomach} setNutStomach={setNutStomach}
-              nutMealPattern={nutMealPattern} setNutMealPattern={setNutMealPattern}
-              nutGoal={nutGoal} setNutGoal={setNutGoal}
-              nutMealGap={nutMealGap} setNutMealGap={setNutMealGap}
-              nutSnackTolerance={nutSnackTolerance} setNutSnackTolerance={setNutSnackTolerance}
-              nutPreferredFoods={nutPreferredFoods} setNutPreferredFoods={setNutPreferredFoods}
-              nutSupplements={nutSupplements} setNutSupplements={setNutSupplements}
-              nutCookingPref={nutCookingPref} setNutCookingPref={setNutCookingPref}
-              nutBodyWeight={nutBodyWeight} setNutBodyWeight={setNutBodyWeight}
-              nutRestCalories={nutRestCalories} setNutRestCalories={setNutRestCalories}
-              nutCalorieGoal={nutCalorieGoal} setNutCalorieGoal={setNutCalorieGoal}
-              nutritionSaved={nutritionSaved}
-              onSave={() => saveNutritionProfile.mutate()}
-              isSaving={saveNutritionProfile.isPending}
-            />
-
-            {/* Strava */}
-            <div className={cardCls}>
-              <p className={sectionHeadingCls}>Strava connection</p>
-              <Suspense fallback={null}>
-                <StravaSettings initialConnection={initialStravaConnection} />
-              </Suspense>
-            </div>
-
-            {/* Account */}
-            <div className={cardCls}>
-              <p className={sectionHeadingCls}>Account</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Name</span>
-                  <span className="font-medium text-zinc-800">{userName}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Timezone</span>
-                  <span className="font-medium text-zinc-800 text-xs">{userTimezone}</span>
-                </div>
-              </div>
-              <form action="/api/auth/logout" method="post">
-                <button
-                  type="submit"
-                  className="w-full rounded-xl border border-zinc-200 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  Log out
-                </button>
-              </form>
-            </div>
-          </aside>
+      {/* Easy zone */}
+      <div className="space-y-1.5">
+        <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">Easy zone</p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-1">
+            <span className={labelCls}>Min BPM</span>
+            <input type="number" value={easyHrMin} onChange={(e) => setEasyHrMin(e.target.value)} placeholder="e.g. 130" className={inputCls} />
+          </label>
+          <label className="space-y-1">
+            <span className={labelCls}>Max BPM</span>
+            <input type="number" value={easyHrMax} onChange={(e) => setEasyHrMax(e.target.value)} placeholder="e.g. 150" className={inputCls} />
+          </label>
         </div>
+      </div>
 
-        {/* Mobile-only: Nutrition + Strava + Account at bottom */}
-        <div className="lg:hidden mt-4 space-y-4">
-          <NutritionProfileCard
-            nutDietNotes={nutDietNotes} setNutDietNotes={setNutDietNotes}
-            nutAvoidFoods={nutAvoidFoods} setNutAvoidFoods={setNutAvoidFoods}
-            nutBreakfast={nutBreakfast} setNutBreakfast={setNutBreakfast}
-            nutPreSnack={nutPreSnack} setNutPreSnack={setNutPreSnack}
-            nutPostMeal={nutPostMeal} setNutPostMeal={setNutPostMeal}
-            nutCaffeine={nutCaffeine} setNutCaffeine={setNutCaffeine}
-            nutStomach={nutStomach} setNutStomach={setNutStomach}
-            nutMealPattern={nutMealPattern} setNutMealPattern={setNutMealPattern}
-            nutGoal={nutGoal} setNutGoal={setNutGoal}
-            nutMealGap={nutMealGap} setNutMealGap={setNutMealGap}
-            nutSnackTolerance={nutSnackTolerance} setNutSnackTolerance={setNutSnackTolerance}
-            nutPreferredFoods={nutPreferredFoods} setNutPreferredFoods={setNutPreferredFoods}
-            nutSupplements={nutSupplements} setNutSupplements={setNutSupplements}
-            nutCookingPref={nutCookingPref} setNutCookingPref={setNutCookingPref}
-            nutBodyWeight={nutBodyWeight} setNutBodyWeight={setNutBodyWeight}
-            nutRestCalories={nutRestCalories} setNutRestCalories={setNutRestCalories}
-            nutCalorieGoal={nutCalorieGoal} setNutCalorieGoal={setNutCalorieGoal}
-            nutritionSaved={nutritionSaved}
-            onSave={() => saveNutritionProfile.mutate()}
-            isSaving={saveNutritionProfile.isPending}
-          />
-
-          <div className={cardCls}>
-            <p className={sectionHeadingCls}>Strava connection</p>
-            <Suspense fallback={null}>
-              <StravaSettings initialConnection={initialStravaConnection} />
-            </Suspense>
-          </div>
-
-          <div className={cardCls}>
-            <p className={sectionHeadingCls}>Account</p>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-500">Name</span>
-                <span className="font-medium text-zinc-800">{userName}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-500">Timezone</span>
-                <span className="font-medium text-zinc-800 text-xs">{userTimezone}</span>
-              </div>
-            </div>
-            <form action="/api/auth/logout" method="post">
-              <button
-                type="submit"
-                className="w-full rounded-xl border border-zinc-200 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
-              >
-                Log out
-              </button>
-            </form>
-          </div>
+      {/* Tempo zone */}
+      <div className="space-y-1.5">
+        <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Tempo zone</p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-1">
+            <span className={labelCls}>Min BPM</span>
+            <input type="number" value={tempoHrMin} onChange={(e) => setTempoHrMin(e.target.value)} placeholder="e.g. 151" className={inputCls} />
+          </label>
+          <label className="space-y-1">
+            <span className={labelCls}>Max BPM</span>
+            <input type="number" value={tempoHrMax} onChange={(e) => setTempoHrMax(e.target.value)} placeholder="e.g. 165" className={inputCls} />
+          </label>
         </div>
-      </PageWrapper>
-    </main>
+      </div>
+
+      {/* Threshold + zone method */}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="space-y-1">
+          <span className={labelCls + " text-red-600"}>Threshold HR</span>
+          <input type="number" value={thresholdHr} onChange={(e) => setThresholdHr(e.target.value)} placeholder="e.g. 166" className={inputCls} />
+        </label>
+        <label className="space-y-1">
+          <span className={labelCls}>Zone method</span>
+          <select value={zoneMethod} onChange={(e) => setZoneMethod(e.target.value)} className={selectCls}>
+            <option value="estimated">Estimated</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
+      </div>
+
+      <button
+        onClick={() => saveTrainingProfile.mutate()}
+        disabled={saveTrainingProfile.isPending}
+        className={trainingProfileSaved ? savedBtnCls : saveBtnCls}
+      >
+        {trainingProfileSaved ? "Saved ✓" : saveTrainingProfile.isPending ? "Saving…" : "Save training profile"}
+      </button>
+    </div>
   );
-}
 
-// ── Nutrition Profile Card — extracted to avoid repetition ───────────────────
-function NutritionProfileCard(props: {
-  nutDietNotes: string; setNutDietNotes: (v: string) => void;
-  nutAvoidFoods: string; setNutAvoidFoods: (v: string) => void;
-  nutBreakfast: string; setNutBreakfast: (v: string) => void;
-  nutPreSnack: string; setNutPreSnack: (v: string) => void;
-  nutPostMeal: string; setNutPostMeal: (v: string) => void;
-  nutCaffeine: boolean; setNutCaffeine: (v: boolean) => void;
-  nutStomach: boolean; setNutStomach: (v: boolean) => void;
-  nutMealPattern: string; setNutMealPattern: (v: string) => void;
-  nutGoal: string; setNutGoal: (v: string) => void;
-  nutMealGap: string; setNutMealGap: (v: string) => void;
-  nutSnackTolerance: string; setNutSnackTolerance: (v: string) => void;
-  nutPreferredFoods: string; setNutPreferredFoods: (v: string) => void;
-  nutSupplements: string; setNutSupplements: (v: string) => void;
-  nutCookingPref: string; setNutCookingPref: (v: string) => void;
-  nutBodyWeight: string; setNutBodyWeight: (v: string) => void;
-  nutRestCalories: string; setNutRestCalories: (v: string) => void;
-  nutCalorieGoal: string; setNutCalorieGoal: (v: string) => void;
-  nutritionSaved: boolean;
-  onSave: () => void;
-  isSaving: boolean;
-}) {
-  const {
-    nutDietNotes, setNutDietNotes,
-    nutAvoidFoods, setNutAvoidFoods,
-    nutBreakfast, setNutBreakfast,
-    nutPreSnack, setNutPreSnack,
-    nutPostMeal, setNutPostMeal,
-    nutCaffeine, setNutCaffeine,
-    nutStomach, setNutStomach,
-    nutMealPattern, setNutMealPattern,
-    nutGoal, setNutGoal,
-    nutMealGap, setNutMealGap,
-    nutSnackTolerance, setNutSnackTolerance,
-    nutPreferredFoods, setNutPreferredFoods,
-    nutSupplements, setNutSupplements,
-    nutCookingPref, setNutCookingPref,
-    nutBodyWeight, setNutBodyWeight,
-    nutRestCalories, setNutRestCalories,
-    nutCalorieGoal, setNutCalorieGoal,
-    nutritionSaved, onSave, isSaving,
-  } = props;
+  const TrainingConstraintsSection = (
+    <div className={cardCls}>
+      <p className={sectionHeadingCls}>Training constraints</p>
 
-  return (
+      <div className="grid grid-cols-2 gap-3">
+        <label className="space-y-1">
+          <span className={labelCls}>Max continuous (min)</span>
+          <input type="number" value={maxMin} onChange={(e) => setMaxMin(e.target.value)} className={inputCls} />
+        </label>
+        <label className="space-y-1">
+          <span className={labelCls}>Weekly hours target</span>
+          <input type="number" value={hoursTarget} onChange={(e) => setHoursTarget(e.target.value)} placeholder="e.g. 8" className={inputCls} />
+        </label>
+      </div>
+
+      {/* Modalities */}
+      <div>
+        <p className={labelCls + " mb-2"}>Allowed modalities</p>
+        <div className="flex flex-wrap gap-2">
+          {MODALITIES.map((m) => (
+            <label
+              key={m}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
+                modalities.includes(m)
+                  ? "bg-zinc-900 text-white border-zinc-900"
+                  : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+              }`}
+            >
+              <input type="checkbox" checked={modalities.includes(m)} onChange={() => toggleModality(m)} className="sr-only" />
+              <span className={m === "hyrox" ? "" : "capitalize"}>{m === "hyrox" ? "HYROX" : m}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Running */}
+      <div className="space-y-2 pt-1 border-t border-zinc-100">
+        <p className="text-xs font-semibold text-zinc-500">Running</p>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: "Easy (km)", value: easyRunKm, set: setEasyRunKm, placeholder: "e.g. 10" },
+            { label: "Tempo (km)", value: tempoRunKm, set: setTempoRunKm, placeholder: "e.g. 10" },
+            { label: "Long run (km)", value: longRunKm, set: setLongRunKm, placeholder: "e.g. 21" },
+            { label: "Long run (min)", value: longRunDuration, set: setLongRunDuration, placeholder: "e.g. 110" },
+          ].map(({ label, value, set, placeholder }) => (
+            <label key={label} className="space-y-1">
+              <span className={labelCls}>{label}</span>
+              <input type="number" value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} className={inputCls} />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Cycling */}
+      <div className="space-y-2 pt-1 border-t border-zinc-100">
+        <p className="text-xs font-semibold text-zinc-500">Cycling</p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Easy (min)", value: easyRideDuration, set: setEasyRideDuration, placeholder: "e.g. 60" },
+            { label: "Long (min)", value: longRideDuration, set: setLongRideDuration, placeholder: "e.g. 120" },
+            { label: "Min (min)", value: minCyclingDuration, set: setMinCyclingDuration, placeholder: "e.g. 60" },
+          ].map(({ label, value, set, placeholder }) => (
+            <label key={label} className="space-y-1">
+              <span className={labelCls}>{label}</span>
+              <input type="number" value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} className={inputCls} />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* HYROX — compact: max + days in same row */}
+      <div className="space-y-2 pt-1 border-t border-zinc-100">
+        <p className="text-xs font-semibold text-zinc-500">HYROX</p>
+        <div className="flex items-start gap-4 flex-wrap">
+          <label className="space-y-1 w-24 shrink-0">
+            <span className={labelCls}>Max / week</span>
+            <input type="number" value={maxHyrox} onChange={(e) => setMaxHyrox(e.target.value)} placeholder="e.g. 2" className={inputCls} />
+          </label>
+          <div className="flex-1 min-w-0">
+            <p className={labelCls + " mb-2"}>Preferred days</p>
+            <div className="flex flex-wrap gap-1.5">
+              {DAYS.map((d) => (
+                <label
+                  key={d}
+                  className={`flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium cursor-pointer transition-colors ${
+                    hyroxDays.includes(d)
+                      ? "bg-zinc-900 text-white border-zinc-900"
+                      : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                  }`}
+                >
+                  <input type="checkbox" checked={hyroxDays.includes(d)} onChange={() => toggleHyroxDay(d)} className="sr-only" />
+                  {DAY_LABELS[d]}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={() => saveConstraints.mutate()}
+        disabled={saveConstraints.isPending}
+        className={constraintsSaved ? savedBtnCls : saveBtnCls}
+      >
+        {constraintsSaved ? "Saved ✓" : saveConstraints.isPending ? "Saving…" : "Save constraints"}
+      </button>
+    </div>
+  );
+
+  // ── Nutrition Profile card ────────────────────────────────────────────────
+  const NutritionSection = (
     <div className={cardCls}>
       <div className="space-y-0.5">
         <p className={sectionHeadingCls}>Nutrition profile</p>
@@ -1144,23 +641,11 @@ function NutritionProfileCard(props: {
         <p className="text-xs font-semibold text-zinc-500">Routine</p>
         <label className="space-y-1 block">
           <span className={labelCls}>Current meal pattern</span>
-          <input
-            type="text"
-            value={nutMealPattern}
-            onChange={(e) => setNutMealPattern(e.target.value)}
-            placeholder="e.g. 3 meals, skip breakfast, IF 16:8…"
-            className={inputCls}
-          />
+          <input type="text" value={nutMealPattern} onChange={(e) => setNutMealPattern(e.target.value)} placeholder="e.g. 3 meals, skip breakfast, IF 16:8…" className={inputCls} />
         </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Nutrition goal</span>
-          <input
-            type="text"
-            value={nutGoal}
-            onChange={(e) => setNutGoal(e.target.value)}
-            placeholder="e.g. better energy, avoid under-fueling…"
-            className={inputCls}
-          />
+          <input type="text" value={nutGoal} onChange={(e) => setNutGoal(e.target.value)} placeholder="e.g. better energy, avoid under-fueling…" className={inputCls} />
         </label>
       </div>
 
@@ -1169,44 +654,20 @@ function NutritionProfileCard(props: {
         <p className="text-xs font-semibold text-zinc-500">Pre-workout tolerance</p>
         <label className="space-y-1 block w-32">
           <span className={labelCls}>Min gap after main meal (h)</span>
-          <input
-            type="number"
-            min={1}
-            max={6}
-            value={nutMealGap}
-            onChange={(e) => setNutMealGap(e.target.value)}
-            placeholder="e.g. 2"
-            className={inputCls}
-          />
+          <input type="number" min={1} max={6} value={nutMealGap} onChange={(e) => setNutMealGap(e.target.value)} placeholder="e.g. 2" className={inputCls} />
         </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Pre-workout snack tolerance</span>
-          <input
-            type="text"
-            value={nutSnackTolerance}
-            onChange={(e) => setNutSnackTolerance(e.target.value)}
-            placeholder="e.g. handles solid food fine, liquid only…"
-            className={inputCls}
-          />
+          <input type="text" value={nutSnackTolerance} onChange={(e) => setNutSnackTolerance(e.target.value)} placeholder="e.g. handles solid food fine, liquid only…" className={inputCls} />
         </label>
         <div className="space-y-2">
           <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={nutStomach}
-              onChange={(e) => setNutStomach(e.target.checked)}
-              className="rounded border-zinc-300"
-            />
+            <input type="checkbox" checked={nutStomach} onChange={(e) => setNutStomach(e.target.checked)} className="rounded border-zinc-300" />
             Stomach sensitive
             <span className="text-xs text-zinc-400">— very light pre-workout</span>
           </label>
           <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={nutCaffeine}
-              onChange={(e) => setNutCaffeine(e.target.checked)}
-              className="rounded border-zinc-300"
-            />
+            <input type="checkbox" checked={nutCaffeine} onChange={(e) => setNutCaffeine(e.target.checked)} className="rounded border-zinc-300" />
             Caffeine sensitive
           </label>
         </div>
@@ -1224,13 +685,7 @@ function NutritionProfileCard(props: {
         ].map(({ label, value, set, placeholder }) => (
           <label key={label} className="space-y-1 block">
             <span className={labelCls}>{label}</span>
-            <input
-              type="text"
-              value={value}
-              onChange={(e) => set(e.target.value)}
-              placeholder={placeholder}
-              className={inputCls}
-            />
+            <input type="text" value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} className={inputCls} />
           </label>
         ))}
       </div>
@@ -1244,38 +699,16 @@ function NutritionProfileCard(props: {
         <div className="grid grid-cols-2 gap-3">
           <label className="space-y-1">
             <span className={labelCls}>Body weight (kg)</span>
-            <input
-              type="number"
-              min={30}
-              max={200}
-              step={0.5}
-              value={nutBodyWeight}
-              onChange={(e) => setNutBodyWeight(e.target.value)}
-              placeholder="e.g. 78"
-              className={inputCls}
-            />
+            <input type="number" min={30} max={200} step={0.5} value={nutBodyWeight} onChange={(e) => setNutBodyWeight(e.target.value)} placeholder="e.g. 78" className={inputCls} />
           </label>
           <label className="space-y-1">
             <span className={labelCls}>Rest-day calories</span>
-            <input
-              type="number"
-              min={1000}
-              max={5000}
-              step={50}
-              value={nutRestCalories}
-              onChange={(e) => setNutRestCalories(e.target.value)}
-              placeholder="e.g. 2300"
-              className={inputCls}
-            />
+            <input type="number" min={1000} max={5000} step={50} value={nutRestCalories} onChange={(e) => setNutRestCalories(e.target.value)} placeholder="e.g. 2300" className={inputCls} />
           </label>
         </div>
         <label className="space-y-1 block">
           <span className={labelCls}>Calorie goal</span>
-          <select
-            value={nutCalorieGoal}
-            onChange={(e) => setNutCalorieGoal(e.target.value)}
-            className={selectCls}
-          >
+          <select value={nutCalorieGoal} onChange={(e) => setNutCalorieGoal(e.target.value)} className={selectCls}>
             <option value="maintain">Maintain</option>
             <option value="slight_surplus">Slight surplus</option>
             <option value="slight_deficit">Slight deficit</option>
@@ -1288,43 +721,288 @@ function NutritionProfileCard(props: {
         <p className="text-xs font-semibold text-zinc-500">Optional details</p>
         <label className="space-y-1 block">
           <span className={labelCls}>Supplements</span>
-          <input
-            type="text"
-            value={nutSupplements}
-            onChange={(e) => setNutSupplements(e.target.value)}
-            placeholder="e.g. creatine, magnesium, vitamin D…"
-            className={inputCls}
-          />
+          <input type="text" value={nutSupplements} onChange={(e) => setNutSupplements(e.target.value)} placeholder="e.g. creatine, magnesium, vitamin D…" className={inputCls} />
         </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Cooking style / time preference</span>
-          <input
-            type="text"
-            value={nutCookingPref}
-            onChange={(e) => setNutCookingPref(e.target.value)}
-            placeholder="e.g. quick meals under 20 min…"
-            className={inputCls}
-          />
+          <input type="text" value={nutCookingPref} onChange={(e) => setNutCookingPref(e.target.value)} placeholder="e.g. quick meals under 20 min…" className={inputCls} />
         </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Diet notes</span>
-          <textarea
-            value={nutDietNotes}
-            onChange={(e) => setNutDietNotes(e.target.value)}
-            placeholder="e.g. plant-based, low-carb, intermittent fasting…"
-            rows={2}
-            className={inputCls + " resize-none"}
-          />
+          <textarea value={nutDietNotes} onChange={(e) => setNutDietNotes(e.target.value)} placeholder="e.g. plant-based, low-carb, intermittent fasting…" rows={2} className={inputCls + " resize-none"} />
         </label>
       </div>
 
       <button
-        onClick={onSave}
-        disabled={isSaving}
+        onClick={() => saveNutritionProfile.mutate()}
+        disabled={saveNutritionProfile.isPending}
         className={nutritionSaved ? savedBtnCls : saveBtnCls}
       >
-        {nutritionSaved ? "Saved ✓" : isSaving ? "Saving…" : "Save nutrition profile"}
+        {nutritionSaved ? "Saved ✓" : saveNutritionProfile.isPending ? "Saving…" : "Save nutrition profile"}
       </button>
     </div>
+  );
+
+  // ── Advanced scheduling (collapsed) ──────────────────────────────────────
+  const AdvancedSchedulingSection = (
+    <CollapsibleSection label="Advanced scheduling">
+      <p className="text-xs text-zinc-400">Availability windows, schedule blocks, and recurring sessions. These are optional — the planner uses sensible defaults if not set.</p>
+
+      {/* Avoid Friday Evening */}
+      <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
+        <input type="checkbox" checked={avoidFriday} onChange={(e) => setAvoidFriday(e.target.checked)} className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-300" />
+        Avoid Friday evening training
+      </label>
+
+      {/* Availability Windows */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-zinc-500">Availability windows</p>
+        <p className="text-[10px] text-zinc-400">Recurring time slots when training is possible.</p>
+        <div className="space-y-1.5">
+          {windows.length === 0 && <p className="text-xs text-zinc-400">No windows set.</p>}
+          {windows.map((w) => (
+            <div key={w.id} className="flex items-center justify-between rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2">
+              <span className="text-sm font-medium text-zinc-700">{DAY_LABELS[w.dayOfWeek] ?? w.dayOfWeek}</span>
+              <span className="text-xs text-zinc-500">{minsToTime(w.timeStartMin)}–{minsToTime(w.timeEndMin)}</span>
+              <button onClick={() => delWindow.mutate(w.id)} className="text-xs text-zinc-400 hover:text-red-500 transition-colors">Remove</button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 items-end flex-wrap">
+          <select value={newDay} onChange={(e) => setNewDay(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+            {DAYS.map((d) => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
+          </select>
+          <input type="time" value={newStart} onChange={(e) => setNewStart(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300" />
+          <input type="time" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300" />
+          <button onClick={() => addWindow.mutate()} disabled={addWindow.isPending} className={saveBtnCls}>Add</button>
+        </div>
+      </div>
+
+      {/* Schedule Blocks */}
+      <div className="space-y-2 pt-2 border-t border-zinc-100">
+        <p className="text-xs font-semibold text-zinc-500">Schedule blocks</p>
+        <p className="text-[10px] text-zinc-400">One-off periods when training is blocked.</p>
+        <div className="space-y-1.5">
+          {events.length === 0 && <p className="text-xs text-zinc-400">No blocks set.</p>}
+          {events.map((ev) => (
+            <div key={ev.id} className="flex items-start justify-between rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono text-zinc-600">{ev.startsAt.slice(0, 10)}</span>
+                  <span className="text-zinc-300">→</span>
+                  <span className="text-xs font-mono text-zinc-600">{ev.endsAt.slice(0, 10)}</span>
+                  <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-600">{ev.kind}</span>
+                </div>
+                {ev.note && <p className="text-xs text-zinc-500 mt-0.5">{ev.note}</p>}
+              </div>
+              <button onClick={() => delEvent.mutate(ev.id)} className="text-xs text-zinc-400 hover:text-red-500 transition-colors ml-2 shrink-0">Remove</button>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <div className="flex gap-2 flex-wrap items-end">
+            <div className="space-y-1">
+              <span className={labelCls}>Start</span>
+              <input type="datetime-local" value={evStart} onChange={(e) => setEvStart(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300" />
+            </div>
+            <div className="space-y-1">
+              <span className={labelCls}>End</span>
+              <input type="datetime-local" value={evEnd} onChange={(e) => setEvEnd(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300" />
+            </div>
+            <div className="space-y-1">
+              <span className={labelCls}>Kind</span>
+              <select value={evKind} onChange={(e) => setEvKind(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+                {EVENT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </div>
+          </div>
+          <input type="text" value={evNote} onChange={(e) => setEvNote(e.target.value)} placeholder="Note (optional)" className={inputCls} />
+          <button onClick={() => addEvent.mutate()} disabled={addEvent.isPending || !evStart || !evEnd} className={saveBtnCls}>
+            {addEvent.isPending ? "Adding…" : "Add block"}
+          </button>
+        </div>
+      </div>
+
+      {/* Recurring Sessions */}
+      <div className="space-y-2 pt-2 border-t border-zinc-100">
+        <p className="text-xs font-semibold text-zinc-500">Recurring sessions</p>
+        <p className="text-[10px] text-zinc-400">Weekly fixed sessions (e.g. HYROX class). Fixed sessions are always in the plan.</p>
+        <div className="space-y-1.5">
+          {recSessions.length === 0 && <p className="text-xs text-zinc-400">None set.</p>}
+          {recSessions.map((rs) => (
+            <div key={rs.id} className="flex items-start justify-between rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="font-semibold text-zinc-700">{DAY_LABELS[rs.dayOfWeek] ?? rs.dayOfWeek}</span>
+                  <span className="text-zinc-400">·</span>
+                  <span className="capitalize text-zinc-600">{rs.preferredSlot}</span>
+                  <span className="text-zinc-400">·</span>
+                  <span className="text-zinc-600">{rs.durationMin} min</span>
+                  <span className="text-zinc-400">·</span>
+                  <span className="capitalize text-zinc-600">{rs.intensity}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${rs.planningType === "fixed" ? "bg-zinc-100 text-zinc-600" : "bg-indigo-50 text-indigo-600"}`}>
+                    {rs.planningType === "fixed" ? "fixed" : "optional"}
+                  </span>
+                </div>
+                {rs.notes && <p className="text-xs text-zinc-500">{rs.notes}</p>}
+              </div>
+              <button onClick={() => delRecSession.mutate(rs.id)} className="text-xs text-zinc-400 hover:text-red-500 transition-colors ml-2 shrink-0">Remove</button>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <div className="flex gap-2 items-end flex-wrap">
+            <select value={rsDay} onChange={(e) => setRsDay(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+              {DAYS.map((d) => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
+            </select>
+            <select value={rsSlot} onChange={(e) => setRsSlot(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+              {SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <input type="number" value={rsDuration} onChange={(e) => setRsDuration(e.target.value)} placeholder="min" className="w-20 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-300" />
+            <select value={rsIntensity} onChange={(e) => setRsIntensity(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+              {INTENSITIES.map((i) => <option key={i} value={i}>{i}</option>)}
+            </select>
+            <select value={rsPlanningType} onChange={(e) => setRsPlanningType(e.target.value)} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-300">
+              <option value="fixed">fixed</option>
+              <option value="preferred">optional</option>
+            </select>
+          </div>
+          <input type="text" value={rsNotes} onChange={(e) => setRsNotes(e.target.value)} placeholder='Notes, e.g. "HYROX group class"' className={inputCls} />
+          <p className="text-[10px] text-zinc-400">
+            <strong>fixed</strong> = always in plan · <strong>optional</strong> = planner chooses if useful
+          </p>
+          <button onClick={() => addRecSession.mutate()} disabled={addRecSession.isPending} className={saveBtnCls}>
+            {addRecSession.isPending ? "Adding…" : "Add session"}
+          </button>
+        </div>
+      </div>
+    </CollapsibleSection>
+  );
+
+  // ── Advanced HYROX workout defaults (collapsed) ───────────────────────────
+  const AdvancedHyroxSection = (
+    <CollapsibleSection label="Advanced HYROX workout defaults">
+      <p className="text-[10px] text-zinc-400">Default format for station-circuit workout plans. Typical: 3 rounds × 8 stations, 60s work / 20s transition.</p>
+
+      <label className="space-y-1 block">
+        <span className={labelCls}>Default format</span>
+        <select value={hybridFormat} onChange={(e) => setHybridFormat(e.target.value)} className={selectCls}>
+          {HYBRID_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+        </select>
+      </label>
+
+      <label className="flex items-center gap-2.5 text-sm text-zinc-700 cursor-pointer">
+        <input type="checkbox" checked={hybridInclRun} onChange={(e) => setHybridInclRun(e.target.checked)} className="rounded border-zinc-300" />
+        Include running between stations by default
+      </label>
+
+      <div className="grid grid-cols-3 gap-3">
+        <label className="space-y-1">
+          <span className={labelCls}>Work (sec)</span>
+          <input type="number" value={hybridWorkSec} onChange={(e) => setHybridWorkSec(e.target.value)} className={inputCls} />
+        </label>
+        <label className="space-y-1">
+          <span className={labelCls}>Rest (sec)</span>
+          <input type="number" value={hybridRestSec} onChange={(e) => setHybridRestSec(e.target.value)} className={inputCls} />
+        </label>
+        <label className="space-y-1">
+          <span className={labelCls}>Rounds</span>
+          <input type="number" value={hybridRounds} onChange={(e) => setHybridRounds(e.target.value)} className={inputCls} />
+        </label>
+      </div>
+
+      <label className="space-y-1 block">
+        <span className={labelCls}>Notes</span>
+        <input type="text" value={hybridNotes} onChange={(e) => setHybridNotes(e.target.value)} placeholder="e.g. preferred equipment, race goal distance…" className={inputCls} />
+      </label>
+
+      <button
+        onClick={() => saveHybridProfile.mutate()}
+        disabled={saveHybridProfile.isPending}
+        className={hybridProfileSaved ? savedBtnCls : saveBtnCls}
+      >
+        {hybridProfileSaved ? "Saved ✓" : saveHybridProfile.isPending ? "Saving…" : "Save HYROX defaults"}
+      </button>
+    </CollapsibleSection>
+  );
+
+  // ── Strava + Account (compact) ────────────────────────────────────────────
+  const StravaSection = (
+    <div className={cardCls}>
+      <p className={sectionHeadingCls}>Strava connection</p>
+      <Suspense fallback={null}>
+        <StravaSettings initialConnection={initialStravaConnection} />
+      </Suspense>
+    </div>
+  );
+
+  const AccountSection = (
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-3">
+      <p className={sectionHeadingCls}>Account</p>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-zinc-500">Name</span>
+          <span className="font-medium text-zinc-800">{userName}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-zinc-500">Timezone</span>
+          <span className="font-medium text-zinc-800 text-xs">{userTimezone}</span>
+        </div>
+      </div>
+      <form action="/api/auth/logout" method="post">
+        <button type="submit" className="w-full rounded-xl border border-zinc-200 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors">
+          Log out
+        </button>
+      </form>
+    </div>
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  return (
+    <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+      {/* ── Hero header ──────────────────────────────────────────────── */}
+      <div className="pt-4 pb-3">
+        <div className="lg:rounded-2xl lg:bg-white/60 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-0.5">Maxona</p>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 leading-none">Settings</h1>
+          <p className="text-sm text-zinc-500 mt-1">Tune Maxona around your body, schedule, and constraints.</p>
+        </div>
+      </div>
+
+      <PageWrapper>
+        {/* Helper copy */}
+        <p className="text-xs text-zinc-400 mb-4">Start with <strong className="text-zinc-600">Training Profile</strong> + <strong className="text-zinc-600">Nutrition</strong>. Advanced scheduling is optional.</p>
+
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
+          {/* ── Main column: Nutrition Profile + Advanced scheduling ────── */}
+          <StaggerList className="space-y-4">
+            {/* Mobile: Training + Constraints first */}
+            <div className="lg:hidden space-y-4">
+              <StaggerItem>{TrainingProfileSection}</StaggerItem>
+              <StaggerItem>{TrainingConstraintsSection}</StaggerItem>
+            </div>
+
+            <StaggerItem>{NutritionSection}</StaggerItem>
+            <StaggerItem>{AdvancedSchedulingSection}</StaggerItem>
+
+            {/* Mobile: Advanced HYROX + Strava + Account at bottom */}
+            <div className="lg:hidden space-y-4">
+              <StaggerItem>{AdvancedHyroxSection}</StaggerItem>
+              <StaggerItem>{StravaSection}</StaggerItem>
+              <StaggerItem>{AccountSection}</StaggerItem>
+            </div>
+          </StaggerList>
+
+          {/* ── Side rail: Training Profile + Constraints + Strava + Account */}
+          <aside className="hidden lg:flex lg:flex-col lg:gap-4 mt-0">
+            {TrainingProfileSection}
+            {TrainingConstraintsSection}
+            {AdvancedHyroxSection}
+            {StravaSection}
+            {AccountSection}
+          </aside>
+        </div>
+      </PageWrapper>
+    </main>
   );
 }

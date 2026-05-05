@@ -246,7 +246,7 @@ export default async function TodayPage() {
     energy,
   };
 
-  const nutritionHash = hashInputs({ date: todayStr, nutritionAdviceVersion: 2, ...nutritionAdviceInput });
+  const nutritionHash = hashInputs({ date: todayStr, nutritionAdviceVersion: 3, ...nutritionAdviceInput });
 
   const nutritionAdvice = await timed("today/nutrition-cache", () =>
     getCachedInsight<NutritionAdvice>({
@@ -403,25 +403,27 @@ export default async function TodayPage() {
   return (
     <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Hero header ─────────────────────────────────────────────── */}
-      <div className="pt-6 pb-4">
-        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+      <div className="pt-4 pb-3">
+        <div className="lg:rounded-2xl lg:bg-white/60 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Today</p>
-              <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">{dayName}</h1>
-              <p className="text-sm text-zinc-500 mt-1">{dayDisplay}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-0.5">Today</p>
+              <div className="flex items-baseline gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-zinc-900 leading-none">{dayName}</h1>
+                <span className="text-sm text-zinc-500">{dayDisplay}</span>
+              </div>
+              {props.length > 0 && (
+                <p className="text-xs text-zinc-400 mt-1">
+                  {props.length} session{props.length > 1 ? "s" : ""} · {totalMin} min
+                </p>
+              )}
             </div>
             {readinessPillClass && (
-              <div className={`rounded-full px-3 py-1.5 text-sm font-semibold mt-1 shrink-0 ${readinessPillClass}`}>
+              <div className={`rounded-full px-2.5 py-1 text-xs font-semibold mt-0.5 shrink-0 ${readinessPillClass}`}>
                 {readinessScore}/6
               </div>
             )}
           </div>
-          {props.length > 0 && (
-            <p className="text-xs text-zinc-500 mt-2.5">
-              {props.length} session{props.length > 1 ? "s" : ""} · {totalMin} min
-            </p>
-          )}
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { normalizeCoachBullets } from "@/lib/format-bullets";
+import { formatIntensity } from "@/lib/format-labels";
 import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
 
 const PRIORITY_OPTIONS = [
@@ -451,33 +452,25 @@ export default function ReviewPage() {
       </div>
 
       <PageWrapper>
-        {/* Mobile: action card at top */}
-        <div className="lg:hidden mb-3">
-          {ActionCard}
-        </div>
-
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
-          {/* ── Main column: this week review ──────────────────────────── */}
+          {/* ── Main column: action card (primary) ─────────────────────── */}
           <StaggerList className="space-y-3">
-            {/* This week stats */}
-            {weeklyStats === undefined ? (
-              <StaggerItem>
+            {/* Action card — primary on both mobile and desktop */}
+            <StaggerItem>
+              {ActionCard}
+            </StaggerItem>
+
+            {/* Stats — secondary on mobile (below action); hidden on desktop (in side rail) */}
+            <div className="lg:hidden space-y-3">
+              {weeklyStats === undefined ? (
                 <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3">
                   <p className="text-xs text-zinc-400">Loading week summary…</p>
                 </div>
-              </StaggerItem>
-            ) : weeklyStats !== null ? (
-              <>
-                <StaggerItem>
+              ) : weeklyStats !== null ? (
+                <>
                   <StatsBlock stats={weeklyStats} />
-                </StaggerItem>
-                <StaggerItem>
                   <ExecQualityBlock eq={weeklyStats.executionQuality} />
-                </StaggerItem>
-                <StaggerItem>
                   <SignalsBlock signals={weeklyStats.signals} />
-                </StaggerItem>
-                <StaggerItem>
                   <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-2">
                     <button
                       onClick={() => setSessionDetailOpen((v) => !v)}
@@ -492,32 +485,58 @@ export default function ReviewPage() {
                       </div>
                     )}
                   </div>
-                </StaggerItem>
-              </>
-            ) : null}
-
-            {/* Carry forward */}
-            {weeklyStats && weeklyStats.carryForward.length > 0 && (
-              <StaggerItem>
+                </>
+              ) : null}
+              {weeklyStats && weeklyStats.carryForward.length > 0 && (
                 <CarryForwardBlock bullets={weeklyStats.carryForward} />
-              </StaggerItem>
-            )}
-
-            {/* Previous week */}
-            {archivePlan && (
-              <StaggerItem>
+              )}
+              {archivePlan && (
                 <PreviousWeekBlock
                   plan={archivePlan}
                   open={archiveOpen}
                   onToggle={() => setArchiveOpen((v) => !v)}
                 />
-              </StaggerItem>
-            )}
+              )}
+            </div>
           </StaggerList>
 
-          {/* ── Side rail: action form ─────────────────────────────────── */}
+          {/* ── Side rail: stats context (desktop only) ────────────────── */}
           <aside className="hidden lg:flex lg:flex-col lg:gap-3">
-            {ActionCard}
+            {weeklyStats === undefined ? (
+              <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3">
+                <p className="text-xs text-zinc-400">Loading week summary…</p>
+              </div>
+            ) : weeklyStats !== null ? (
+              <>
+                <StatsBlock stats={weeklyStats} />
+                <ExecQualityBlock eq={weeklyStats.executionQuality} />
+                <SignalsBlock signals={weeklyStats.signals} />
+                <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-2">
+                  <button
+                    onClick={() => setSessionDetailOpen((v) => !v)}
+                    className="w-full flex items-center justify-between text-left"
+                  >
+                    <span className="text-xs font-semibold text-zinc-500">Session details</span>
+                    <span className="text-[10px] text-zinc-400">{sessionDetailOpen ? "▲ hide" : "▼ show"}</span>
+                  </button>
+                  {sessionDetailOpen && (
+                    <div className="pt-1 border-t border-zinc-100">
+                      <SessionDayList stats={weeklyStats} />
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
+            {weeklyStats && weeklyStats.carryForward.length > 0 && (
+              <CarryForwardBlock bullets={weeklyStats.carryForward} />
+            )}
+            {archivePlan && (
+              <PreviousWeekBlock
+                plan={archivePlan}
+                open={archiveOpen}
+                onToggle={() => setArchiveOpen((v) => !v)}
+              />
+            )}
           </aside>
         </div>
       </PageWrapper>
@@ -741,8 +760,8 @@ function SessionRow({ session: s }: { session: SessionSummary }) {
         >
           {isDone ? "✓" : isSkipped ? "—" : "·"}
         </span>
-        <span className="text-xs font-medium text-zinc-700 capitalize">
-          {s.intensity} · {s.durationMin}min
+        <span className="text-xs font-medium text-zinc-700">
+          {formatIntensity(s.intensity)} · {s.durationMin}min
         </span>
         {noteLabel && (
           <span className="text-xs text-zinc-500">{noteLabel}</span>
@@ -850,8 +869,8 @@ function PreviousWeekBlock({
                     <span className={`text-[10px] ${isDone ? "text-emerald-600" : isSkipped ? "text-zinc-400" : "text-zinc-400"}`}>
                       {isDone ? "✓" : isSkipped ? "—" : "·"}
                     </span>
-                    <span className="text-[11px] text-zinc-600 capitalize">
-                      {s.date.slice(5)} · {s.intensity} · {s.durationMin}min
+                    <span className="text-[11px] text-zinc-600">
+                      {s.date.slice(5)} · {formatIntensity(s.intensity)} · {s.durationMin}min
                       {noteLabel ? ` · ${noteLabel}` : ""}
                     </span>
                   </div>

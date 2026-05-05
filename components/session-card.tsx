@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { stripMarkdownBold } from "@/lib/format-bullets";
+import { formatIntensity, formatSlot } from "@/lib/format-labels";
 import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp, StravaActivitySummary } from "@/components/strava-panel";
 import { ExecutionSummaryBlock } from "@/components/execution-summary-block";
@@ -499,9 +500,9 @@ export function SessionCard({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <span className="text-sm font-semibold capitalize text-zinc-800">{session.intensity}</span>
+            <span className="text-sm font-semibold text-zinc-800">{formatIntensity(session.intensity)}</span>
             <span className="text-xs text-zinc-400">
-              {session.durationMin} min · <span className="capitalize">{session.preferredSlot}</span>
+              {session.durationMin} min · {formatSlot(session.preferredSlot)}
             </span>
             {session.planningType === "fixed" && (
               <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">fixed</span>
@@ -569,9 +570,9 @@ export function SessionCard({
       {/* ── Session header ── */}
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-semibold capitalize text-zinc-800">{session.intensity}</span>
+          <span className="text-sm font-semibold text-zinc-800">{formatIntensity(session.intensity)}</span>
           <span className="text-xs text-zinc-400">
-            {session.durationMin} min · <span className="capitalize">{session.preferredSlot}</span>
+            {session.durationMin} min · {formatSlot(session.preferredSlot)}
           </span>
           {session.planningType === "fixed" && (
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">fixed</span>

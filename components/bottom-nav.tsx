@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 const NAV_ITEMS = [
   { href: "/today", label: "Today" },
   { href: "/week", label: "Week" },
-  { href: "/review", label: "Plan" },
+  { href: "/review", label: "Review" },
   { href: "/goals", label: "Goals" },
   { href: "/settings", label: "Settings" },
 ];

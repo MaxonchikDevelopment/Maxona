@@ -35,9 +35,9 @@ export function ReplanButton({ mode = "replan" }: { mode?: "generate" | "replan"
       <button
         onClick={handle}
         disabled={loading}
-        className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+        className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors disabled:opacity-50"
       >
-        {loading ? "..." : mode === "generate" ? "Generate Plan" : "Replan"}
+        {loading ? "…" : mode === "generate" ? "Generate plan" : "Replan"}
       </button>
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
