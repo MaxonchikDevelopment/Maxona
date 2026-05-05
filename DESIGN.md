@@ -313,3 +313,37 @@ Side rail: readiness banner → `ActiveIssues` → change explanation → weekly
 - Preserve the calm premium athletic mood at all viewport sizes
 - No horizontal scrolling at any width
 - Side rail items should feel like "coach's notes", not a busy dashboard widget panel
+
+---
+
+## Sprint 5 — Full App UI/UX Consolidation
+
+### Core rule
+Today and Week are the reference standard. Every other main page (Settings, Goals, Review, Session detail) must match the same visual language — glass cards, zinc palette, premium athletic typography, ambient gradient, responsive dashboard layout.
+
+### Page rules
+- **Settings / Goals / Review / Session detail**: not stretched mobile forms. Use `DashboardShell` grid or side rail on desktop.
+- **Desktop**: use space intentionally — hero headers, cards, side rails, metric grids. Not one long vertical list.
+- **Mobile**: single column, full-width, compact, usable.
+- **Liquid/glass background**: body-level, `background-attachment: fixed`. No clipping at header, nav, or container edge.
+- **Desktop nav**: `bg-white/80 backdrop-blur-md` — glass over the ambient gradient, not an opaque stripe.
+
+### Content rules
+- **Completed sessions**: `CompactMetricPills` always present for done + Strava sessions. Above check-in notes.
+- **Nutrition guidance**: concrete meals with grams + approximate calories from AI. Cache-busted with `nutritionAdviceVersion` field in input hash.
+- **Skipped sessions**: notes render once in the skipped branch. Main notes block is suppressed (`!isSkipped` guard already in place).
+- **Focus summary (Week)**: render bullets as separate compact lines with `·` prefix — never join with `" · "`.
+- **Capitalization**: intensity and slot labels use CSS `capitalize` — view layer only, stored data unchanged.
+- **Adherence / quality labels**: use `text-indigo-600` (not blue). "Different sport" uses `text-purple-600`.
+
+### Anti-patterns to avoid
+- `text-gray-*` — always `text-zinc-*`
+- `rounded border` without explicit color — use `rounded-2xl border border-zinc-100`
+- `bg-gray-50` — use `bg-zinc-50`
+- `bg-blue-50` / `text-blue-600` for coach notes — use `bg-indigo-50` / `text-indigo-600`
+- Enterprise dashboard density — keep card padding, don't cram more per card
+- Nested cards inside cards (one level of nesting max)
+- Purple/pink/neon gradients or heavy colored borders
+- Flat text hierarchy — use zinc shade variation (zinc-900 → zinc-700 → zinc-500 → zinc-400)
+- Repeated identical white boxes with no visual hierarchy
+- AI-slop patterns: every section a purple card, every insight a gradient pill

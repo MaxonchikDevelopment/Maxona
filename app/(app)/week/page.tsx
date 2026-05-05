@@ -120,6 +120,33 @@ function ChangeBlock({ explanation }: { explanation: string }) {
   );
 }
 
+function FocusSummary({ text }: { text: string }) {
+  const lines = normalizeCoachBullets(text)
+    .split("\n\n")
+    .filter((l) => l.trim())
+    .map((l) => l.replace(/^[•·]\s*/, "").trim())
+    .filter(Boolean);
+
+  if (lines.length <= 1) {
+    return (
+      <p className="text-sm text-zinc-500 mt-2 leading-relaxed">
+        {lines[0] ?? text}
+      </p>
+    );
+  }
+
+  return (
+    <ul className="mt-2 space-y-0.5">
+      {lines.map((line, i) => (
+        <li key={i} className="flex items-start gap-1.5 text-xs text-zinc-500">
+          <span className="text-zinc-300 mt-0.5 shrink-0 select-none">·</span>
+          <span className="leading-relaxed">{line}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function NutritionFocusBlock({ focus }: { focus: WeeklyNutritionFocus }) {
   return (
     <div className="rounded-2xl bg-emerald-50/70 border border-emerald-100 px-4 py-3 space-y-1.5">
@@ -500,15 +527,7 @@ export default async function WeekPage() {
               <ReplanButton mode="replan" />
             </div>
           </div>
-          {plan.focusSummary && (
-            <p className="text-sm text-zinc-500 mt-2 leading-relaxed line-clamp-2">
-              {normalizeCoachBullets(plan.focusSummary)
-                .split("\n\n")
-                .filter((l) => l.trim())
-                .map((l) => l.replace(/^[•·]\s*/, ""))
-                .join(" · ")}
-            </p>
-          )}
+          {plan.focusSummary && <FocusSummary text={plan.focusSummary} />}
           {/* Desktop stats row */}
           {plannedSessions.length > 0 && (
             <div className="hidden lg:flex items-center gap-3 mt-3 flex-wrap">
@@ -652,13 +671,16 @@ function DraftPreview({
         <span className="text-xs text-zinc-400">{weekStartStr}</span>
       </div>
       {plan.focusSummary && (
-        <p className="text-xs text-zinc-400">
+        <div className="space-y-0.5">
           {normalizeCoachBullets(plan.focusSummary)
             .split("\n\n")
             .filter((l) => l.trim())
-            .map((l) => l.replace(/^[•·]\s*/, ""))
-            .join(" · ")}
-        </p>
+            .map((l) => l.replace(/^[•·]\s*/, "").trim())
+            .filter(Boolean)
+            .map((line, i) => (
+              <p key={i} className="text-xs text-zinc-400 leading-relaxed">{line}</p>
+            ))}
+        </div>
       )}
       {weekDays.map((dateStr, i) => {
         const daySessions = sessionsByDate[dateStr] ?? [];

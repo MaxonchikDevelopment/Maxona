@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "motion/react";
 import { normalizeCoachBullets } from "@/lib/format-bullets";
+import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
 
 const PRIORITY_OPTIONS = [
   "More HYROX this week",
@@ -258,10 +260,12 @@ export default function ReviewPage() {
 
   if (success) {
     return (
-      <main className="p-4 flex flex-col items-center justify-center min-h-[60vh] gap-3">
-        <p className="text-2xl">✓</p>
-        <p className="text-base font-medium">Next week is planned</p>
-        <p className="text-sm text-gray-500 text-center">
+      <main className="flex flex-col items-center justify-center min-h-[60vh] gap-3 px-4">
+        <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+          <span className="text-emerald-600 text-lg font-bold">✓</span>
+        </div>
+        <p className="text-base font-semibold text-zinc-800">Next week is planned</p>
+        <p className="text-sm text-zinc-500 text-center">
           Your current week is unchanged. The new plan activates on Monday.
         </p>
       </main>
@@ -278,233 +282,314 @@ export default function ReviewPage() {
         )
       : null;
 
-  return (
-    <main className="p-4 space-y-6">
+  const inputCls =
+    "w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300";
+
+  // ── Action card (shared between mobile top + desktop side rail) ──────────────
+  const ActionCard = (
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-4">
       <div>
-        <h1 className="text-xl font-bold">Review &amp; Plan</h1>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-0.5">
+          {hasDraft ? "Update plan" : "Generate plan"}
+        </p>
+        <p className="text-xs text-zinc-500">
+          {hasDraft
+            ? "Customize below and regenerate next week."
+            : "Generates a draft for next week only. Current week is not affected."}
+        </p>
       </div>
 
-      {/* ── This week ────────────────────────────── */}
-      <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">This week</p>
-        {weeklyStats === undefined ? (
-          <p className="text-xs text-gray-400">Loading week summary…</p>
-        ) : weeklyStats !== null ? (
-          <div className="space-y-4">
-            <StatsBlock stats={weeklyStats} />
-            <ExecQualityBlock eq={weeklyStats.executionQuality} />
-            <SignalsBlock signals={weeklyStats.signals} />
-            <div>
-              <button
-                onClick={() => setSessionDetailOpen((v) => !v)}
-                className="text-xs text-gray-400 underline"
-              >
-                {sessionDetailOpen ? "Hide session details" : "Show session details"}
-              </button>
-              {sessionDetailOpen && <div className="mt-2"><SessionDayList stats={weeklyStats} /></div>}
-            </div>
+      {hasDraft && existingDraft && (
+        <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2.5 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-indigo-800">Next week already planned</p>
+            <span className="text-[10px] font-mono text-indigo-400">draft</span>
           </div>
-        ) : null}
+          {weekStartLabel && (
+            <p className="text-xs text-indigo-600">Starts {weekStartLabel}</p>
+          )}
+          {existingDraft.focusSummary && (
+            <div className="space-y-0.5">
+              {normalizeCoachBullets(existingDraft.focusSummary)
+                .split("\n\n")
+                .filter((l) => l.trim())
+                .map((line, i) => (
+                  <p key={i} className="text-xs text-indigo-700 leading-relaxed">{line.replace(/^[•·]\s*/, "")}</p>
+                ))}
+            </div>
+          )}
+          {existingDraft.sessions.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {existingDraft.sessions.map((s, i) => (
+                <span
+                  key={i}
+                  className="rounded-full bg-indigo-100 border border-indigo-200 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
+                >
+                  {shortDay(
+                    typeof s.scheduledDate === "string"
+                      ? s.scheduledDate
+                      : new Date(s.scheduledDate).toISOString().split("T")[0]
+                  )}{" "}
+                  · <span className="capitalize">{s.intensity}</span> · {s.notes?.split(":")[0] ?? "session"}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recovery score */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-zinc-700">Going into next week — how do you feel?</p>
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <button
+              key={n}
+              onClick={() => setRecoveryScore(recoveryScore === n ? null : n)}
+              className={`h-9 w-9 rounded-xl border text-sm font-medium transition-colors ${
+                recoveryScore === n
+                  ? "bg-zinc-900 text-white border-zinc-900"
+                  : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-zinc-400">1 = very fatigued · 6 = fresh and ready</p>
       </div>
 
-      {/* ── Carry into next week ─────────────────── */}
-      {weeklyStats && weeklyStats.carryForward.length > 0 && (
-        <CarryForwardBlock bullets={weeklyStats.carryForward} />
+      {/* Priorities */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-zinc-700">
+          Focus next week
+          {selectedPriorities.length > 0 && (
+            <span className="ml-1.5 text-[10px] font-normal text-zinc-400">
+              {selectedPriorities.length} selected
+            </span>
+          )}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {PRIORITY_OPTIONS.map((opt) => (
+            <button
+              key={opt}
+              onClick={() => togglePriority(opt)}
+              className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                selectedPriorities.includes(opt)
+                  ? "bg-zinc-900 text-white border-zinc-900"
+                  : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Training preferences */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-zinc-700">Training preferences</p>
+        <textarea
+          value={trainingPreferencesText}
+          onChange={(e) => setTrainingPreferencesText(e.target.value)}
+          placeholder="e.g. Marathon is close, but one easy bike if weather allows."
+          rows={2}
+          className={inputCls + " resize-none"}
+        />
+        <p className="text-[10px] text-zinc-400">Soft guidance — Claude weighs this alongside recovery and schedule.</p>
+      </div>
+
+      {/* Family constraints */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-zinc-700">Partner / family constraints</p>
+        <textarea
+          value={familyConstraints}
+          onChange={(e) => setFamilyConstraints(e.target.value)}
+          placeholder="e.g. Saturday afternoon is family time, Sunday morning free until 11"
+          rows={2}
+          className={inputCls + " resize-none"}
+        />
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{error}</p>
       )}
 
-      {/* ── Previous week (archive) ──────────────── */}
-      {archivePlan && (
-        <PreviousWeekBlock plan={archivePlan} open={archiveOpen} onToggle={() => setArchiveOpen((v) => !v)} />
-      )}
+      <motion.button
+        whileTap={{ scale: 0.98 }}
+        onClick={submit}
+        disabled={submitting}
+        className="w-full rounded-xl bg-zinc-900 py-3 text-sm font-medium text-white disabled:opacity-50 hover:bg-zinc-800 transition-colors"
+      >
+        {submitting
+          ? "Generating next week's plan…"
+          : hasDraft
+          ? "Update next week's plan"
+          : "Generate next week's plan"}
+      </motion.button>
 
-      {/* ── Plan next week ───────────────────────── */}
-      <div className="border-t pt-4 space-y-6">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Plan next week</p>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Generates a draft for next week only. Your current week is not affected.
+      <button
+        onClick={() => router.back()}
+        className="w-full rounded-xl border border-zinc-200 py-2 text-sm text-zinc-500 hover:bg-zinc-50 transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+
+  return (
+    <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+      {/* ── Hero header ──────────────────────────────────────────────── */}
+      <div className="pt-6 pb-4">
+        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Planning</p>
+          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Review & Plan</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Turn this week&apos;s signals into the next adaptive plan.
           </p>
         </div>
-
-        {hasDraft && existingDraft && (
-          <div className="rounded border border-blue-200 bg-blue-50 px-3 py-3 space-y-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-900">Next week already planned</p>
-                {weekStartLabel && (
-                  <p className="text-xs text-blue-600 mt-0.5">Starts {weekStartLabel}</p>
-                )}
-              </div>
-              <span className="text-xs text-blue-400 font-mono">draft</span>
-            </div>
-            {existingDraft.focusSummary && (
-              <div className="space-y-1">
-                {normalizeCoachBullets(existingDraft.focusSummary)
-                  .split("\n\n")
-                  .filter((l) => l.trim())
-                  .map((line, i) => (
-                    <p key={i} className="text-xs text-blue-800">{line}</p>
-                  ))}
-              </div>
-            )}
-            {existingDraft.sessions.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {existingDraft.sessions.map((s, i) => (
-                  <span
-                    key={i}
-                    className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700"
-                  >
-                    {shortDay(
-                      typeof s.scheduledDate === "string"
-                        ? s.scheduledDate
-                        : new Date(s.scheduledDate).toISOString().split("T")[0]
-                    )}{" "}
-                    · {s.intensity} · {s.notes?.split(":")[0] ?? "session"}
-                  </span>
-                ))}
-              </div>
-            )}
-            <p className="text-xs text-blue-500">
-              Customize below and click &quot;Update plan&quot; to regenerate.
-            </p>
-          </div>
-        )}
-
-        <section className="space-y-2">
-          <h2 className="font-semibold text-sm">How are you feeling going into next week?</h2>
-          <div className="flex gap-2">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <button
-                key={n}
-                onClick={() => setRecoveryScore(recoveryScore === n ? null : n)}
-                className={`h-10 w-10 rounded border text-sm font-medium ${
-                  recoveryScore === n ? "bg-black text-white border-black" : "border-gray-300"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400">1 = very fatigued / injured · 6 = fresh and ready</p>
-        </section>
-
-        <section className="space-y-2">
-          <h2 className="font-semibold text-sm">
-            What do you want to prioritize next week?
-            {selectedPriorities.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-gray-400">
-                {selectedPriorities.length} selected
-              </span>
-            )}
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {PRIORITY_OPTIONS.map((opt) => (
-              <button
-                key={opt}
-                onClick={() => togglePriority(opt)}
-                className={`rounded border px-3 py-1 text-xs ${
-                  selectedPriorities.includes(opt)
-                    ? "bg-black text-white border-black"
-                    : "border-gray-300"
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <h2 className="font-semibold text-sm">Training preferences</h2>
-          <textarea
-            value={trainingPreferencesText}
-            onChange={(e) => setTrainingPreferencesText(e.target.value)}
-            placeholder="e.g. Marathon is close, but if weather is good I'd like one easy bike ride."
-            rows={2}
-            className="w-full rounded border px-3 py-2 text-sm"
-          />
-          <p className="text-xs text-gray-400">Soft guidance — Claude will weigh this alongside recovery and schedule.</p>
-        </section>
-
-        <section className="space-y-2">
-          <h2 className="font-semibold text-sm">Partner / family constraints next week</h2>
-          <textarea
-            value={familyConstraints}
-            onChange={(e) => setFamilyConstraints(e.target.value)}
-            placeholder="e.g. Saturday afternoon is family time, Sunday morning free until 11"
-            rows={3}
-            className="w-full rounded border px-3 py-2 text-sm"
-          />
-        </section>
-
-        {error && <p className="text-sm text-red-500">{error}</p>}
-
-        <button
-          onClick={submit}
-          disabled={submitting}
-          className="w-full rounded bg-black py-3 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {submitting
-            ? "Generating next week's plan..."
-            : hasDraft
-            ? "Update next week's plan"
-            : "Generate next week's plan"}
-        </button>
-
-        <button
-          onClick={() => router.back()}
-          className="w-full rounded border py-2 text-sm text-gray-500"
-        >
-          Cancel
-        </button>
       </div>
+
+      <PageWrapper>
+        {/* Mobile: action card at top */}
+        <div className="lg:hidden mb-3">
+          {ActionCard}
+        </div>
+
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
+          {/* ── Main column: this week review ──────────────────────────── */}
+          <StaggerList className="space-y-3">
+            {/* This week stats */}
+            {weeklyStats === undefined ? (
+              <StaggerItem>
+                <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3">
+                  <p className="text-xs text-zinc-400">Loading week summary…</p>
+                </div>
+              </StaggerItem>
+            ) : weeklyStats !== null ? (
+              <>
+                <StaggerItem>
+                  <StatsBlock stats={weeklyStats} />
+                </StaggerItem>
+                <StaggerItem>
+                  <ExecQualityBlock eq={weeklyStats.executionQuality} />
+                </StaggerItem>
+                <StaggerItem>
+                  <SignalsBlock signals={weeklyStats.signals} />
+                </StaggerItem>
+                <StaggerItem>
+                  <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-2">
+                    <button
+                      onClick={() => setSessionDetailOpen((v) => !v)}
+                      className="w-full flex items-center justify-between text-left"
+                    >
+                      <span className="text-xs font-semibold text-zinc-500">Session details</span>
+                      <span className="text-[10px] text-zinc-400">{sessionDetailOpen ? "▲ hide" : "▼ show"}</span>
+                    </button>
+                    {sessionDetailOpen && (
+                      <div className="pt-1 border-t border-zinc-100">
+                        <SessionDayList stats={weeklyStats} />
+                      </div>
+                    )}
+                  </div>
+                </StaggerItem>
+              </>
+            ) : null}
+
+            {/* Carry forward */}
+            {weeklyStats && weeklyStats.carryForward.length > 0 && (
+              <StaggerItem>
+                <CarryForwardBlock bullets={weeklyStats.carryForward} />
+              </StaggerItem>
+            )}
+
+            {/* Previous week */}
+            {archivePlan && (
+              <StaggerItem>
+                <PreviousWeekBlock
+                  plan={archivePlan}
+                  open={archiveOpen}
+                  onToggle={() => setArchiveOpen((v) => !v)}
+                />
+              </StaggerItem>
+            )}
+          </StaggerList>
+
+          {/* ── Side rail: action form ─────────────────────────────────── */}
+          <aside className="hidden lg:flex lg:flex-col lg:gap-3">
+            {ActionCard}
+          </aside>
+        </div>
+      </PageWrapper>
     </main>
   );
 }
 
 // ── Review sub-components ─────────────────────────────────────────────────────
 
-function StatsBlock({ stats }: { stats: WeeklyStats }) {
+function MetricPill({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
-    <div className="rounded border border-gray-200 bg-gray-50 px-3 py-3 space-y-2">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-        {stats.weekStart}
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-400">{label}</span>
+      <span className={`text-sm font-semibold tabular-nums leading-none ${accent ? "text-red-600" : "text-zinc-800"}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function StatsBlock({ stats }: { stats: WeeklyStats }) {
+  const adherenceColor =
+    stats.adherenceByCount >= 80
+      ? "text-emerald-600"
+      : stats.adherenceByCount >= 60
+      ? "text-amber-600"
+      : "text-red-600";
+
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-3">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
+        This week · {stats.weekStart}
       </p>
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <span className="text-xs text-gray-400">Sessions</span>
-        <span className="text-xs text-gray-700">
-          {stats.planned} planned · {stats.done} done
-          {stats.skipped > 0 ? ` · ${stats.skipped} skipped` : ""}
-        </span>
-
-        <span className="text-xs text-gray-400">Duration</span>
-        <span className="text-xs text-gray-700">
-          {stats.plannedDurationMin}min planned
-          {stats.actualMovingMin != null ? ` · ${stats.actualMovingMin}min actual` : ""}
-        </span>
-
-        {(stats.plannedRunningKm != null || stats.actualRunningKm != null) && (
-          <>
-            <span className="text-xs text-gray-400">Running</span>
-            <span className="text-xs text-gray-700">
-              {stats.plannedRunningKm != null ? `${stats.plannedRunningKm}km planned` : ""}
-              {stats.actualRunningKm != null
-                ? `${stats.plannedRunningKm != null ? " · " : ""}${stats.actualRunningKm}km actual`
-                : ""}
-            </span>
-          </>
+      <div className="grid grid-cols-3 gap-x-5 gap-y-3">
+        <MetricPill label="Planned" value={String(stats.planned)} />
+        <MetricPill label="Done" value={String(stats.done)} />
+        {stats.skipped > 0
+          ? <MetricPill label="Skipped" value={String(stats.skipped)} accent />
+          : <div />
+        }
+        <MetricPill label="Planned" value={fmtMin(stats.plannedDurationMin)} />
+        {stats.actualMovingMin != null && (
+          <MetricPill label="Actual" value={fmtMin(stats.actualMovingMin)} />
         )}
-
-        <span className="text-xs text-gray-400">Hard</span>
-        <span className="text-xs text-gray-700">
-          {stats.hardPlanned} planned · {stats.hardDone} done
-        </span>
-
-        <span className="text-xs text-gray-400">Adherence</span>
-        <span className="text-xs text-gray-700">
-          {stats.adherenceByCount}% sessions
-          {stats.adherenceByDuration != null ? ` · ${stats.adherenceByDuration}% duration` : ""}
-        </span>
+        {stats.hardPlanned > 0 && (
+          <MetricPill label="Hard" value={`${stats.hardDone}/${stats.hardPlanned}`} accent={stats.hardDone < stats.hardPlanned} />
+        )}
+      </div>
+      {(stats.plannedRunningKm != null || stats.actualRunningKm != null) && (
+        <div className="flex items-center gap-4 pt-1 border-t border-zinc-100">
+          {stats.plannedRunningKm != null && (
+            <MetricPill label="Run planned" value={`${stats.plannedRunningKm} km`} />
+          )}
+          {stats.actualRunningKm != null && (
+            <MetricPill label="Run actual" value={`${stats.actualRunningKm} km`} />
+          )}
+        </div>
+      )}
+      <div className="flex items-center gap-1.5 pt-0.5">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Adherence</span>
+        <span className={`text-sm font-bold tabular-nums ${adherenceColor}`}>{stats.adherenceByCount}%</span>
+        {stats.adherenceByDuration != null && (
+          <span className="text-xs text-zinc-400">sessions · {stats.adherenceByDuration}% duration</span>
+        )}
       </div>
     </div>
   );
@@ -518,27 +603,23 @@ function ExecQualityBlock({ eq }: { eq: WeeklyStats["executionQuality"] }) {
     { label: "Longer", count: eq.longerThanPlanned },
     { label: "Interrupted", count: eq.interrupted },
     { label: "Hilly variant", count: eq.hillyVariant },
+    { label: "Split", count: eq.splitSessions },
   ].filter((item) => item.count > 0);
 
   if (items.length === 0) return null;
 
   return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Execution quality</p>
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Execution quality</p>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
           <span
             key={item.label}
-            className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+            className="rounded-full bg-zinc-50 border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600"
           >
-            {item.label}: {item.count}
+            {item.label} · {item.count}
           </span>
         ))}
-        {eq.splitSessions > 0 && (
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-            Split: {eq.splitSessions}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -553,31 +634,31 @@ function SignalsBlock({ signals }: { signals: WeeklyStats["signals"] }) {
   if (!hasAny) return null;
 
   return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Signals this week</p>
+    <div className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3 space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-600">Signals this week</p>
       <div className="space-y-0.5">
         {signals.lowReadinessDays > 0 && (
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-amber-800">
             Low readiness: {signals.lowReadinessDays} day{signals.lowReadinessDays > 1 ? "s" : ""}
           </p>
         )}
         {signals.fatigueDays > 0 && (
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-amber-800">
             Fatigue: {signals.fatigueDays} check-in{signals.fatigueDays > 1 ? "s" : ""}
           </p>
         )}
         {signals.injuryDays > 0 && (
-          <p className="text-xs text-orange-700">
+          <p className="text-xs text-orange-800 font-medium">
             Injury: {signals.injuryDays} check-in{signals.injuryDays > 1 ? "s" : ""}
           </p>
         )}
         {signals.unresolvedIssues > 0 && (
-          <p className="text-xs font-medium text-red-600">
+          <p className="text-xs font-semibold text-red-700">
             Unresolved issues: {signals.unresolvedIssues}
           </p>
         )}
         {signals.mainLimiter && (
-          <p className="text-xs italic text-gray-500">Main limiter: {signals.mainLimiter}</p>
+          <p className="text-xs italic text-amber-700">Main limiter: {signals.mainLimiter}</p>
         )}
       </div>
     </div>
@@ -599,37 +680,33 @@ function SessionDayList({ stats }: { stats: WeeklyStats }) {
     sessionsByDate.get(s.date)!.push(s);
   }
 
-  const hasSessions = stats.sessions.length > 0;
-  if (!hasSessions) return null;
+  if (stats.sessions.length === 0) return null;
 
   return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Sessions</p>
-      <div className="space-y-1.5">
-        {weekDays.map((dateStr, i) => {
-          const daySessions = sessionsByDate.get(dateStr) ?? [];
-          const dayLabel = WEEK_DOW[i];
-          const dayNum = dateStr.slice(8);
+    <div className="space-y-1.5 pt-1">
+      {weekDays.map((dateStr, i) => {
+        const daySessions = sessionsByDate.get(dateStr) ?? [];
+        const dayLabel = WEEK_DOW[i];
+        const dayNum = dateStr.slice(8);
 
-          if (daySessions.length === 0) {
-            return (
-              <div key={dateStr} className="flex items-baseline gap-2">
-                <span className="text-xs text-gray-400 w-14 shrink-0">{dayLabel} {dayNum}</span>
-                <span className="text-xs text-gray-300">Rest</span>
-              </div>
-            );
-          }
-
+        if (daySessions.length === 0) {
           return (
-            <div key={dateStr} className="space-y-1">
-              <span className="text-xs text-gray-400">{dayLabel} {dayNum}</span>
-              {daySessions.map((s) => (
-                <SessionRow key={s.id} session={s} />
-              ))}
+            <div key={dateStr} className="flex items-baseline gap-2">
+              <span className="text-xs text-zinc-400 w-14 shrink-0">{dayLabel} {dayNum}</span>
+              <span className="text-xs text-zinc-300">Rest</span>
             </div>
           );
-        })}
-      </div>
+        }
+
+        return (
+          <div key={dateStr} className="space-y-1">
+            <span className="text-xs text-zinc-400">{dayLabel} {dayNum}</span>
+            {daySessions.map((s) => (
+              <SessionRow key={s.id} session={s} />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -647,7 +724,7 @@ function SessionRow({ session: s }: { session: SessionSummary }) {
     ? [
         actualSportLabel,
         fmtMin(s.execution.actualMovingMin),
-        s.execution.actualDistanceKm != null ? `${s.execution.actualDistanceKm}km` : null,
+        s.execution.actualDistanceKm != null ? `${s.execution.actualDistanceKm} km` : null,
         s.execution.paceStr,
       ]
         .filter(Boolean)
@@ -655,35 +732,35 @@ function SessionRow({ session: s }: { session: SessionSummary }) {
     : null;
 
   return (
-    <div className="rounded bg-gray-50 px-2.5 py-1.5 space-y-0.5">
+    <div className="rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2 space-y-0.5">
       <div className="flex items-center gap-1.5 flex-wrap">
         <span
           className={`text-xs font-medium ${
-            isDone ? "text-green-600" : isSkipped ? "text-gray-400" : "text-gray-400"
+            isDone ? "text-emerald-600" : isSkipped ? "text-zinc-400" : "text-zinc-400"
           }`}
         >
           {isDone ? "✓" : isSkipped ? "—" : "·"}
         </span>
-        <span className="text-xs font-medium text-gray-700">
+        <span className="text-xs font-medium text-zinc-700 capitalize">
           {s.intensity} · {s.durationMin}min
         </span>
         {noteLabel && (
-          <span className="text-xs text-gray-500">{noteLabel}</span>
+          <span className="text-xs text-zinc-500">{noteLabel}</span>
         )}
-        {isSkipped && <span className="text-xs text-gray-400">(skipped)</span>}
-        {!isDone && !isSkipped && <span className="text-xs text-gray-400">(planned)</span>}
+        {isSkipped && <span className="text-xs text-zinc-400">(skipped)</span>}
+        {!isDone && !isSkipped && <span className="text-xs text-zinc-400">(planned)</span>}
       </div>
 
       {isDone && actualLine && (
         <div className="flex items-baseline gap-1 flex-wrap">
-          <span className="text-[10px] text-gray-400">Actual</span>
-          <span className="text-xs text-gray-600">{actualLine}</span>
-          <span className="text-[10px] text-gray-400">{s.execution!.qualityLabel}</span>
+          <span className="text-[10px] text-zinc-400">Actual</span>
+          <span className="text-xs text-zinc-600">{actualLine}</span>
+          <span className="text-[10px] text-zinc-400">{s.execution!.qualityLabel}</span>
         </div>
       )}
 
       {isDone && s.checkIn && (
-        <p className="text-[10px] text-gray-400">feel {s.checkIn.feelScore}/6</p>
+        <p className="text-[10px] text-zinc-400">feel {s.checkIn.feelScore}/6</p>
       )}
     </div>
   );
@@ -693,14 +770,15 @@ function CarryForwardBlock({ bullets }: { bullets: string[] }) {
   if (bullets.length === 0) return null;
 
   return (
-    <div className="rounded border border-gray-200 bg-gray-50 px-3 py-3 space-y-1.5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
         Carry into next week
       </p>
       <ul className="space-y-1">
         {bullets.map((b, i) => (
-          <li key={i} className="text-xs text-gray-700">
-            • {b}
+          <li key={i} className="text-xs text-zinc-700 flex items-start gap-1.5">
+            <span className="text-zinc-300 mt-0.5 shrink-0 select-none">·</span>
+            <span className="leading-relaxed">{b}</span>
           </li>
         ))}
       </ul>
@@ -720,20 +798,20 @@ function PreviousWeekBlock({
   if (!plan) return null;
 
   return (
-    <div className="rounded border border-gray-200 px-3 py-2.5">
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between text-left"
       >
-        <span className="text-xs font-semibold text-gray-500">
+        <span className="text-xs font-semibold text-zinc-500">
           Previous week · {plan.weekStart}
         </span>
-        <span className="text-xs text-gray-400">{open ? "▲" : "▼"}</span>
+        <span className="text-[10px] text-zinc-400">{open ? "▲ hide" : "▼ show"}</span>
       </button>
 
       {open && (
-        <div className="mt-2 space-y-2">
-          <p className="text-xs text-gray-500">
+        <div className="mt-3 pt-3 border-t border-zinc-100 space-y-2">
+          <p className="text-xs text-zinc-500">
             {plan.planned} sessions · {plan.done} done
             {plan.skipped > 0 ? ` · ${plan.skipped} skipped` : ""}
           </p>
@@ -743,7 +821,7 @@ function PreviousWeekBlock({
                 .split("\n\n")
                 .filter((l) => l.trim())
                 .map((line, i) => (
-                  <p key={i} className="text-xs text-gray-400">{line}</p>
+                  <p key={i} className="text-xs text-zinc-400 leading-relaxed">{line.replace(/^[•·]\s*/, "")}</p>
                 ))}
             </div>
           )}
@@ -759,7 +837,7 @@ function PreviousWeekBlock({
                 ? [
                     actualSportLabel,
                     fmtMin(s.execution.actualMovingMin),
-                    s.execution.actualDistanceKm != null ? `${s.execution.actualDistanceKm}km` : null,
+                    s.execution.actualDistanceKm != null ? `${s.execution.actualDistanceKm} km` : null,
                     s.execution.paceStr,
                   ]
                     .filter(Boolean)
@@ -767,18 +845,18 @@ function PreviousWeekBlock({
                 : null;
 
               return (
-                <div key={s.id} className="rounded bg-gray-50 px-2 py-1 space-y-0.5">
+                <div key={s.id} className="rounded-xl bg-zinc-50 border border-zinc-100 px-2.5 py-1.5 space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`text-[10px] ${isDone ? "text-green-600" : isSkipped ? "text-gray-400" : "text-gray-400"}`}>
+                    <span className={`text-[10px] ${isDone ? "text-emerald-600" : isSkipped ? "text-zinc-400" : "text-zinc-400"}`}>
                       {isDone ? "✓" : isSkipped ? "—" : "·"}
                     </span>
-                    <span className="text-[11px] text-gray-500">
+                    <span className="text-[11px] text-zinc-600 capitalize">
                       {s.date.slice(5)} · {s.intensity} · {s.durationMin}min
                       {noteLabel ? ` · ${noteLabel}` : ""}
                     </span>
                   </div>
                   {isDone && actualLine && (
-                    <p className="text-[10px] text-gray-400">
+                    <p className="text-[10px] text-zinc-400">
                       Actual: {actualLine}
                     </p>
                   )}

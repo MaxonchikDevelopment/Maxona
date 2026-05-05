@@ -246,7 +246,7 @@ export default async function TodayPage() {
     energy,
   };
 
-  const nutritionHash = hashInputs({ date: todayStr, ...nutritionAdviceInput });
+  const nutritionHash = hashInputs({ date: todayStr, nutritionAdviceVersion: 2, ...nutritionAdviceInput });
 
   const nutritionAdvice = await timed("today/nutrition-cache", () =>
     getCachedInsight<NutritionAdvice>({

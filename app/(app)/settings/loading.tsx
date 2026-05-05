@@ -1,10 +1,10 @@
 export default function SettingsLoading() {
   return (
-    <main className="p-4 space-y-4">
-      <h1 className="text-xl font-bold">Settings</h1>
-      <div className="h-24 rounded border bg-gray-50 animate-pulse" />
-      <div className="h-24 rounded border bg-gray-50 animate-pulse" />
-      <div className="h-24 rounded border bg-gray-50 animate-pulse" />
+    <main className="px-4 pt-6 pb-24 space-y-3">
+      <div className="h-20 rounded-2xl bg-zinc-100 animate-pulse" />
+      <div className="h-24 rounded-2xl bg-zinc-100 animate-pulse" />
+      <div className="h-24 rounded-2xl bg-zinc-100 animate-pulse" />
+      <div className="h-24 rounded-2xl bg-zinc-100 animate-pulse" />
     </main>
   );
 }

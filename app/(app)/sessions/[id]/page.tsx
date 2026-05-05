@@ -10,27 +10,28 @@ import { WorkoutFeedbackSection } from "@/components/workout-feedback-section";
 import { SessionAnalytics } from "@/components/session-analytics";
 import { AnalyzeStreamButton } from "@/components/analyze-stream-button";
 import { buildHrAnalytics } from "@/lib/analytics/hr-stream";
+import { PageWrapper } from "@/components/ui/page-wrapper";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
 import type { WorkoutBlock } from "@/components/session-card";
 
 export const dynamic = "force-dynamic";
 
 function intensityChip(intensity: string) {
-  if (intensity === "easy") return "bg-green-50 text-green-700";
+  if (intensity === "easy") return "bg-emerald-50 text-emerald-700";
   if (intensity === "hard") return "bg-red-50 text-red-700";
   return "bg-amber-50 text-amber-700";
 }
 
 function borderColor(intensity: string) {
-  if (intensity === "easy") return "border-green-200";
+  if (intensity === "easy") return "border-emerald-200";
   if (intensity === "hard") return "border-red-300";
   return "border-amber-200";
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  planned: "text-gray-500",
-  done: "text-green-600",
-  skipped: "text-gray-400",
+  planned: "text-zinc-500",
+  done: "text-emerald-600",
+  skipped: "text-zinc-400",
 };
 
 const INTENT_LABEL: Record<string, string> = {
@@ -125,10 +126,10 @@ export default async function SessionCoachViewPage({
     },
   }));
 
-  // HR analytics — only for done sessions with a primary Strava link
-  const primaryLink = session.status === "done"
-    ? session.stravaLinks.find((l) => l.isPrimary) ?? session.stravaLinks[0] ?? null
-    : null;
+  const primaryLink =
+    session.status === "done"
+      ? session.stravaLinks.find((l) => l.isPrimary) ?? session.stravaLinks[0] ?? null
+      : null;
 
   const activityWithStream = primaryLink
     ? await prisma.stravaActivity.findUnique({
@@ -159,208 +160,222 @@ export default async function SessionCoachViewPage({
   })();
 
   return (
-    <main className="p-4 space-y-4 max-w-lg mx-auto">
-      {/* Back nav */}
-      <div className="flex items-center gap-3 text-sm text-gray-400">
-        <Link href="/today" className="underline">
-          Today
-        </Link>
-        <span className="text-gray-200">·</span>
-        <Link href="/week" className="underline">
-          Week
-        </Link>
-      </div>
-
-      {/* A: Session header */}
-      <div className="rounded border p-4 space-y-2">
-        <div className="flex items-center justify-between flex-wrap gap-1">
-          <p className="text-sm font-semibold text-gray-700">{dateStr}</p>
-          <span
-            className={`text-xs capitalize ${STATUS_COLOR[session.status] ?? "text-gray-500"}`}
-          >
-            {session.status}
-          </span>
-        </div>
-
-        {session.notes && (
-          <p className="text-base font-medium text-gray-800">{session.notes}</p>
-        )}
-
-        <div className="flex flex-wrap gap-2 items-center text-xs">
-          <span
-            className={`rounded px-1.5 py-0.5 capitalize font-medium ${intensityChip(session.intensity)}`}
-          >
-            {session.intensity}
-          </span>
-          <span className="text-gray-500">{session.durationMin} min</span>
-          <span className="text-gray-400 capitalize">{session.preferredSlot}</span>
-          {session.planningType === "fixed" && (
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-500">fixed</span>
-          )}
-          {session.planningType === "preferred" && (
-            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-500">optional</span>
-          )}
-          {intentLabel && (
-            <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-600">
-              {intentLabel}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* B: Coach overview card */}
-      {plan ? (
-        <div className="rounded border border-indigo-100 bg-indigo-50 p-4 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400">
-            Coach overview
-          </p>
-          <p className="text-sm font-medium text-indigo-900">{plan.goal}</p>
-          {plan.target && (
-            <p className="text-xs font-medium text-indigo-700">{plan.target}</p>
-          )}
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-indigo-500">
-            <span>Type: {planTypeLabel(plan.planType)}</span>
+    <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+      {/* ── Back nav + hero ────────────────────────────────────────── */}
+      <div className="pt-6 pb-4">
+        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+          <div className="flex items-center gap-2 text-xs text-zinc-400 mb-3">
+            <Link href="/today" className="hover:text-zinc-600 transition-colors">
+              Today
+            </Link>
+            <span className="text-zinc-200">·</span>
+            <Link href="/week" className="hover:text-zinc-600 transition-colors">
+              Week
+            </Link>
           </div>
-          {zones && (
-            <p className="text-[10px] text-indigo-400 pt-0.5">
-              Z1 {zones.z1.min}–{zones.z1.max} · Z2 {zones.z2.min}–{zones.z2.max} · Z3{" "}
-              {zones.z3.min}–{zones.z3.max} · Z4 {zones.z4.min}–{zones.z4.max} bpm
-            </p>
-          )}
-          {plan.summary && (
-            <p className="text-xs text-indigo-600 italic">{plan.summary}</p>
-          )}
-        </div>
-      ) : (
-        <div className="rounded border border-dashed border-gray-200 p-4 text-center">
-          <p className="text-sm text-gray-400">No workout plan yet.</p>
-          <p className="text-xs text-gray-300 mt-1">
-            Generate one below to see the full briefing.
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">
+            Session
           </p>
+          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">
+            {session.notes ?? dateStr}
+          </h1>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="text-xs text-zinc-400">{dateStr}</span>
+            <span className="text-zinc-200">·</span>
+            <span className={`text-xs capitalize font-medium ${STATUS_COLOR[session.status] ?? "text-zinc-500"}`}>
+              {session.status}
+            </span>
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* C: Workout blocks timeline */}
-      {blocks.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-            Workout
-          </p>
-          {blocks.map((block, i) => (
-            <div
-              key={i}
-              className={`rounded border-l-[3px] bg-gray-50 px-3 py-2.5 space-y-1 ${borderColor(block.intensity)}`}
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium text-gray-800">{block.label}</span>
-                <span className="text-xs text-gray-400">{block.durationMin}m</span>
-                <span
-                  className={`text-[10px] capitalize rounded px-1.5 py-0.5 ${intensityChip(block.intensity)}`}
-                >
-                  {block.intensity}
+      <PageWrapper>
+        <div className="space-y-3">
+          {/* A: Session chips */}
+          <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4">
+            <div className="flex flex-wrap gap-2 items-center text-xs">
+              <span className={`rounded-full px-2.5 py-1 capitalize font-semibold text-[11px] ${intensityChip(session.intensity)}`}>
+                {session.intensity}
+              </span>
+              <span className="rounded-full bg-zinc-50 border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
+                {session.durationMin} min
+              </span>
+              <span className="rounded-full bg-zinc-50 border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 capitalize">
+                {session.preferredSlot}
+              </span>
+              {session.planningType === "fixed" && (
+                <span className="rounded-full bg-zinc-100 border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
+                  Fixed
                 </span>
-                {block.zone && (
-                  <span className="text-[10px] font-mono text-indigo-500">{block.zone}</span>
-                )}
-              </div>
-              <p className="text-xs text-gray-600 leading-relaxed">{block.description}</p>
-              {block.cue && (
-                <p className="text-[11px] text-indigo-600 italic">↳ {block.cue}</p>
               )}
-              {block.stationCues && block.stationCues.length > 0 && (
-                <div className="pt-1 space-y-0.5">
-                  {block.stationCues.map((cue, j) => (
-                    <p key={j} className="text-[11px] text-gray-500">
-                      {j + 1}. {cue}
-                    </p>
-                  ))}
-                </div>
+              {session.planningType === "preferred" && (
+                <span className="rounded-full bg-indigo-50 border border-indigo-100 px-2.5 py-1 text-[11px] font-medium text-indigo-600">
+                  Optional
+                </span>
               )}
-              {block.successCriteria && (
-                <p className="text-[11px] text-green-600">✓ {block.successCriteria}</p>
-              )}
-              {block.modification && (
-                <p className="text-[11px] text-amber-600">
-                  ⬇ If conditions degrade: {block.modification}
-                </p>
+              {intentLabel && (
+                <span className="rounded-full bg-indigo-50 border border-indigo-100 px-2.5 py-1 text-[11px] font-medium text-indigo-600">
+                  {intentLabel}
+                </span>
               )}
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* D: Rules */}
-      {rules.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-            Rules
-          </p>
-          <div className="rounded border bg-gray-50 px-3 py-2 space-y-1">
-            {rules.map((r, i) => (
-              <p key={i} className="text-xs text-gray-600">
-                • {r}
-              </p>
-            ))}
           </div>
-        </div>
-      )}
 
-      {/* E: Alternatives */}
-      {alternatives && alternatives.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-            Alternatives
-          </p>
-          <div className="rounded border bg-gray-50 px-3 py-2 space-y-1">
-            {alternatives.map((a, i) => (
-              <p key={i} className="text-xs text-gray-600">
-                • {a}
+          {/* B: Coach overview */}
+          {plan ? (
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 shadow-card p-4 space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400">
+                Coach overview
               </p>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Execution summary (done + Strava attached) */}
-      {session.status === "done" && stravaLinks.length > 0 && (
-        <ExecutionSummaryBlock
-          session={{ durationMin: session.durationMin, notes: session.notes }}
-          stravaLinks={stravaLinks}
-        />
-      )}
-
-      {/* HR Analytics */}
-      {session.status === "done" && (
-        <div className="rounded border border-indigo-100 p-4 space-y-3">
-          {stravaLinks.length === 0 ? (
-            <p className="text-xs text-gray-400">
-              Attach a Strava activity to see heart-rate analytics.
-            </p>
-          ) : !activityWithStream?.stream ? (
-            <AnalyzeStreamButton activityId={activityWithStream?.id ?? primaryLink!.activity.id} />
-          ) : !hrAnalytics ? (
-            <p className="text-xs text-gray-400">
-              Heart-rate stream not available for this activity.
-            </p>
+              <p className="text-sm font-medium text-indigo-900">{plan.goal}</p>
+              {plan.target && (
+                <p className="text-xs font-medium text-indigo-700">{plan.target}</p>
+              )}
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-indigo-500">
+                <span>Type: {planTypeLabel(plan.planType)}</span>
+              </div>
+              {zones && (
+                <p className="text-[10px] text-indigo-400 pt-0.5">
+                  Z1 {zones.z1.min}–{zones.z1.max} · Z2 {zones.z2.min}–{zones.z2.max} · Z3{" "}
+                  {zones.z3.min}–{zones.z3.max} · Z4 {zones.z4.min}–{zones.z4.max} bpm
+                </p>
+              )}
+              {plan.summary && (
+                <p className="text-xs text-indigo-600 italic">{plan.summary}</p>
+              )}
+            </div>
           ) : (
-            <SessionAnalytics
-              analytics={hrAnalytics}
-              calories={activityWithStream.calories}
+            <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-6 text-center">
+              <p className="text-sm text-zinc-400">No workout plan yet.</p>
+              <p className="text-xs text-zinc-300 mt-1">
+                Generate one below to see the full briefing.
+              </p>
+            </div>
+          )}
+
+          {/* C: Workout blocks */}
+          {blocks.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 px-0.5">
+                Workout
+              </p>
+              {blocks.map((block, i) => (
+                <div
+                  key={i}
+                  className={`rounded-xl border-l-[3px] bg-zinc-50 px-3 py-2.5 space-y-1 ${borderColor(block.intensity)}`}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-zinc-800">{block.label}</span>
+                    <span className="text-xs text-zinc-400">{block.durationMin}m</span>
+                    <span className={`text-[10px] capitalize rounded-full px-2 py-0.5 font-semibold ${intensityChip(block.intensity)}`}>
+                      {block.intensity}
+                    </span>
+                    {block.zone && (
+                      <span className="text-[10px] font-mono text-indigo-500">{block.zone}</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-zinc-600 leading-relaxed">{block.description}</p>
+                  {block.cue && (
+                    <p className="text-[11px] text-indigo-600 italic">↳ {block.cue}</p>
+                  )}
+                  {block.stationCues && block.stationCues.length > 0 && (
+                    <div className="pt-1 space-y-0.5">
+                      {block.stationCues.map((cue, j) => (
+                        <p key={j} className="text-[11px] text-zinc-500">
+                          {j + 1}. {cue}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {block.successCriteria && (
+                    <p className="text-[11px] text-emerald-600">✓ {block.successCriteria}</p>
+                  )}
+                  {block.modification && (
+                    <p className="text-[11px] text-amber-600">
+                      ⬇ If conditions degrade: {block.modification}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* D: Rules */}
+          {rules.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 px-0.5">
+                Rules
+              </p>
+              <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-1.5">
+                {rules.map((r, i) => (
+                  <p key={i} className="text-xs text-zinc-600 flex items-start gap-1.5">
+                    <span className="text-zinc-300 mt-0.5 shrink-0">·</span>
+                    <span>{r}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* E: Alternatives */}
+          {alternatives && alternatives.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 px-0.5">
+                Alternatives
+              </p>
+              <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-3 space-y-1.5">
+                {alternatives.map((a, i) => (
+                  <p key={i} className="text-xs text-zinc-600 flex items-start gap-1.5">
+                    <span className="text-zinc-300 mt-0.5 shrink-0">·</span>
+                    <span>{a}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Execution summary */}
+          {session.status === "done" && stravaLinks.length > 0 && (
+            <ExecutionSummaryBlock
+              session={{ durationMin: session.durationMin, notes: session.notes }}
+              stravaLinks={stravaLinks}
             />
           )}
+
+          {/* HR Analytics */}
+          {session.status === "done" && (
+            <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-3">
+              {stravaLinks.length === 0 ? (
+                <p className="text-xs text-zinc-400">
+                  Attach a Strava activity to see heart-rate analytics.
+                </p>
+              ) : !activityWithStream?.stream ? (
+                <AnalyzeStreamButton activityId={activityWithStream?.id ?? primaryLink!.activity.id} />
+              ) : !hrAnalytics ? (
+                <p className="text-xs text-zinc-400">
+                  Heart-rate stream not available for this activity.
+                </p>
+              ) : (
+                <SessionAnalytics
+                  analytics={hrAnalytics}
+                  calories={activityWithStream.calories}
+                />
+              )}
+            </div>
+          )}
+
+          {/* After workout / Workout feedback */}
+          <WorkoutFeedbackSection
+            sessionId={id}
+            initialFeedback={initialFeedback}
+            sessionIsDone={session.status === "done"}
+            hasCheckIn={!!session.checkIn}
+          />
+
+          {/* Actions */}
+          <CoachViewActions sessionId={id} hasPlan={!!plan} />
         </div>
-      )}
-
-      {/* G: After workout / Workout feedback */}
-      <WorkoutFeedbackSection
-        sessionId={id}
-        initialFeedback={initialFeedback}
-        sessionIsDone={session.status === "done"}
-        hasCheckIn={!!session.checkIn}
-      />
-
-      {/* H: Actions */}
-      <CoachViewActions sessionId={id} hasPlan={!!plan} />
+      </PageWrapper>
     </main>
   );
 }
