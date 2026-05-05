@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { motion } from "motion/react";
 import { stripMarkdownBold } from "@/lib/format-bullets";
 import { StravaPanel } from "@/components/strava-panel";
 import type { StravaLinkProp, StravaActivitySummary } from "@/components/strava-panel";
@@ -242,6 +243,8 @@ export function SessionCard({
   const [notes, setNotes] = useState(session.checkIn?.notes ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(session.status === "done" || !!session.checkIn);
+  const [isSkipped, setIsSkipped] = useState(session.status === "skipped");
+  const [skipPending, setSkipPending] = useState(false);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlanProp | null>(session.workoutPlan ?? null);
   const [feedbackGenerating, setFeedbackGenerating] = useState(false);
   const [showWorkoutPlan, setShowWorkoutPlan] = useState(false);
@@ -351,6 +354,19 @@ export function SessionCard({
     setSubmitting(false);
   }
 
+  async function handleSkip() {
+    setSkipPending(true);
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/skip`, { method: "POST" });
+      if (res.ok) {
+        setIsSkipped(true);
+        router.refresh();
+      }
+    } finally {
+      setSkipPending(false);
+    }
+  }
+
   async function generatePlan() {
     setPlanGenerating(true);
     try {
@@ -420,7 +436,12 @@ export function SessionCard({
     const hasBadges = (session.stravaLinks?.length ?? 0) > 0 || isInjury;
 
     return (
-      <div className={`rounded-2xl bg-white border border-zinc-100 border-l-[3px] ${intensityBorder} shadow-card px-3 py-2.5 space-y-1`}>
+      <motion.div
+        whileHover={{ y: -1 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+        className={`rounded-2xl bg-white border border-zinc-100 border-l-[3px] ${intensityBorder} shadow-card px-3 py-2.5 space-y-1`}
+      >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="text-sm font-semibold capitalize text-zinc-800">{session.intensity}</span>
@@ -438,14 +459,14 @@ export function SessionCard({
             )}
             <span
               className={`text-xs font-medium ${
-                session.status === "skipped"
+                (session.status === "skipped" || isSkipped)
                   ? "text-zinc-400"
                   : isResolved
                   ? "text-zinc-400"
                   : "text-emerald-600"
               }`}
             >
-              {session.status === "skipped"
+              {(session.status === "skipped" || isSkipped)
                 ? "Skipped"
                 : isResolved
                 ? "Done · resolved"
@@ -484,12 +505,12 @@ export function SessionCard({
             )}
           </div>
         )}
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className={`space-y-2 rounded-2xl bg-white border border-zinc-100 border-l-[3px] ${intensityBorder} shadow-card p-4`}>
+    <div className={`space-y-2 rounded-2xl bg-white border border-zinc-100 border-l-[3px] ${intensityBorder} shadow-card hover:shadow-card-hover transition-shadow duration-200 p-4`}>
       {/* ── Session header ── */}
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
@@ -523,18 +544,39 @@ export function SessionCard({
                 </button>
               )}
             </>
+          ) : isSkipped ? (
+            <span className="text-xs text-zinc-400">Skipped</span>
           ) : isFuture ? (
-            <span className="text-xs text-zinc-400">Upcoming</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400">Upcoming</span>
+              <button
+                onClick={handleSkip}
+                disabled={skipPending}
+                className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors disabled:opacity-40"
+              >
+                {skipPending ? "…" : "Skip"}
+              </button>
+            </div>
           ) : (
-            <button
-              onClick={() => {
-                setEditing(false);
-                setOpen(true);
-              }}
-              className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
-            >
-              Check in
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setEditing(false);
+                  setOpen(true);
+                }}
+                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+              >
+                Check in
+              </button>
+              <span className="text-zinc-200 select-none">·</span>
+              <button
+                onClick={handleSkip}
+                disabled={skipPending}
+                className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors disabled:opacity-40"
+              >
+                {skipPending ? "…" : "Skip"}
+              </button>
+            </div>
           )}
           {shouldCollapse && (
             <button
@@ -678,6 +720,11 @@ export function SessionCard({
             </div>
           )}
         </>
+      ) : isSkipped ? (
+        // ════════════════════════════════════════
+        // SKIPPED SESSION — minimal body
+        // ════════════════════════════════════════
+        session.notes ? <p className="text-sm text-zinc-500">{session.notes}</p> : null
       ) : (
         // ════════════════════════════════════════
         // UPCOMING / PLANNED SESSION — plan-first layout

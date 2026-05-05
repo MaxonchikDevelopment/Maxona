@@ -240,10 +240,12 @@ export default async function WeekPage() {
     if (process.env.NODE_ENV !== "production")
       console.log(`[perf] week/total (no plan): ${Date.now() - pageStart}ms`);
     return (
-      <main className="min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+      <main className="page-ambient relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
         <div className="pt-6 pb-4">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
-          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+          <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
+            <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+          </div>
         </div>
         <PageWrapper>
           <div className="space-y-3">
@@ -485,43 +487,45 @@ export default async function WeekPage() {
     !!draftPlan;
 
   return (
-    <main className="min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+    <main className="page-ambient relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Plan header ──────────────────────────────────────────────── */}
       <div className="pt-6 pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
-            <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
+              <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+            </div>
+            <div className="mt-1">
+              <ReplanButton mode="replan" />
+            </div>
           </div>
-          <div className="mt-1">
-            <ReplanButton mode="replan" />
-          </div>
+          {plan.focusSummary && (
+            <p className="text-sm text-zinc-500 mt-2 leading-relaxed line-clamp-2">
+              {normalizeCoachBullets(plan.focusSummary)
+                .split("\n\n")
+                .filter((l) => l.trim())
+                .map((l) => l.replace(/^[•·]\s*/, ""))
+                .join(" · ")}
+            </p>
+          )}
+          {/* Desktop stats row */}
+          {plannedSessions.length > 0 && (
+            <div className="hidden lg:flex items-center gap-3 mt-3 flex-wrap">
+              <span className="text-xs text-zinc-500">
+                {plannedSessions.length} session{plannedSessions.length !== 1 ? "s" : ""}
+              </span>
+              <span className="text-zinc-300">·</span>
+              <span className="text-xs text-zinc-500">{totalPlanMin} min total</span>
+              {hardCount > 0 && (
+                <>
+                  <span className="text-zinc-300">·</span>
+                  <span className="text-xs text-red-600 font-medium">{hardCount} hard</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
-        {plan.focusSummary && (
-          <p className="text-sm text-zinc-500 mt-2 leading-relaxed line-clamp-2">
-            {normalizeCoachBullets(plan.focusSummary)
-              .split("\n\n")
-              .filter((l) => l.trim())
-              .map((l) => l.replace(/^[•·]\s*/, ""))
-              .join(" · ")}
-          </p>
-        )}
-        {/* Desktop stats row */}
-        {plannedSessions.length > 0 && (
-          <div className="hidden lg:flex items-center gap-3 mt-3 flex-wrap">
-            <span className="text-xs text-zinc-500">
-              {plannedSessions.length} session{plannedSessions.length !== 1 ? "s" : ""}
-            </span>
-            <span className="text-zinc-300">·</span>
-            <span className="text-xs text-zinc-500">{totalPlanMin} min total</span>
-            {hardCount > 0 && (
-              <>
-                <span className="text-zinc-300">·</span>
-                <span className="text-xs text-red-600 font-medium">{hardCount} hard</span>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       <PageWrapper>
@@ -547,7 +551,7 @@ export default async function WeekPage() {
 
                   return (
                     <StaggerItem key={dateStr}>
-                      <div>
+                      <div className={isToday ? "pl-3 border-l-2 border-indigo-200" : ""}>
                         {/* Day header */}
                         <div className={`flex items-center gap-2 mb-2 ${isPast ? "opacity-40" : ""}`}>
                           <span className={`text-sm font-semibold ${isToday ? "text-zinc-900" : "text-zinc-600"}`}>
@@ -555,7 +559,7 @@ export default async function WeekPage() {
                           </span>
                           <span className="text-xs text-zinc-400">{dateStr.slice(5)}</span>
                           {isToday && (
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">
                               Today
                             </span>
                           )}

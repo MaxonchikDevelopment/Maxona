@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "motion/react";
 
 const NAV_ITEMS = [
   { href: "/today", label: "Today" },
@@ -28,7 +29,11 @@ export function DesktopNav() {
               }`}
             >
               {isActive && (
-                <span className="absolute left-1/2 -translate-x-1/2 -bottom-[13px] h-[2px] w-4 rounded-t-full bg-zinc-800" />
+                <motion.span
+                  layoutId="desktop-nav-indicator"
+                  className="absolute left-1/2 -translate-x-1/2 -bottom-[13px] h-[2px] w-4 rounded-t-full bg-zinc-800"
+                  transition={{ type: "tween", duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                />
               )}
               {label}
             </Link>

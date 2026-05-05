@@ -133,6 +133,62 @@ Rules:
 
 ---
 
+## Motion & Liquid Glass Polish (Design Sprint 3)
+
+### Glass surfaces — when and where
+
+Use glass only on nav, hero headers, and selected context panels. Normal content cards stay `bg-white` — legibility over atmosphere.
+
+Glass recipe:
+```
+rounded-2xl bg-white/70 backdrop-blur-sm border border-zinc-100/80 shadow-sm
+```
+
+Apply on desktop (`lg:`) only via responsive prefix — mobile stays plain.
+
+### Ambient background
+
+Static CSS radial gradients — no animation, no JS. Very low opacity (≤ 6%). Only indigo + emerald to match semantic palette. Applied via `.page-ambient` utility on Today and Week `<main>`.
+
+### Motion rules
+
+- Card hover/press: only on compact/actionable cards, never on full interactive surfaces
+- Hover lift: `y: -1px` — barely perceptible
+- Tap: `scale: 0.98` (compact cards), `scale: 0.995` (expanded)
+- Nav active indicator: `layoutId` shared layout — slides between tabs
+- All durations: hover/press 120–180ms, nav 200–250ms
+
+### Duration table
+
+| Trigger              | Duration    |
+|----------------------|-------------|
+| hover lift / press   | 150ms tween |
+| compact card tap     | 150ms tween |
+| nav active slide     | 220ms tween |
+| card enter (stagger) | 220ms tween |
+| page enter           | 280ms tween |
+
+### Anti-patterns
+
+- No `backdrop-blur` on content-heavy session cards
+- No large blur values (`backdrop-blur-xl`) on anything except nav
+- No bouncing springs (`type: "spring"` with visible overshoot)
+- No infinite animations — even subtle ones
+- No gradient on every surface — reserve for hero/ambient
+- No animation that shifts layout (height, width, flex)
+- Contrast must remain readable over any glass surface
+
+### Skip action style
+
+"Skip" is a destructive-adjacent secondary action. Style as muted text button:
+- `text-xs text-zinc-400 hover:text-zinc-600 transition-colors`
+- Never a filled button, never indigo
+- Shows a `…` placeholder while pending (loading state)
+- Disabled while request is in flight
+- Does not appear for done or already-skipped sessions
+
+---
+
 ## Bottom Nav
 
 - Fixed bottom, `bg-white/95 backdrop-blur-sm`

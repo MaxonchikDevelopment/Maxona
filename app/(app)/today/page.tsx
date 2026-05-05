@@ -401,26 +401,28 @@ export default async function TodayPage() {
   const totalMin = props.reduce((t, s) => t + s.durationMin, 0);
 
   return (
-    <main className="min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+    <main className="page-ambient relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Hero header ─────────────────────────────────────────────── */}
       <div className="pt-6 pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Today</p>
-            <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">{dayName}</h1>
-            <p className="text-sm text-zinc-500 mt-1">{dayDisplay}</p>
-          </div>
-          {readinessPillClass && (
-            <div className={`rounded-full px-3 py-1.5 text-sm font-semibold mt-1 shrink-0 ${readinessPillClass}`}>
-              {readinessScore}/6
+        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Today</p>
+              <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">{dayName}</h1>
+              <p className="text-sm text-zinc-500 mt-1">{dayDisplay}</p>
             </div>
+            {readinessPillClass && (
+              <div className={`rounded-full px-3 py-1.5 text-sm font-semibold mt-1 shrink-0 ${readinessPillClass}`}>
+                {readinessScore}/6
+              </div>
+            )}
+          </div>
+          {props.length > 0 && (
+            <p className="text-xs text-zinc-500 mt-2.5">
+              {props.length} session{props.length > 1 ? "s" : ""} · {totalMin} min
+            </p>
           )}
         </div>
-        {props.length > 0 && (
-          <p className="text-xs text-zinc-500 mt-2.5">
-            {props.length} session{props.length > 1 ? "s" : ""} · {totalMin} min
-          </p>
-        )}
       </div>
 
       {/* ── Page content ────────────────────────────────────────────── */}

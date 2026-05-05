@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "motion/react";
 
 const NAV_ITEMS = [
   { href: "/today", label: "Today" },
@@ -26,7 +27,11 @@ export function BottomNav() {
               }`}
             >
               {isActive && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-5 rounded-b-full bg-zinc-900" />
+                <motion.span
+                  layoutId="bottom-nav-indicator"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-5 rounded-b-full bg-zinc-900"
+                  transition={{ type: "tween", duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                />
               )}
               {label}
             </Link>
