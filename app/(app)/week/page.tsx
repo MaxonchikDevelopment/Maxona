@@ -14,6 +14,7 @@ import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { timed } from "@/lib/perf";
 import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
+import { DashboardShell } from "@/components/ui/dashboard-shell";
 import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
@@ -77,6 +78,59 @@ const ACTIVITY_SELECT = {
 
 function toDateStr(d: Date) {
   return d.toISOString().split("T")[0];
+}
+
+type ReadinessBannerProps = { category: string; feelScore: number; tags: unknown };
+
+function ReadinessBanner({ readiness }: { readiness: ReadinessBannerProps }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+      <span className="font-semibold">
+        {readiness.category === "injury" ? "Injury" : "Fatigue"} · {readiness.feelScore}/6
+      </span>
+      {(readiness.tags as string[]).length > 0 && (
+        <>
+          <span className="text-amber-400">·</span>
+          <span>
+            {(readiness.tags as string[])
+              .map((t) => READINESS_TAG_LABELS[t] ?? t)
+              .join(", ")}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChangeBlock({ explanation }: { explanation: string }) {
+  return (
+    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-4 py-3 space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400">What changed</p>
+      <ul className="space-y-1">
+        {normalizeCoachBullets(explanation)
+          .split("\n\n")
+          .filter((l) => l.trim())
+          .map((line, i) => (
+            <li key={i} className="text-xs text-indigo-800">
+              · {line.replace(/^[•·]\s*/, "")}
+            </li>
+          ))}
+      </ul>
+    </div>
+  );
+}
+
+function NutritionFocusBlock({ focus }: { focus: WeeklyNutritionFocus }) {
+  return (
+    <div className="rounded-2xl bg-emerald-50/70 border border-emerald-100 px-4 py-3 space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Weekly nutrition focus</p>
+      <ul className="space-y-1">
+        {focus.bullets.map((b, i) => (
+          <li key={i} className="text-xs text-emerald-800">· {stripMarkdownBold(b)}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export default async function WeekPage() {
@@ -186,7 +240,7 @@ export default async function WeekPage() {
     if (process.env.NODE_ENV !== "production")
       console.log(`[perf] week/total (no plan): ${Date.now() - pageStart}ms`);
     return (
-      <main className="min-h-screen px-4 pt-0 pb-24">
+      <main className="min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
         <div className="pt-6 pb-4">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
           <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
@@ -418,8 +472,20 @@ export default async function WeekPage() {
     return d.toISOString().split("T")[0];
   });
 
+  // Desktop header stats — computed from plan sessions (no extra queries)
+  const plannedSessions = plan.sessions.filter((s) => s.status !== "skipped");
+  const totalPlanMin = plannedSessions.reduce((t, s) => t + s.durationMin, 0);
+  const hardCount = plannedSessions.filter((s) => s.intensity === "hard").length;
+
+  const hasSideContent =
+    !!latestReadiness ||
+    activeIssues.length > 0 ||
+    !!plan.changeExplanation ||
+    (weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0) ||
+    !!draftPlan;
+
   return (
-    <main className="min-h-screen px-4 pt-0 pb-24">
+    <main className="min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Plan header ──────────────────────────────────────────────── */}
       <div className="pt-6 pb-4">
         <div className="flex items-start justify-between gap-3">
@@ -440,104 +506,105 @@ export default async function WeekPage() {
               .join(" · ")}
           </p>
         )}
+        {/* Desktop stats row */}
+        {plannedSessions.length > 0 && (
+          <div className="hidden lg:flex items-center gap-3 mt-3 flex-wrap">
+            <span className="text-xs text-zinc-500">
+              {plannedSessions.length} session{plannedSessions.length !== 1 ? "s" : ""}
+            </span>
+            <span className="text-zinc-300">·</span>
+            <span className="text-xs text-zinc-500">{totalPlanMin} min total</span>
+            {hardCount > 0 && (
+              <>
+                <span className="text-zinc-300">·</span>
+                <span className="text-xs text-red-600 font-medium">{hardCount} hard</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <PageWrapper>
-        <div className="space-y-3">
-          {isNewUser && <OnboardingCard />}
+        <DashboardShell
+          main={
+            <div className="space-y-3">
+              {/* Mobile-only context block: readiness, issues, change, nutrition */}
+              <div className="lg:hidden space-y-3">
+                {latestReadiness && <ReadinessBanner readiness={latestReadiness} />}
+                <ActiveIssues initialIssues={activeIssues} />
+                {plan.changeExplanation && <ChangeBlock explanation={plan.changeExplanation} />}
+                {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
+                  <NutritionFocusBlock focus={weeklyNutritionFocus} />
+                )}
+              </div>
 
-          {latestReadiness && (
-            <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
-              <span className="font-semibold">
-                {latestReadiness.category === "injury" ? "Injury" : "Fatigue"} · {latestReadiness.feelScore}/6
-              </span>
-              {(latestReadiness.tags as string[]).length > 0 && (
-                <>
-                  <span className="text-amber-400">·</span>
-                  <span>
-                    {(latestReadiness.tags as string[])
-                      .map((t) => READINESS_TAG_LABELS[t] ?? t)
-                      .join(", ")}
-                  </span>
-                </>
+              {/* Week days — primary content, always in main column */}
+              <StaggerList className="space-y-4">
+                {weekDays.map((dateStr, i) => {
+                  const daySessions = sessionsByDate[dateStr] ?? [];
+                  const isPast = dateStr < todayStr;
+                  const isToday = dateStr === todayStr;
+
+                  return (
+                    <StaggerItem key={dateStr}>
+                      <div>
+                        {/* Day header */}
+                        <div className={`flex items-center gap-2 mb-2 ${isPast ? "opacity-40" : ""}`}>
+                          <span className={`text-sm font-semibold ${isToday ? "text-zinc-900" : "text-zinc-600"}`}>
+                            {DOW[i]}
+                          </span>
+                          <span className="text-xs text-zinc-400">{dateStr.slice(5)}</span>
+                          {isToday && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+                              Today
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Sessions or rest */}
+                        {daySessions.length === 0 ? (
+                          <p className={`text-xs py-1 ${isPast ? "text-zinc-300" : "text-zinc-400"}`}>Rest</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {daySessions.map((s) => (
+                              <SessionCard key={s.id} session={s} todayStr={todayStr} />
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-2">
+                          <ManualSessionForm defaultDate={dateStr} />
+                        </div>
+                      </div>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerList>
+
+              {/* Draft preview — mobile-only inline (desktop version lives in side rail) */}
+              {draftPlan && (
+                <div className="lg:hidden">
+                  <DraftPreview plan={draftPlan} todayStr={todayStr} />
+                </div>
               )}
             </div>
-          )}
-
-          <ActiveIssues initialIssues={activeIssues} />
-
-          {plan.changeExplanation && (
-            <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-4 py-3 space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400">What changed</p>
-              <ul className="space-y-1">
-                {normalizeCoachBullets(plan.changeExplanation)
-                  .split("\n\n")
-                  .filter((l) => l.trim())
-                  .map((line, i) => (
-                    <li key={i} className="text-xs text-indigo-800">
-                      · {line.replace(/^[•·]\s*/, "")}
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          )}
-
-          {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
-            <div className="rounded-2xl bg-emerald-50/70 border border-emerald-100 px-4 py-3 space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Weekly nutrition focus</p>
-              <ul className="space-y-1">
-                {weeklyNutritionFocus.bullets.map((b, i) => (
-                  <li key={i} className="text-xs text-emerald-800">· {stripMarkdownBold(b)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* ── Week days ─────────────────────────────────────────── */}
-          <StaggerList className="space-y-4">
-            {weekDays.map((dateStr, i) => {
-              const daySessions = sessionsByDate[dateStr] ?? [];
-              const isPast = dateStr < todayStr;
-              const isToday = dateStr === todayStr;
-
-              return (
-                <StaggerItem key={dateStr}>
-                  <div>
-                    {/* Day header */}
-                    <div className={`flex items-center gap-2 mb-2 ${isPast ? "opacity-40" : ""}`}>
-                      <span className={`text-sm font-semibold ${isToday ? "text-zinc-900" : "text-zinc-600"}`}>
-                        {DOW[i]}
-                      </span>
-                      <span className="text-xs text-zinc-400">{dateStr.slice(5)}</span>
-                      {isToday && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
-                          Today
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Sessions or rest */}
-                    {daySessions.length === 0 ? (
-                      <p className={`text-xs py-1 ${isPast ? "text-zinc-300" : "text-zinc-400"}`}>Rest</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {daySessions.map((s) => (
-                          <SessionCard key={s.id} session={s} todayStr={todayStr} />
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="mt-2">
-                      <ManualSessionForm defaultDate={dateStr} />
-                    </div>
-                  </div>
-                </StaggerItem>
-              );
-            })}
-          </StaggerList>
-
-          {draftPlan && <DraftPreview plan={draftPlan} todayStr={todayStr} />}
-        </div>
+          }
+          side={
+            hasSideContent ? (
+              <>
+                {latestReadiness && <ReadinessBanner readiness={latestReadiness} />}
+                <ActiveIssues initialIssues={activeIssues} />
+                {plan.changeExplanation && <ChangeBlock explanation={plan.changeExplanation} />}
+                {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
+                  <NutritionFocusBlock focus={weeklyNutritionFocus} />
+                )}
+                {draftPlan && <DraftPreview plan={draftPlan} todayStr={todayStr} />}
+              </>
+            ) : (
+              <></>
+            )
+          }
+        />
       </PageWrapper>
     </main>
   );

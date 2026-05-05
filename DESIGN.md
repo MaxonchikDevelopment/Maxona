@@ -168,3 +168,57 @@ Rules:
 - No plain `rounded border` — use `rounded-2xl` with explicit border color
 - No hardcoded `bg-blue-50` for coach (use `bg-indigo-50`)
 - No `text-blue-600` for primary actions — use `text-indigo-600`
+
+---
+
+## Responsive Dashboard Layout
+
+Maxona is mobile-first. The desktop layout is an enhancement layer, not a redesign.
+
+### Breakpoints
+
+| Viewport  | Layout                        | Nav                    |
+|-----------|-------------------------------|------------------------|
+| Mobile    | Single column, current flow   | Bottom nav             |
+| lg (1024+)| Two-column dashboard grid     | Top sticky nav, no bottom nav |
+| xl (1280+)| Wider container (max-w-7xl)   | Same as lg             |
+
+### Container
+
+```
+max-w-md            mobile (≤1024px)
+max-w-6xl lg:px-6   desktop standard
+max-w-7xl xl:px-8   wide desktop
+```
+
+### Content grid (lg+)
+
+```
+lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start
+```
+
+- Left / main column: primary daily or weekly content
+- Right / side rail: contextual secondary content (nutrition, issues, coach context)
+- Side rail width: `360px` fixed — wide enough to read, narrow enough to not dominate
+
+### Today — desktop composition
+
+Main column: `DailyReadinessCard` → sessions → implication banner → `ManualSessionForm`
+Side rail: `OnboardingCard` (new users) → `NutritionCard` → `ActiveIssues`
+
+### Week — desktop composition
+
+Main column: day-by-day weekly board (full session cards, `ManualSessionForm` per day)
+Side rail: readiness banner → `ActiveIssues` → change explanation → weekly nutrition focus → draft preview
+
+### Rules
+
+- Mobile single column is always the source of truth — desktop grid is layered on top
+- Items that appear in the desktop side rail are hidden with `lg:hidden` in the mobile main flow, and revealed in the `hidden lg:flex` side rail — no double rendering visible to users
+- Hero headers stay full-width above the grid (no grid split at header level)
+- Side rail is not sticky — natural scroll, no z-index complexity
+- Desktop nav is sticky top-0 — stays visible while scrolling long pages
+- Avoid enterprise density: keep card padding unchanged, don't cram more info per card
+- Preserve the calm premium athletic mood at all viewport sizes
+- No horizontal scrolling at any width
+- Side rail items should feel like "coach's notes", not a busy dashboard widget panel

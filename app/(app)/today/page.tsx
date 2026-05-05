@@ -14,6 +14,7 @@ import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight
 import { estimateDayEnergy } from "@/lib/nutrition/energy-estimate";
 import { timed } from "@/lib/perf";
 import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
+import { DashboardShell } from "@/components/ui/dashboard-shell";
 import type { NutritionAdvice, MealTimingItem } from "@/lib/ai/nutrition-advice";
 import type { DayEnergyEstimate } from "@/lib/nutrition/energy-estimate";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
@@ -400,7 +401,7 @@ export default async function TodayPage() {
   const totalMin = props.reduce((t, s) => t + s.durationMin, 0);
 
   return (
-    <main className="min-h-screen px-4 pt-0 pb-24">
+    <main className="min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Hero header ─────────────────────────────────────────────── */}
       <div className="pt-6 pb-4">
         <div className="flex items-start justify-between gap-3">
@@ -424,55 +425,77 @@ export default async function TodayPage() {
 
       {/* ── Page content ────────────────────────────────────────────── */}
       <PageWrapper>
-        <div className="space-y-3">
-          {isNewUser && <OnboardingCard />}
-          <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
-
-          {props.length === 0 ? (
-            <StaggerList className="space-y-3">
-              <StaggerItem>
-                <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-4">
-                  <p className="text-sm font-medium text-zinc-700">Rest day</p>
-                  <p className="text-xs text-zinc-400 mt-0.5">Nothing scheduled — recovery time</p>
+        <DashboardShell
+          main={
+            <div className="space-y-3">
+              {/* Onboarding: mobile-only (desktop version lives in side rail) */}
+              {isNewUser && (
+                <div className="lg:hidden">
+                  <OnboardingCard />
                 </div>
-              </StaggerItem>
-              {nutritionAdvice && (
-                <StaggerItem>
-                  <NutritionCard advice={nutritionAdvice} />
-                </StaggerItem>
               )}
-              <StaggerItem>
-                <ManualSessionForm defaultDate={todayStr} />
-              </StaggerItem>
-            </StaggerList>
-          ) : (
-            <StaggerList className="space-y-3">
-              {props.map((s) => (
-                <StaggerItem key={s.id}>
-                  <SessionCard session={s} todayStr={todayStr} />
-                </StaggerItem>
-              ))}
-              {implicationLine && (
-                <StaggerItem>
-                  <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-500 shrink-0 mt-0.5">Recovery</span>
-                    <p className="text-xs text-amber-700">{implicationLine}</p>
-                  </div>
-                </StaggerItem>
-              )}
-              {nutritionAdvice && (
-                <StaggerItem>
-                  <NutritionCard advice={nutritionAdvice} />
-                </StaggerItem>
-              )}
-              <StaggerItem>
-                <ManualSessionForm defaultDate={todayStr} />
-              </StaggerItem>
-            </StaggerList>
-          )}
 
-          <ActiveIssues initialIssues={activeIssues} />
-        </div>
+              <DailyReadinessCard initialReadiness={readinessProp} todayStr={todayStr} />
+
+              {props.length === 0 ? (
+                <StaggerList className="space-y-3">
+                  <StaggerItem>
+                    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-4">
+                      <p className="text-sm font-medium text-zinc-700">Rest day</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">Nothing scheduled — recovery time</p>
+                    </div>
+                  </StaggerItem>
+                  {/* Nutrition: mobile-only inline (desktop version lives in side rail) */}
+                  {nutritionAdvice && (
+                    <StaggerItem className="lg:hidden">
+                      <NutritionCard advice={nutritionAdvice} />
+                    </StaggerItem>
+                  )}
+                  <StaggerItem>
+                    <ManualSessionForm defaultDate={todayStr} />
+                  </StaggerItem>
+                </StaggerList>
+              ) : (
+                <StaggerList className="space-y-3">
+                  {props.map((s) => (
+                    <StaggerItem key={s.id}>
+                      <SessionCard session={s} todayStr={todayStr} />
+                    </StaggerItem>
+                  ))}
+                  {implicationLine && (
+                    <StaggerItem>
+                      <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-500 shrink-0 mt-0.5">Recovery</span>
+                        <p className="text-xs text-amber-700">{implicationLine}</p>
+                      </div>
+                    </StaggerItem>
+                  )}
+                  {/* Nutrition: mobile-only inline (desktop version lives in side rail) */}
+                  {nutritionAdvice && (
+                    <StaggerItem className="lg:hidden">
+                      <NutritionCard advice={nutritionAdvice} />
+                    </StaggerItem>
+                  )}
+                  <StaggerItem>
+                    <ManualSessionForm defaultDate={todayStr} />
+                  </StaggerItem>
+                </StaggerList>
+              )}
+
+              {/* Active issues: mobile-only inline (desktop version lives in side rail) */}
+              <div className="lg:hidden">
+                <ActiveIssues initialIssues={activeIssues} />
+              </div>
+            </div>
+          }
+          side={
+            <>
+              {isNewUser && <OnboardingCard />}
+              {nutritionAdvice && <NutritionCard advice={nutritionAdvice} />}
+              <ActiveIssues initialIssues={activeIssues} />
+            </>
+          }
+        />
       </PageWrapper>
     </main>
   );
@@ -601,4 +624,3 @@ function NutritionCard({ advice }: { advice: NutritionAdvice }) {
     </div>
   );
 }
-
