@@ -80,58 +80,58 @@ export function DailyReadinessCard({
   const score = readiness?.feelScore;
   const cardBg =
     !readiness
-      ? "border-gray-200"
+      ? "bg-white border-zinc-100 shadow-card"
       : readiness.category === "injury"
-      ? "border-red-200 bg-red-50"
+      ? "bg-red-50 border-red-100"
       : readiness.category === "fatigue"
-      ? "border-amber-100 bg-amber-50"
+      ? "bg-amber-50 border-amber-100"
       : (score ?? 0) >= 5
-      ? "border-green-200 bg-green-50"
-      : "border-gray-200";
+      ? "bg-emerald-50/70 border-emerald-100"
+      : "bg-white border-zinc-100 shadow-card";
 
   const scoreColor =
     !score
-      ? "text-gray-600"
+      ? "text-zinc-600"
       : score <= 2
       ? "text-red-600"
       : score <= 3
       ? "text-amber-600"
       : score >= 5
-      ? "text-green-600"
-      : "text-gray-600";
+      ? "text-emerald-600"
+      : "text-zinc-600";
 
   const isPositive = (score ?? 0) >= 5;
 
   return (
-    <div className={`rounded border p-4 space-y-2 ${cardBg}`}>
+    <div className={`rounded-2xl border p-4 space-y-2 ${cardBg}`}>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-700">Daily readiness</span>
+        <span className="text-sm font-semibold text-zinc-700">Daily readiness</span>
         {readiness ? (
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${scoreColor}`}>{readiness.feelScore}/6</span>
+            <span className={`text-sm font-semibold ${scoreColor}`}>{readiness.feelScore}/6</span>
             {!editing && (
-              <button onClick={startEdit} className="text-xs text-gray-400 underline">
+              <button onClick={startEdit} className="text-xs text-zinc-400 underline hover:text-zinc-600 transition-colors">
                 edit
               </button>
             )}
           </div>
         ) : (
           !open && (
-            <button onClick={() => setOpen(true)} className="text-sm text-blue-600">
-              How are you feeling today?
+            <button onClick={() => setOpen(true)} className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors">
+              How are you feeling?
             </button>
           )
         )}
       </div>
 
       {readiness && !open && (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {readiness.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {readiness.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500"
+                  className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500"
                 >
                   {TAG_LABELS[tag as ReadinessTag] ?? tag}
                 </span>
@@ -139,14 +139,14 @@ export function DailyReadinessCard({
             </div>
           )}
           {readiness.notes && (
-            <p className="text-xs text-gray-500 italic">&ldquo;{readiness.notes}&rdquo;</p>
+            <p className="text-xs text-zinc-500 italic">&ldquo;{readiness.notes}&rdquo;</p>
           )}
           {readiness.coachAdvice && (
-            <div className={`rounded px-2 py-1.5 ${isPositive ? "bg-green-50" : "bg-amber-50"}`}>
-              <p className={`text-xs font-medium mb-0.5 ${isPositive ? "text-green-700" : "text-amber-700"}`}>
+            <div className={`rounded-xl px-3 py-2 ${isPositive ? "bg-emerald-50 border border-emerald-100" : "bg-amber-50 border border-amber-100"}`}>
+              <p className={`text-[10px] font-semibold uppercase tracking-widest mb-0.5 ${isPositive ? "text-emerald-600" : "text-amber-600"}`}>
                 Coach
               </p>
-              <p className={`text-xs whitespace-pre-line ${isPositive ? "text-green-800" : "text-amber-800"}`}>
+              <p className={`text-xs whitespace-pre-line ${isPositive ? "text-emerald-800" : "text-amber-800"}`}>
                 {readiness.coachAdvice}
               </p>
             </div>
@@ -155,15 +155,17 @@ export function DailyReadinessCard({
       )}
 
       {open && (
-        <div className="space-y-2 border-t pt-2">
-          <p className="text-xs text-gray-400">How do you feel today? (1 = terrible, 6 = great)</p>
+        <div className="space-y-2.5 border-t border-zinc-100 pt-3">
+          <p className="text-xs text-zinc-400">How do you feel today? (1 = terrible, 6 = great)</p>
           <div className="flex gap-2">
             {[1, 2, 3, 4, 5, 6].map((n) => (
               <button
                 key={n}
                 onClick={() => setFeelScore(n)}
-                className={`h-8 w-8 rounded border text-sm ${
-                  feelScore === n ? "bg-black text-white" : ""
+                className={`h-9 w-9 rounded-xl border text-sm font-medium transition-colors ${
+                  feelScore === n
+                    ? "bg-zinc-900 text-white border-zinc-900"
+                    : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
                 }`}
               >
                 {n}
@@ -175,10 +177,10 @@ export function DailyReadinessCard({
               <button
                 key={tag}
                 onClick={() => toggleTag(tag)}
-                className={`rounded border px-2 py-0.5 text-xs ${
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   tags.includes(tag)
-                    ? "bg-black text-white border-black"
-                    : "text-gray-500"
+                    ? "bg-zinc-900 text-white border-zinc-900"
+                    : "border-zinc-200 text-zinc-500 hover:border-zinc-400"
                 }`}
               >
                 {TAG_LABELS[tag]}
@@ -190,22 +192,22 @@ export function DailyReadinessCard({
             placeholder="Notes (optional)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full rounded border px-2 py-1 text-sm"
+            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
           />
           <div className="flex gap-2">
             <button
               onClick={submit}
               disabled={submitting}
-              className="flex-1 rounded bg-black py-1 text-sm text-white disabled:opacity-50"
+              className="flex-1 rounded-xl bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-zinc-800 transition-colors"
             >
-              {submitting ? "Saving..." : editing ? "Update" : "Save"}
+              {submitting ? "Saving…" : editing ? "Update" : "Save"}
             </button>
             <button
               onClick={() => {
                 setOpen(false);
                 setEditing(false);
               }}
-              className="rounded border px-3 py-1 text-sm"
+              className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
             >
               Cancel
             </button>

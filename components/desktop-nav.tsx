@@ -11,25 +11,27 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings" },
 ];
 
-export function BottomNav() {
+export function DesktopNav() {
   const pathname = usePathname();
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-100 bg-white/95 backdrop-blur-sm lg:hidden">
-      <div className="mx-auto flex max-w-md">
+    <nav className="hidden lg:flex items-center gap-1 sticky top-0 z-40 border-b border-zinc-100 bg-white/90 backdrop-blur-sm px-6 xl:px-8 py-2.5">
+      <div className="flex items-center gap-0.5">
         {NAV_ITEMS.map(({ href, label }) => {
           const isActive = pathname === href;
           return (
             <Link
               key={href}
               href={href}
-              className={`relative flex flex-1 flex-col items-center pt-2.5 pb-3 text-[11px] font-medium transition-colors duration-150 ${
-                isActive ? "text-zinc-900" : "text-zinc-400 hover:text-zinc-600"
+              className={`relative px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                isActive
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50"
               }`}
             >
               {isActive && (
                 <motion.span
-                  layoutId="bottom-nav-indicator"
-                  className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-5 rounded-b-full bg-zinc-900"
+                  layoutId="desktop-nav-indicator"
+                  className="absolute left-1/2 -translate-x-1/2 -bottom-[13px] h-[2px] w-4 rounded-t-full bg-zinc-800"
                   transition={{ type: "tween", duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
                 />
               )}

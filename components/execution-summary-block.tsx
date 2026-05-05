@@ -127,24 +127,24 @@ export function ExecutionSummaryBlock({
     .join(" · ");
 
   return (
-    <div className="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 space-y-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+    <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
         Execution
       </p>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
         <div>
-          <span className="text-[10px] text-gray-400">Plan </span>
-          <span className="font-medium text-gray-700">{plannedLabel}</span>
+          <span className="text-[10px] text-zinc-400">Plan </span>
+          <span className="font-medium text-zinc-700">{plannedLabel}</span>
         </div>
         <div>
-          <span className="text-[10px] text-gray-400">Actual </span>
-          <span className={`font-medium ${showSport ? "text-blue-700" : "text-gray-700"}`}>
+          <span className="text-[10px] text-zinc-400">Actual </span>
+          <span className={`font-medium ${showSport ? "text-indigo-700" : "text-zinc-700"}`}>
             {actualParts}
           </span>
         </div>
       </div>
       {secondaryParts && (
-        <p className="text-[10px] text-gray-400">{secondaryParts}</p>
+        <p className="text-[10px] text-zinc-400">{secondaryParts}</p>
       )}
       <div className="flex flex-wrap items-center gap-1 text-[10px]">
         <span className={`font-medium ${QUALITY_COLOR[summary.qualityLabel]}`}>
@@ -152,14 +152,14 @@ export function ExecutionSummaryBlock({
         </span>
         {summary.splitSession && (
           <>
-            <span className="text-gray-300">·</span>
-            <span className="text-gray-400">Split session</span>
+            <span className="text-zinc-300">·</span>
+            <span className="text-zinc-400">Split session</span>
           </>
         )}
         {summary.hillsIndicator && summary.qualityLabel !== "Hilly variant" && (
           <>
-            <span className="text-gray-300">·</span>
-            <span className="text-gray-400">Hills</span>
+            <span className="text-zinc-300">·</span>
+            <span className="text-zinc-400">Hills</span>
           </>
         )}
       </div>

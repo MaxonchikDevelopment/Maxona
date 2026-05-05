@@ -1,3 +1,21 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #f8f8f7;
+    /* Fixed ambient gradient — always viewport-relative, no clipping at header edge */
+    background-image:
+      radial-gradient(ellipse 75% 50% at 88% -5%, rgba(99, 102, 241, 0.055) 0%, transparent 65%),
+      radial-gradient(ellipse 60% 45% at 8% 108%, rgba(16, 185, 129, 0.04) 0%, transparent 65%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  /* kept for markup compatibility — gradient now lives on body */
+  .page-ambient {}
+}

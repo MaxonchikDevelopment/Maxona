@@ -13,6 +13,8 @@ import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { timed } from "@/lib/perf";
+import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
+import { DashboardShell } from "@/components/ui/dashboard-shell";
 import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
@@ -76,6 +78,59 @@ const ACTIVITY_SELECT = {
 
 function toDateStr(d: Date) {
   return d.toISOString().split("T")[0];
+}
+
+type ReadinessBannerProps = { category: string; feelScore: number; tags: unknown };
+
+function ReadinessBanner({ readiness }: { readiness: ReadinessBannerProps }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+      <span className="font-semibold">
+        {readiness.category === "injury" ? "Injury" : "Fatigue"} · {readiness.feelScore}/6
+      </span>
+      {(readiness.tags as string[]).length > 0 && (
+        <>
+          <span className="text-amber-400">·</span>
+          <span>
+            {(readiness.tags as string[])
+              .map((t) => READINESS_TAG_LABELS[t] ?? t)
+              .join(", ")}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChangeBlock({ explanation }: { explanation: string }) {
+  return (
+    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-4 py-3 space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400">What changed</p>
+      <ul className="space-y-1">
+        {normalizeCoachBullets(explanation)
+          .split("\n\n")
+          .filter((l) => l.trim())
+          .map((line, i) => (
+            <li key={i} className="text-xs text-indigo-800">
+              · {line.replace(/^[•·]\s*/, "")}
+            </li>
+          ))}
+      </ul>
+    </div>
+  );
+}
+
+function NutritionFocusBlock({ focus }: { focus: WeeklyNutritionFocus }) {
+  return (
+    <div className="rounded-2xl bg-emerald-50/70 border border-emerald-100 px-4 py-3 space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Weekly nutrition focus</p>
+      <ul className="space-y-1">
+        {focus.bullets.map((b, i) => (
+          <li key={i} className="text-xs text-emerald-800">· {stripMarkdownBold(b)}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export default async function WeekPage() {
@@ -185,15 +240,27 @@ export default async function WeekPage() {
     if (process.env.NODE_ENV !== "production")
       console.log(`[perf] week/total (no plan): ${Date.now() - pageStart}ms`);
     return (
-      <main className="p-4 space-y-4">
-        <h1 className="mb-4 text-xl font-bold">Week</h1>
-        {isNewUser && <OnboardingCard />}
-        <ActiveIssues initialIssues={activeIssues} />
-        <p className="text-gray-500">No active plan.</p>
-        <ReplanButton mode="generate" />
-        {draftPlan && (
-          <DraftPreview plan={draftPlan} todayStr={todayStr} />
-        )}
+      <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+        <div className="pt-6 pb-4">
+          <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
+            <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+          </div>
+        </div>
+        <PageWrapper>
+          <div className="space-y-3">
+            {isNewUser && <OnboardingCard />}
+            <ActiveIssues initialIssues={activeIssues} />
+            <div className="rounded-2xl bg-white border border-zinc-100 shadow-card px-4 py-4">
+              <p className="text-sm font-medium text-zinc-700">No active plan</p>
+              <p className="text-xs text-zinc-400 mt-0.5 mb-3">Generate a weekly training plan to get started</p>
+              <ReplanButton mode="generate" />
+            </div>
+            {draftPlan && (
+              <DraftPreview plan={draftPlan} todayStr={todayStr} />
+            )}
+          </div>
+        </PageWrapper>
       </main>
     );
   }
@@ -407,108 +474,142 @@ export default async function WeekPage() {
     return d.toISOString().split("T")[0];
   });
 
+  // Desktop header stats — computed from plan sessions (no extra queries)
+  const plannedSessions = plan.sessions.filter((s) => s.status !== "skipped");
+  const totalPlanMin = plannedSessions.reduce((t, s) => t + s.durationMin, 0);
+  const hardCount = plannedSessions.filter((s) => s.intensity === "hard").length;
+
+  const hasSideContent =
+    !!latestReadiness ||
+    activeIssues.length > 0 ||
+    !!plan.changeExplanation ||
+    (weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0) ||
+    !!draftPlan;
+
   return (
-    <main className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Week</h1>
-        <ReplanButton mode="replan" />
-      </div>
-
-      {isNewUser && <OnboardingCard />}
-
-      {latestReadiness && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
-          <span className="font-medium">
-            {latestReadiness.category === "injury" ? "Injury" : "Fatigue"} · {latestReadiness.feelScore}/6
-          </span>
-          {(latestReadiness.tags as string[]).length > 0 && (
-            <>
-              <span>·</span>
-              <span>
-                {(latestReadiness.tags as string[])
-                  .map((t) => READINESS_TAG_LABELS[t] ?? t)
-                  .join(", ")}
-              </span>
-            </>
-          )}
-        </div>
-      )}
-
-      <ActiveIssues initialIssues={activeIssues} />
-
-      {plan.focusSummary && (
-        <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2.5 space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">Coach focus</p>
-          <ul className="space-y-1">
-            {normalizeCoachBullets(plan.focusSummary)
-              .split("\n\n")
-              .filter((l) => l.trim())
-              .map((line, i) => (
-                <li key={i} className="text-xs text-blue-800">
-                  · {line.replace(/^[•·]\s*/, "")}
-                </li>
-              ))}
-          </ul>
-        </div>
-      )}
-      {plan.changeExplanation && (
-        <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2.5 space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">What changed</p>
-          <ul className="space-y-1">
-            {normalizeCoachBullets(plan.changeExplanation)
-              .split("\n\n")
-              .filter((l) => l.trim())
-              .map((line, i) => (
-                <li key={i} className="text-xs text-blue-800">
-                  · {line.replace(/^[•·]\s*/, "")}
-                </li>
-              ))}
-          </ul>
-        </div>
-      )}
-
-      {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
-        <div className="rounded border border-green-100 bg-green-50 px-3 py-2.5 space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-green-600">Weekly nutrition focus</p>
-          <ul className="space-y-1">
-            {weeklyNutritionFocus.bullets.map((b, i) => (
-              <li key={i} className="text-xs text-green-800">· {stripMarkdownBold(b)}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {weekDays.map((dateStr, i) => {
-        const daySessions = sessionsByDate[dateStr] ?? [];
-        const isPast = dateStr < todayStr;
-
-        return (
-          <div key={dateStr}>
-            <p
-              className={`mb-1 text-sm font-semibold ${
-                isPast ? "text-gray-300" : "text-gray-400"
-              }`}
-            >
-              {DOW[i]} · {dateStr}
-              {isPast && <span className="ml-1.5 text-xs font-normal text-gray-300">past</span>}
-            </p>
-            {daySessions.length === 0 ? (
-              <p className={isPast ? "text-xs text-gray-300" : "text-sm text-gray-400"}>Rest</p>
-            ) : (
-              <div className="space-y-2">
-                {daySessions.map((s) => (
-                  <SessionCard key={s.id} session={s} todayStr={todayStr} />
-                ))}
-              </div>
-            )}
-            <div className="mt-1.5">
-              <ManualSessionForm defaultDate={dateStr} />
+    <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+      {/* ── Plan header ──────────────────────────────────────────────── */}
+      <div className="pt-6 pb-4">
+        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
+              <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+            </div>
+            <div className="mt-1">
+              <ReplanButton mode="replan" />
             </div>
           </div>
-        );
-      })}
+          {plan.focusSummary && (
+            <p className="text-sm text-zinc-500 mt-2 leading-relaxed line-clamp-2">
+              {normalizeCoachBullets(plan.focusSummary)
+                .split("\n\n")
+                .filter((l) => l.trim())
+                .map((l) => l.replace(/^[•·]\s*/, ""))
+                .join(" · ")}
+            </p>
+          )}
+          {/* Desktop stats row */}
+          {plannedSessions.length > 0 && (
+            <div className="hidden lg:flex items-center gap-3 mt-3 flex-wrap">
+              <span className="text-xs text-zinc-500">
+                {plannedSessions.length} session{plannedSessions.length !== 1 ? "s" : ""}
+              </span>
+              <span className="text-zinc-300">·</span>
+              <span className="text-xs text-zinc-500">{totalPlanMin} min total</span>
+              {hardCount > 0 && (
+                <>
+                  <span className="text-zinc-300">·</span>
+                  <span className="text-xs text-red-600 font-medium">{hardCount} hard</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
-      {draftPlan && <DraftPreview plan={draftPlan} todayStr={todayStr} />}
+      <PageWrapper>
+        <DashboardShell
+          main={
+            <div className="space-y-3">
+              {/* Mobile-only context block: readiness, issues, change, nutrition */}
+              <div className="lg:hidden space-y-3">
+                {latestReadiness && <ReadinessBanner readiness={latestReadiness} />}
+                <ActiveIssues initialIssues={activeIssues} />
+                {plan.changeExplanation && <ChangeBlock explanation={plan.changeExplanation} />}
+                {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
+                  <NutritionFocusBlock focus={weeklyNutritionFocus} />
+                )}
+              </div>
+
+              {/* Week days — primary content, always in main column */}
+              <StaggerList className="space-y-4">
+                {weekDays.map((dateStr, i) => {
+                  const daySessions = sessionsByDate[dateStr] ?? [];
+                  const isPast = dateStr < todayStr;
+                  const isToday = dateStr === todayStr;
+
+                  return (
+                    <StaggerItem key={dateStr}>
+                      <div className={isToday ? "pl-3 border-l-2 border-indigo-200" : ""}>
+                        {/* Day header */}
+                        <div className={`flex items-center gap-2 mb-2 ${isPast ? "opacity-40" : ""}`}>
+                          <span className={`text-sm font-semibold ${isToday ? "text-zinc-900" : "text-zinc-600"}`}>
+                            {DOW[i]}
+                          </span>
+                          <span className="text-xs text-zinc-400">{dateStr.slice(5)}</span>
+                          {isToday && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">
+                              Today
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Sessions or rest */}
+                        {daySessions.length === 0 ? (
+                          <p className={`text-xs py-1 ${isPast ? "text-zinc-300" : "text-zinc-400"}`}>Rest</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {daySessions.map((s) => (
+                              <SessionCard key={s.id} session={s} todayStr={todayStr} />
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-2">
+                          <ManualSessionForm defaultDate={dateStr} />
+                        </div>
+                      </div>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerList>
+
+              {/* Draft preview — mobile-only inline (desktop version lives in side rail) */}
+              {draftPlan && (
+                <div className="lg:hidden">
+                  <DraftPreview plan={draftPlan} todayStr={todayStr} />
+                </div>
+              )}
+            </div>
+          }
+          side={
+            hasSideContent ? (
+              <>
+                {latestReadiness && <ReadinessBanner readiness={latestReadiness} />}
+                <ActiveIssues initialIssues={activeIssues} />
+                {plan.changeExplanation && <ChangeBlock explanation={plan.changeExplanation} />}
+                {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
+                  <NutritionFocusBlock focus={weeklyNutritionFocus} />
+                )}
+                {draftPlan && <DraftPreview plan={draftPlan} todayStr={todayStr} />}
+              </>
+            ) : (
+              <></>
+            )
+          }
+        />
+      </PageWrapper>
     </main>
   );
 }
@@ -545,45 +646,44 @@ function DraftPreview({
   }
 
   return (
-    <div className="mt-6 border-t pt-4 space-y-3">
+    <div className="mt-4 pt-4 border-t border-zinc-100 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-gray-500">Next week · draft</p>
-        <span className="text-xs text-gray-400">{weekStartStr}</span>
+        <p className="text-sm font-semibold text-zinc-500">Next week · draft</p>
+        <span className="text-xs text-zinc-400">{weekStartStr}</span>
       </div>
       {plan.focusSummary && (
-        <div className="space-y-1">
+        <p className="text-xs text-zinc-400">
           {normalizeCoachBullets(plan.focusSummary)
             .split("\n\n")
             .filter((l) => l.trim())
-            .map((line, i) => (
-              <p key={i} className="text-xs text-gray-400">{line}</p>
-            ))}
-        </div>
+            .map((l) => l.replace(/^[•·]\s*/, ""))
+            .join(" · ")}
+        </p>
       )}
       {weekDays.map((dateStr, i) => {
         const daySessions = sessionsByDate[dateStr] ?? [];
         return (
           <div key={dateStr}>
-            <p className="mb-0.5 text-xs text-gray-400">
-              {DOW[i]} · {dateStr}
+            <p className="mb-1 text-xs font-medium text-zinc-400">
+              {DOW[i]} · {dateStr.slice(5)}
             </p>
             {daySessions.length === 0 ? (
-              <p className="text-xs text-gray-300">Rest</p>
+              <p className="text-xs text-zinc-300">Rest</p>
             ) : (
               <div className="space-y-1">
                 {daySessions.map((s, idx) => (
                   <div
                     key={idx}
-                    className="rounded border border-gray-100 bg-gray-50 px-2.5 py-1.5"
+                    className="rounded-xl border border-zinc-100 bg-white px-3 py-2"
                   >
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-medium capitalize text-gray-600">
+                      <span className="text-xs font-medium capitalize text-zinc-600">
                         {s.intensity}
                       </span>
-                      <span className="text-xs text-gray-400">{s.durationMin}min</span>
-                      <span className="text-xs text-gray-400 capitalize">{s.preferredSlot}</span>
+                      <span className="text-xs text-zinc-400">{s.durationMin} min</span>
+                      <span className="text-xs text-zinc-400 capitalize">{s.preferredSlot}</span>
                       {s.notes && (
-                        <span className="text-xs text-gray-500">{s.notes.split(":")[0]}</span>
+                        <span className="text-xs text-zinc-500">{s.notes.split(":")[0]}</span>
                       )}
                     </div>
                   </div>
