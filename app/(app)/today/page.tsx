@@ -401,7 +401,7 @@ export default async function TodayPage() {
   const totalMin = props.reduce((t, s) => t + s.durationMin, 0);
 
   return (
-    <main className="page-ambient relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
+    <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Hero header ─────────────────────────────────────────────── */}
       <div className="pt-6 pb-4">
         <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">

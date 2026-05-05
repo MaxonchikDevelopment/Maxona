@@ -109,6 +109,61 @@ function buildCompactExecLine(a: StravaActivitySummary): string {
   return parts.join(" · ");
 }
 
+function CompactMetricPills({ links }: { links: StravaLinkProp[] }) {
+  const primary = links.find((l) => l.isPrimary) ?? links[0];
+  if (!primary) return null;
+  const a = primary.activity;
+
+  const pills: Array<{ label: string; value: string }> = [];
+
+  if (a.distance > 0) {
+    const km = a.distance / 1000;
+    pills.push({ label: "Dist", value: km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(a.distance)} m` });
+  }
+  if (a.movingTime > 0) {
+    const h = Math.floor(a.movingTime / 3600);
+    const m = Math.floor((a.movingTime % 3600) / 60);
+    pills.push({ label: "Time", value: h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ""}` : `${m} min` });
+  }
+  if (a.distance > 0 && a.movingTime > 0) {
+    const st = a.sportType.toLowerCase();
+    if (st.includes("run")) {
+      const secPerKm = a.movingTime / (a.distance / 1000);
+      const pm = Math.floor(secPerKm / 60);
+      const ps = Math.round(secPerKm % 60);
+      pills.push({ label: "Pace", value: `${pm}:${String(ps).padStart(2, "0")} /km` });
+    } else {
+      const kph = (a.distance / 1000) / (a.movingTime / 3600);
+      pills.push({ label: "Speed", value: `${kph.toFixed(1)} km/h` });
+    }
+  }
+  if (a.averageHeartrate) {
+    pills.push({ label: "Avg HR", value: `${Math.round(a.averageHeartrate)} bpm` });
+  }
+  if (a.totalElevationGain > 20) {
+    pills.push({ label: "Elev", value: `+${Math.round(a.totalElevationGain)} m` });
+  }
+
+  if (pills.length === 0) return null;
+
+  return (
+    <div className="rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2.5">
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {pills.slice(0, 5).map((pill) => (
+          <div key={pill.label} className="flex flex-col gap-0.5">
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-400">
+              {pill.label}
+            </span>
+            <span className="text-sm font-semibold text-zinc-800 tabular-nums leading-none">
+              {pill.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkoutPlanBlock({
   plan,
   sessionId,
@@ -446,7 +501,7 @@ export function SessionCard({
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="text-sm font-semibold capitalize text-zinc-800">{session.intensity}</span>
             <span className="text-xs text-zinc-400">
-              {session.durationMin} min · {session.preferredSlot}
+              {session.durationMin} min · <span className="capitalize">{session.preferredSlot}</span>
             </span>
             {session.planningType === "fixed" && (
               <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">fixed</span>
@@ -516,7 +571,7 @@ export function SessionCard({
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold capitalize text-zinc-800">{session.intensity}</span>
           <span className="text-xs text-zinc-400">
-            {session.durationMin} min · {session.preferredSlot}
+            {session.durationMin} min · <span className="capitalize">{session.preferredSlot}</span>
           </span>
           {session.planningType === "fixed" && (
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">fixed</span>
@@ -590,7 +645,8 @@ export function SessionCard({
         </div>
       </div>
 
-      {session.notes && (
+      {/* Notes shown here for done/upcoming; skipped branch renders its own to avoid duplication */}
+      {session.notes && !isSkipped && (
         <p className="text-sm text-zinc-600">{session.notes}</p>
       )}
 
@@ -599,11 +655,16 @@ export function SessionCard({
         // DONE SESSION — execution-first layout
         // ════════════════════════════════════════
         <>
+          {/* Compact metric pills — visible at a glance for done+strava sessions */}
+          {(session.stravaLinks?.length ?? 0) > 0 && (
+            <CompactMetricPills links={session.stravaLinks!} />
+          )}
+
           {/* Check-in note + coach advice (not editing) */}
           {!open && checkIn && (
             <div className="space-y-1">
               {checkIn.notes && (
-                <p className="text-xs text-gray-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
+                <p className="text-xs text-zinc-500 italic">&ldquo;{checkIn.notes}&rdquo;</p>
               )}
               {coachAdvice && !isResolved && (
                 <div className={`rounded-xl px-3 py-2 ${isPositiveAdvice ? "bg-emerald-50 border border-emerald-100" : "bg-amber-50 border border-amber-100"}`}>
@@ -639,8 +700,8 @@ export function SessionCard({
           {/* After-workout coach feedback */}
           {feedbackGenerating ? (
             <div className="border-t pt-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">After workout</p>
-              <p className="text-xs text-gray-400 mt-1">Analyzing workout…</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">After workout</p>
+              <p className="text-xs text-zinc-400 mt-1">Analyzing workout…</p>
             </div>
           ) : (
             <WorkoutFeedbackSection
@@ -659,7 +720,7 @@ export function SessionCard({
                 <button
                   onClick={reanalyzeAdvice}
                   disabled={submitting}
-                  className="text-[10px] text-gray-400 underline disabled:opacity-50"
+                  className="text-[10px] text-zinc-400 underline disabled:opacity-50"
                 >
                   {submitting ? "Re-analyzing…" : "Re-analyze"}
                 </button>
@@ -668,7 +729,7 @@ export function SessionCard({
                 <button
                   onClick={resolveIssue}
                   disabled={submitting}
-                  className="text-xs text-green-600 underline disabled:opacity-50"
+                  className="text-xs text-emerald-600 underline disabled:opacity-50"
                 >
                   Mark issue resolved
                 </button>
@@ -677,7 +738,7 @@ export function SessionCard({
                 <button
                   onClick={reopenIssue}
                   disabled={submitting}
-                  className="text-xs text-gray-400 underline disabled:opacity-50"
+                  className="text-xs text-zinc-400 underline disabled:opacity-50"
                 >
                   Reopen issue
                 </button>
@@ -704,7 +765,7 @@ export function SessionCard({
             <div className="border-t pt-2">
               <button
                 onClick={() => setShowWorkoutPlan((v) => !v)}
-                className="text-[10px] text-gray-400 underline"
+                className="text-[10px] text-zinc-400 underline hover:text-zinc-600 transition-colors"
               >
                 {showWorkoutPlan ? "Hide pre-workout plan" : "Pre-workout plan"}
               </button>
@@ -724,7 +785,12 @@ export function SessionCard({
         // ════════════════════════════════════════
         // SKIPPED SESSION — minimal body
         // ════════════════════════════════════════
-        session.notes ? <p className="text-sm text-zinc-500">{session.notes}</p> : null
+        <div className="border-t border-zinc-100 pt-2.5 space-y-1.5">
+          {session.notes && (
+            <p className="text-sm text-zinc-500">{session.notes}</p>
+          )}
+          <p className="text-xs text-zinc-400">Skipped — not completed</p>
+        </div>
       ) : (
         // ════════════════════════════════════════
         // UPCOMING / PLANNED SESSION — plan-first layout

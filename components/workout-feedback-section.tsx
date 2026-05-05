@@ -13,14 +13,14 @@ export type WorkoutFeedbackProp = {
 };
 
 const ADHERENCE_COLOR: Record<string, string> = {
-  matched: "text-green-600",
+  matched: "text-emerald-600",
   slightly_short: "text-amber-600",
   clearly_short: "text-red-500",
-  longer_than_planned: "text-blue-600",
+  longer_than_planned: "text-indigo-600",
   different_sport: "text-purple-600",
   modified_due_fatigue: "text-amber-600",
-  no_strava: "text-gray-400",
-  unknown: "text-gray-400",
+  no_strava: "text-zinc-400",
+  unknown: "text-zinc-400",
 };
 
 export const ADHERENCE_LABEL: Record<string, string> = {
@@ -76,16 +76,16 @@ export function WorkoutFeedbackSection({
 
   if (!sessionIsDone) {
     return (
-      <div className="rounded border border-dashed border-gray-100 p-3 text-center">
-        <p className="text-xs text-gray-300">Feedback appears after check-in.</p>
+      <div className="rounded-xl border border-dashed border-zinc-100 p-3 text-center">
+        <p className="text-xs text-zinc-300">Feedback appears after check-in.</p>
       </div>
     );
   }
 
   if (!hasCheckIn) {
     return (
-      <div className="rounded border border-dashed border-gray-100 p-3 text-center">
-        <p className="text-xs text-gray-300">
+      <div className="rounded-xl border border-dashed border-zinc-100 p-3 text-center">
+        <p className="text-xs text-zinc-300">
           Complete a check-in to generate workout feedback.
         </p>
       </div>
@@ -93,29 +93,29 @@ export function WorkoutFeedbackSection({
   }
 
   if (feedback) {
-    const color = ADHERENCE_COLOR[feedback.adherenceLabel] ?? "text-gray-400";
+    const color = ADHERENCE_COLOR[feedback.adherenceLabel] ?? "text-zinc-400";
     const label = ADHERENCE_LABEL[feedback.adherenceLabel] ?? feedback.adherenceLabel;
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
             After workout
           </p>
           <button
             onClick={analyze}
             disabled={loading}
-            className="text-[10px] text-gray-400 underline disabled:opacity-40"
+            className="text-[10px] text-zinc-400 underline disabled:opacity-40 hover:text-zinc-600 transition-colors"
           >
             {loading ? "Analyzing…" : "Regenerate"}
           </button>
         </div>
-        <div className="rounded border bg-gray-50 px-3 py-2.5 space-y-1.5">
+        <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5 space-y-1.5">
           <span className={`text-xs font-medium ${color}`}>{label}</span>
-          <p className="text-xs text-gray-700">{stripMarkdownBold(feedback.summary)}</p>
+          <p className="text-xs text-zinc-700">{stripMarkdownBold(feedback.summary)}</p>
           {feedback.bullets.length > 0 && (
             <div className="space-y-0.5">
               {feedback.bullets.map((b, i) => (
-                <p key={i} className="text-[11px] text-gray-500">
+                <p key={i} className="text-[11px] text-zinc-500">
                   • {stripMarkdownBold(b)}
                 </p>
               ))}
@@ -133,13 +133,13 @@ export function WorkoutFeedbackSection({
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
         After workout
       </p>
       <button
         onClick={analyze}
         disabled={loading}
-        className="w-full rounded border border-dashed border-gray-200 py-2 text-sm text-gray-400 hover:border-gray-300 disabled:opacity-50"
+        className="w-full rounded-xl border border-dashed border-zinc-200 py-2 text-sm text-zinc-400 hover:border-zinc-300 disabled:opacity-50 transition-colors"
       >
         {loading ? "Analyzing…" : "Analyze workout"}
       </button>

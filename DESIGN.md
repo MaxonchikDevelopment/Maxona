@@ -227,6 +227,41 @@ Static CSS radial gradients — no animation, no JS. Very low opacity (≤ 6%). 
 
 ---
 
+## Session Card Result Visibility (Design Sprint 4)
+
+### Skipped sessions
+- Notes render exactly once — inside the skipped branch, not also above it
+- Add a muted helper line "Skipped — not completed" below the notes
+- Skipped status label appears in the card header; no redundant body text
+
+### Completed sessions — inline results
+- Compact metric pills (Dist / Time / Pace or Speed / Avg HR / Elev) appear at the top of the done card body, before check-in notes
+- Pills use a `rounded-xl bg-zinc-50 border border-zinc-100` subpanel — glass-adjacent but readable
+- Primary Strava activity drives the pill data; no additional fetching required
+- CoachView / session detail page remains intact for full analytics
+- `ExecutionSummaryBlock` stays below pills for detailed plan-vs-actual comparison
+- `WorkoutFeedbackSection` stays below execution summary for AI coach narrative
+
+### Capitalization
+- `session.intensity` uses CSS `capitalize` (already done)
+- `session.preferredSlot` wrapped in `<span className="capitalize">` — view layer only, data unchanged
+- Sport labels in `ExecutionSummaryBlock` are normalized (Running / Cycling / Swimming / HYROX)
+
+### Atmosphere gradient (Design Sprint 4)
+- Gradient lives on `body` with `background-attachment: fixed`
+- Always viewport-relative — never clipped by the page container or desktop nav
+- `page-ambient` class kept as empty no-op for markup compatibility
+- Both indigo and emerald blobs extend slightly outside the viewport (negative / >100% positions) so no hard edge is visible at the header
+
+### Color language for result blocks
+- All result/feedback sub-panels use `zinc-*` neutrals (not `gray-*`)
+- `ExecutionSummaryBlock`: `bg-zinc-50 border-zinc-100`
+- `WorkoutFeedbackSection`: `bg-zinc-50 border-zinc-100`
+- Adherence label "Longer than planned" uses `text-indigo-600` (not blue)
+- "Different sport" uses `text-purple-600`
+
+---
+
 ## Responsive Dashboard Layout
 
 Maxona is mobile-first. The desktop layout is an enhancement layer, not a redesign.
