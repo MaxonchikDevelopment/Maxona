@@ -423,6 +423,33 @@ Today and Week are the reference standard. Every other main page (Settings, Goal
 
 ---
 
+## Sprint 9 — Final Polish Rules
+
+### Nutrition advice must be concrete enough to cook from
+- Nutrition Today must show practical meal rows: Breakfast / Lunch / Dinner / Snack / Pre-workout / Post-workout.
+- Each meal row includes a suggestion title, approximate grams per ingredient, and approximate kcal.
+- `mealTiming` items render as: `{label} — {suggestion} (~{approxCalories} kcal)` followed by per-ingredient lines.
+- If the AI call fails, `makeFallback(energy)` generates deterministic meals from the calorie target — never empty.
+- Rest days without a nutrition profile (no calorie target) may show a simpler text-only summary.
+
+### Nutrition cache version
+- Bump `nutritionAdviceVersion` in `today/page.tsx` whenever the prompt or response schema changes.
+- Current version: **4**. Increment to force all users to regenerate stale cache.
+- Do NOT delete cache rows manually; the version bump makes them stale automatically.
+
+### Settings numeric default cells — consistent alignment
+- Running / Cycling / HYROX default chip cells all use the same left-aligned `flex flex-wrap gap-2` layout.
+- No group should be `text-center` or `flex justify-center` while others are left-aligned.
+- "Preferred days" label and day chips follow the same left-aligned flow as all other chip groups.
+- Cell sizing: `px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-zinc-50` — same for all groups.
+
+### Strava inline analytics — stay compact
+- Completed Strava-linked session cards show aggregated metric summary (CompactMetricPills).
+- MiniHrSparkline appears only when `session.hrAnalytics` is populated — never fetched on render.
+- No additional chart libraries. Compact SVG sparkline only.
+
+---
+
 ## Sprint 8 — Settings Visual Consistency Rules
 
 ### Settings as a cockpit, not a spreadsheet

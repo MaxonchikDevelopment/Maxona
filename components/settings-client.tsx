@@ -638,10 +638,10 @@ export function SettingsClient({
         </div>
       </div>
 
-      {/* HYROX — centered compact group */}
-      <div className="space-y-2.5 pt-1 border-t border-zinc-100 text-center">
+      {/* HYROX */}
+      <div className="space-y-2.5 pt-1 border-t border-zinc-100">
         <p className="text-xs font-semibold text-zinc-500">HYROX</p>
-        <div className="flex justify-center">
+        <div className="flex flex-wrap gap-2">
           <div className={compactChipInputCls}>
             <span className="text-[10px] font-medium text-zinc-500 shrink-0 select-none">Max / week</span>
             <input
@@ -654,8 +654,8 @@ export function SettingsClient({
           </div>
         </div>
         <div>
-          <p className={labelCls + " text-center mb-2"}>Preferred days</p>
-          <div className="flex flex-wrap justify-center gap-1.5">
+          <p className={labelCls + " mb-2"}>Preferred days</p>
+          <div className="flex flex-wrap gap-1.5">
             {DAYS.map((d) => (
               <label
                 key={d}

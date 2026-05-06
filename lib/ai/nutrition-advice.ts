@@ -62,25 +62,29 @@ export type NutritionAdviceInput = {
   energy?: DayEnergyEstimate | null;
 };
 
-const REST_DAY_ADVICE: NutritionAdvice = {
-  summary: "Rest day — focus on balanced meals and steady hydration.",
-  energy: null,
-  mealTiming: [],
-  before: [],
-  during: [],
-  after: [],
-  hydration: ["Aim for 2–3 L water today", "Consistent sipping helps recovery"],
-};
+function makeFallback(energy: DayEnergyEstimate | null): NutritionAdvice {
+  return {
+    summary: "Standard fueling — keep it consistent.",
+    energy,
+    mealTiming: energy ? buildDeterministicMeals(energy.targetCalories) : [],
+    before: ["Light snack 60–90 min before: banana, toast, or oats"],
+    during: [],
+    after: ["Protein + carbs within 2h post-workout"],
+    hydration: ["Aim for 2–3 L water today; sip consistently"],
+  };
+}
 
-const FALLBACK: NutritionAdvice = {
-  summary: "Standard fueling — keep it simple and consistent.",
-  energy: null,
-  mealTiming: [],
-  before: ["Light snack 60–90 min before: banana, toast, or oats"],
-  during: [],
-  after: ["Protein + carbs within 2h post-workout"],
-  hydration: ["Aim for 2–3 L water today; sip consistently"],
-};
+function makeRestDayAdvice(energy: DayEnergyEstimate | null): NutritionAdvice {
+  return {
+    summary: "Rest day — focus on balanced meals and steady hydration.",
+    energy,
+    mealTiming: energy ? buildDeterministicMeals(energy.targetCalories) : [],
+    before: [],
+    during: [],
+    after: [],
+    hydration: ["Aim for 2–3 L water today", "Consistent sipping helps recovery"],
+  };
+}
 
 function buildDeterministicMeals(targetKcal: number): MealTimingItem[] {
   const b = Math.round(targetKcal * 0.20);
@@ -159,7 +163,7 @@ export async function generateNutritionAdvice(
   input: NutritionAdviceInput
 ): Promise<NutritionAdvice> {
   const isRestDay = input.sessions.length === 0;
-  if (isRestDay && !input.energy) return REST_DAY_ADVICE;
+  if (isRestDay && !input.energy) return makeRestDayAdvice(null);
 
   const p = input.nutritionProfile;
   const isStomachSensitive = p?.stomachSensitive ?? false;
@@ -286,7 +290,7 @@ Return ONLY valid JSON:
       .join("");
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { ...FALLBACK, energy: input.energy ?? null };
+    if (!jsonMatch) return makeFallback(input.energy ?? null);
 
     const parsed = JSON.parse(jsonMatch[0]) as Partial<NutritionAdvice>;
 
@@ -325,22 +329,23 @@ Return ONLY valid JSON:
 
     const mealTiming = validateAndNormalizeMeals(rawMeals, targetKcal);
 
+    const fb = makeFallback(input.energy ?? null);
     return {
-      summary: typeof parsed.summary === "string" ? stripBold(parsed.summary) : FALLBACK.summary,
+      summary: typeof parsed.summary === "string" ? stripBold(parsed.summary) : fb.summary,
       energy: input.energy ?? null,
       mealTiming,
-      before: Array.isArray(parsed.before) && parsed.before.length > 0 ? parsed.before : (isRestDay ? [] : FALLBACK.before),
+      before: Array.isArray(parsed.before) && parsed.before.length > 0 ? parsed.before : (isRestDay ? [] : fb.before),
       during: Array.isArray(parsed.during) ? parsed.during : [],
-      after: Array.isArray(parsed.after) && parsed.after.length > 0 ? parsed.after : (isRestDay ? [] : FALLBACK.after),
+      after: Array.isArray(parsed.after) && parsed.after.length > 0 ? parsed.after : (isRestDay ? [] : fb.after),
       hydration: Array.isArray(parsed.hydration) && parsed.hydration.length > 0
         ? parsed.hydration
-        : FALLBACK.hydration,
+        : fb.hydration,
       timingNote:
         typeof parsed.timingNote === "string" && parsed.timingNote.trim()
           ? parsed.timingNote
           : undefined,
     };
   } catch {
-    return { ...FALLBACK, energy: input.energy ?? null };
+    return makeFallback(input.energy ?? null);
   }
 }
