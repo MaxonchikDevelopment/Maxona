@@ -13,6 +13,8 @@ import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section"
 import { AnalyzeStreamButton } from "@/components/analyze-stream-button";
 import type { HrAnalytics } from "@/lib/analytics/hr-stream";
 import type { NutritionAdvice } from "@/lib/ai/nutrition-advice";
+import { parseReplacedNotes } from "@/lib/replace-utils";
+import type { ReplaceAlternative } from "@/lib/ai/replace-advice";
 
 export type CheckInProp = {
   id: string;
@@ -360,6 +362,14 @@ export function SessionCard({
   const [done, setDone] = useState(session.status === "done" || !!session.checkIn);
   const [isSkipped, setIsSkipped] = useState(session.status === "skipped");
   const [skipPending, setSkipPending] = useState(false);
+  const [displayNotes, setDisplayNotes] = useState(session.notes);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replaceTab, setReplaceTab] = useState<"suggest" | "describe">("describe");
+  const [suggestions, setSuggestions] = useState<ReplaceAlternative[] | null>(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [replaceDescription, setReplaceDescription] = useState("");
+  const [replaceReason, setReplaceReason] = useState("");
+  const [replaceSubmitting, setReplaceSubmitting] = useState(false);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlanProp | null>(session.workoutPlan ?? null);
   const [feedbackGenerating, setFeedbackGenerating] = useState(false);
   const [showWorkoutPlan, setShowWorkoutPlan] = useState(false);
@@ -482,6 +492,47 @@ export function SessionCard({
     }
   }
 
+  function openReplace() {
+    setReplaceOpen((v) => !v);
+    setReplaceTab("describe");
+  }
+
+  async function fetchSuggestions() {
+    setSuggestLoading(true);
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/replace/suggestions`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setSuggestions(data.alternatives ?? []);
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setSuggestLoading(false);
+    }
+  }
+
+  async function submitReplace(desc: string) {
+    if (!desc.trim() || replaceSubmitting) return;
+    setReplaceSubmitting(true);
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/replace`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: desc.trim(), reason: replaceReason.trim() || undefined }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsSkipped(true);
+        setDisplayNotes(data.notes ?? null);
+        setReplaceOpen(false);
+        router.refresh();
+      }
+    } finally {
+      setReplaceSubmitting(false);
+    }
+  }
+
   async function generatePlan() {
     setPlanGenerating(true);
     try {
@@ -522,6 +573,8 @@ export function SessionCard({
     }
   }
 
+  const parsedReplacement = parseReplacedNotes(displayNotes);
+  const isReplaced = isSkipped && !!parsedReplacement;
   const isResolved = !!checkIn?.resolvedAt;
   const category = checkIn ? classifyCheckIn(checkIn.feelScore, checkIn.notes) : "ok";
   const isInjury = category === "injury";
@@ -582,7 +635,7 @@ export function SessionCard({
               }`}
             >
               {(session.status === "skipped" || isSkipped)
-                ? "Skipped"
+                ? isReplaced ? "Replaced" : "Skipped"
                 : isResolved
                 ? "Done · resolved"
                 : checkIn
@@ -598,8 +651,12 @@ export function SessionCard({
             ↓
           </button>
         </div>
-        {session.notes && (
-          <p className="text-xs text-zinc-500 line-clamp-1">{session.notes}</p>
+        {parsedReplacement ? (
+          <p className="text-xs text-zinc-500 line-clamp-1">
+            <span className="font-medium text-zinc-600">Did instead:</span> {parsedReplacement.description}
+          </p>
+        ) : (
+          session.notes && <p className="text-xs text-zinc-500 line-clamp-1">{session.notes}</p>
         )}
         {compactExecLine && (
           <p className="text-xs text-zinc-600">{compactExecLine}</p>
@@ -660,10 +717,16 @@ export function SessionCard({
               )}
             </>
           ) : isSkipped ? (
-            <span className="text-xs text-zinc-400">Skipped</span>
+            <span className="text-xs text-zinc-400">{isReplaced ? "Replaced" : "Skipped"}</span>
           ) : isFuture ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-zinc-400">Upcoming</span>
+              <button
+                onClick={openReplace}
+                className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                Replace
+              </button>
               <button
                 onClick={handleSkip}
                 disabled={skipPending}
@@ -682,6 +745,13 @@ export function SessionCard({
                 className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
               >
                 Check in
+              </button>
+              <span className="text-zinc-200 select-none">·</span>
+              <button
+                onClick={openReplace}
+                className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                Replace
               </button>
               <span className="text-zinc-200 select-none">·</span>
               <button
@@ -841,13 +911,30 @@ export function SessionCard({
         </>
       ) : isSkipped ? (
         // ════════════════════════════════════════
-        // SKIPPED SESSION — minimal body
+        // SKIPPED / REPLACED SESSION — minimal body
         // ════════════════════════════════════════
         <div className="border-t border-zinc-100 pt-2.5 space-y-1.5">
-          {session.notes && (
-            <p className="text-sm text-zinc-500">{session.notes}</p>
+          {parsedReplacement ? (
+            <>
+              <p className="text-sm text-zinc-700">
+                <span className="font-medium">Did instead:</span> {parsedReplacement.description}
+              </p>
+              {parsedReplacement.reason && (
+                <p className="text-xs text-zinc-500">Reason: {parsedReplacement.reason}</p>
+              )}
+              {parsedReplacement.aiNote && (
+                <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-500 mb-0.5">Coach</p>
+                  <p className="text-xs text-indigo-800 whitespace-pre-line">{parsedReplacement.aiNote}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {displayNotes && <p className="text-sm text-zinc-500">{displayNotes}</p>}
+              <p className="text-xs text-zinc-400">Skipped — not completed</p>
+            </>
           )}
-          <p className="text-xs text-zinc-400">Skipped — not completed</p>
         </div>
       ) : (
         // ════════════════════════════════════════
@@ -934,6 +1021,90 @@ export function SessionCard({
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Replace form */}
+      {replaceOpen && (
+        <div className="space-y-2.5 border-t border-zinc-100 pt-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-zinc-400">Swap this session</p>
+            <div className="flex gap-1">
+              <button
+                onClick={() => {
+                  setReplaceTab("suggest");
+                  if (!suggestions && !suggestLoading) fetchSuggestions();
+                }}
+                className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                  replaceTab === "suggest" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                }`}
+              >
+                Suggest
+              </button>
+              <button
+                onClick={() => setReplaceTab("describe")}
+                className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                  replaceTab === "describe" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                }`}
+              >
+                Describe
+              </button>
+            </div>
+          </div>
+
+          {replaceTab === "suggest" ? (
+            <div className="space-y-1.5">
+              {suggestLoading ? (
+                <p className="text-xs text-zinc-400">Thinking of options…</p>
+              ) : suggestions && suggestions.length > 0 ? (
+                suggestions.map((alt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => submitReplace(`${alt.label} (~${alt.durationMin}min)`)}
+                    disabled={replaceSubmitting}
+                    className="w-full text-left rounded-xl border border-zinc-200 px-3 py-2 hover:border-indigo-300 transition-colors disabled:opacity-50"
+                  >
+                    <p className="text-sm font-medium text-zinc-700">{alt.label}</p>
+                    <p className="text-xs text-zinc-400">{alt.durationMin} min · {alt.rationale}</p>
+                  </button>
+                ))
+              ) : suggestions ? (
+                <p className="text-xs text-zinc-400">No suggestions available — try describing it instead.</p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="What will you do instead?"
+                value={replaceDescription}
+                onChange={(e) => setReplaceDescription(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+              />
+              <input
+                type="text"
+                placeholder="Reason (optional — e.g. no spot in class)"
+                value={replaceReason}
+                onChange={(e) => setReplaceReason(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => submitReplace(replaceDescription)}
+                  disabled={replaceSubmitting || !replaceDescription.trim()}
+                  className="flex-1 rounded-xl bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-zinc-800 transition-colors"
+                >
+                  {replaceSubmitting ? "Checking…" : "Confirm swap"}
+                </button>
+                <button
+                  onClick={() => setReplaceOpen(false)}
+                  className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
