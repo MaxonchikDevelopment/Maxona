@@ -130,8 +130,16 @@ export function StravaPanel({
         try {
           const res = await fetch("/api/strava/sync", { method: "POST" });
           const data = await res.json();
-          lastAutoSyncMs = Date.now();
-          setSyncStatus(data.throttled ? "recently_synced" : "synced");
+          // fetch() only rejects on network failure — a non-2xx (e.g. Strava
+          // API down/unauthorized) still resolves here and must be checked explicitly,
+          // otherwise a failed sync is reported as "synced" and stale/missing
+          // results silently look like "nothing to attach".
+          if (!res.ok || data.error) {
+            setSyncStatus("sync_error");
+          } else {
+            lastAutoSyncMs = Date.now();
+            setSyncStatus(data.throttled ? "recently_synced" : "synced");
+          }
         } catch {
           setSyncStatus("sync_error");
         }
@@ -152,9 +160,17 @@ export function StravaPanel({
   async function syncLatest() {
     setManualSyncing(true);
     try {
-      await fetch("/api/strava/sync?force=1", { method: "POST" });
-      lastAutoSyncMs = Date.now();
+      const res = await fetch("/api/strava/sync?force=1", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        setSyncStatus("sync_error");
+      } else {
+        lastAutoSyncMs = Date.now();
+        setSyncStatus(data.throttled ? "recently_synced" : "synced");
+      }
       await fetchActivities();
+    } catch {
+      setSyncStatus("sync_error");
     } finally {
       setManualSyncing(false);
     }
@@ -174,14 +190,16 @@ export function StravaPanel({
       setAvailable((prev) => prev.filter((a) => a.id !== activityId));
       setPickerOpen(false);
 
-      // Auto-fetch stream for the newly attached activity (fire-and-forget).
-      // Stream is saved to DB; the page refresh via onActivityAttached will pick it up.
-      // Manual "Fetch HR stream" button remains as fallback if this doesn't complete in time.
+      // Auto-fetch stream for the newly attached activity (fire-and-forget from the
+      // caller's perspective — attach() doesn't await it). Analysis is chained onto
+      // its completion so it always runs after the stream fetch settles, not in parallel.
       if (newLink.activity?.id) {
-        fetch(`/api/strava/activities/${newLink.activity.id}/streams`, { method: "POST" }).catch(() => {});
+        fetch(`/api/strava/activities/${newLink.activity.id}/streams`, { method: "POST" })
+          .catch(() => {})
+          .finally(() => onActivityAttached?.());
+      } else {
+        onActivityAttached?.();
       }
-
-      onActivityAttached?.();
     } finally {
       setBusy(null);
     }
