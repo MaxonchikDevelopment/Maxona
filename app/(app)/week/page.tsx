@@ -9,13 +9,14 @@ import { ManualSessionForm } from "@/components/manual-session-form";
 import { OnboardingCard } from "@/components/onboarding-card";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
-import { normalizeCoachBullets, stripMarkdownBold } from "@/lib/format-bullets";
+import { normalizeCoachBullets } from "@/lib/format-bullets";
 import { formatIntensity, formatSlot } from "@/lib/format-labels";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { timed } from "@/lib/perf";
 import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
 import { DashboardShell } from "@/components/ui/dashboard-shell";
+import { NutritionFocusBlock } from "@/components/nutrition-focus-block";
 import type { WeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import type { SessionProp, WorkoutPlanProp, WorkoutBlock } from "@/components/session-card";
 import type { WorkoutFeedbackProp } from "@/components/workout-feedback-section";
@@ -145,19 +146,6 @@ function FocusSummary({ text }: { text: string }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-function NutritionFocusBlock({ focus }: { focus: WeeklyNutritionFocus }) {
-  return (
-    <div className="rounded-2xl bg-emerald-50/70 border border-emerald-100 px-4 py-3 space-y-1.5">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Weekly nutrition focus</p>
-      <ul className="space-y-1">
-        {focus.bullets.map((b, i) => (
-          <li key={i} className="text-xs text-emerald-800">· {stripMarkdownBold(b)}</li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -507,13 +495,6 @@ export default async function WeekPage() {
   const totalPlanMin = plannedSessions.reduce((t, s) => t + s.durationMin, 0);
   const hardCount = plannedSessions.filter((s) => s.intensity === "hard").length;
 
-  const hasSideContent =
-    !!latestReadiness ||
-    activeIssues.length > 0 ||
-    !!plan.changeExplanation ||
-    (weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0) ||
-    !!draftPlan;
-
   return (
     <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Plan header ──────────────────────────────────────────────── */}
@@ -557,9 +538,7 @@ export default async function WeekPage() {
                 {latestReadiness && <ReadinessBanner readiness={latestReadiness} />}
                 <ActiveIssues initialIssues={activeIssues} />
                 {plan.changeExplanation && <ChangeBlock explanation={plan.changeExplanation} />}
-                {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
-                  <NutritionFocusBlock focus={weeklyNutritionFocus} />
-                )}
+                <NutritionFocusBlock initialFocus={weeklyNutritionFocus} scopeKey={planId} />
               </div>
 
               {/* Week days — primary content, always in main column */}
@@ -614,19 +593,13 @@ export default async function WeekPage() {
             </div>
           }
           side={
-            hasSideContent ? (
-              <>
-                {latestReadiness && <ReadinessBanner readiness={latestReadiness} />}
-                <ActiveIssues initialIssues={activeIssues} />
-                {plan.changeExplanation && <ChangeBlock explanation={plan.changeExplanation} />}
-                {weeklyNutritionFocus && weeklyNutritionFocus.bullets.length > 0 && (
-                  <NutritionFocusBlock focus={weeklyNutritionFocus} />
-                )}
-                {draftPlan && <DraftPreview plan={draftPlan} todayStr={todayStr} />}
-              </>
-            ) : (
-              <></>
-            )
+            <>
+              {latestReadiness && <ReadinessBanner readiness={latestReadiness} />}
+              <ActiveIssues initialIssues={activeIssues} />
+              {plan.changeExplanation && <ChangeBlock explanation={plan.changeExplanation} />}
+              <NutritionFocusBlock initialFocus={weeklyNutritionFocus} scopeKey={planId} />
+              {draftPlan && <DraftPreview plan={draftPlan} todayStr={todayStr} />}
+            </>
           }
         />
       </PageWrapper>

@@ -193,14 +193,26 @@ function CreateGoalForm({
 }
 
 export default function GoalsPage() {
-  const titleRef = useRef<HTMLInputElement>(null);
+  // Separate refs per breakpoint instance — mobile and desktop both render a
+  // CreateGoalForm at all times (CSS-hidden, not unmounted), so a single shared
+  // ref gets overwritten by whichever instance mounts last and focus() silently
+  // no-ops on the other, hidden one.
+  const mobileTitleRef = useRef<HTMLInputElement>(null);
+  const desktopTitleRef = useRef<HTMLInputElement>(null);
   const { data: goals = [] } = useQuery<GoalProp[]>({
     queryKey: ["goals"],
     queryFn: () => fetch("/api/goals").then((r) => r.json()),
   });
 
   function focusForm() {
-    setTimeout(() => titleRef.current?.focus(), 50);
+    setTimeout(() => {
+      for (const ref of [mobileTitleRef, desktopTitleRef]) {
+        if (ref.current) {
+          ref.current.scrollIntoView({ behavior: "smooth", block: "center" });
+          ref.current.focus();
+        }
+      }
+    }, 50);
   }
 
   return (
@@ -239,14 +251,14 @@ export default function GoalsPage() {
 
             {/* Mobile: form below list */}
             <div className="lg:hidden space-y-3 mt-2">
-              <CreateGoalForm titleRef={titleRef} />
+              <CreateGoalForm titleRef={mobileTitleRef} />
               <GoalGuidanceCard />
             </div>
           </div>
 
           {/* ── Side rail: create + guidance ───────────────────────────── */}
           <aside className="hidden lg:flex lg:flex-col lg:gap-3">
-            <CreateGoalForm titleRef={titleRef} />
+            <CreateGoalForm titleRef={desktopTitleRef} />
             <GoalGuidanceCard />
           </aside>
         </div>
