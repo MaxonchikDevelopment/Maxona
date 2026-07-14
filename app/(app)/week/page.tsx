@@ -310,7 +310,7 @@ export default async function WeekPage() {
         }
       : null,
   };
-  const weeklyNutritionHash = hashInputs(weeklyNutritionInput);
+  const weeklyNutritionHash = hashInputs({ weeklyNutritionVersion: 1, ...weeklyNutritionInput });
 
   // ── Step 3: session-dependent queries in parallel (1 DB round trip) ─────────
   type LinkRow = {

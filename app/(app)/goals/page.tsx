@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef } from "react";
 import { GoalCard } from "@/components/goal-card";
 import { PageWrapper, StaggerList, StaggerItem } from "@/components/ui/page-wrapper";
+import { Dialog } from "@/components/ui/dialog";
 import type { GoalProp } from "@/components/goal-card";
 
 const DISCIPLINES = ["HYROX", "Marathon", "Running", "Cycling", "Swimming", "General fitness"];
@@ -119,8 +120,7 @@ function CreateGoalForm({
   const labelCls = "text-xs font-medium text-zinc-500";
 
   return (
-    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-3">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">New goal</p>
+    <div className="space-y-3">
       <form className="space-y-2.5" onSubmit={handleSubmit}>
         <div className="space-y-1">
           <label className={labelCls}>Title</label>
@@ -193,42 +193,37 @@ function CreateGoalForm({
 }
 
 export default function GoalsPage() {
-  // Separate refs per breakpoint instance — mobile and desktop both render a
-  // CreateGoalForm at all times (CSS-hidden, not unmounted), so a single shared
-  // ref gets overwritten by whichever instance mounts last and focus() silently
-  // no-ops on the other, hidden one.
-  const mobileTitleRef = useRef<HTMLInputElement>(null);
-  const desktopTitleRef = useRef<HTMLInputElement>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
   const { data: goals = [] } = useQuery<GoalProp[]>({
     queryKey: ["goals"],
     queryFn: () => fetch("/api/goals").then((r) => r.json()),
   });
 
-  function focusForm() {
-    setTimeout(() => {
-      for (const ref of [mobileTitleRef, desktopTitleRef]) {
-        if (ref.current) {
-          ref.current.scrollIntoView({ behavior: "smooth", block: "center" });
-          ref.current.focus();
-        }
-      }
-    }, 50);
-  }
-
   return (
     <main className="relative min-h-screen px-4 lg:px-6 xl:px-8 pt-0 pb-24 lg:pb-8">
       {/* ── Hero header ──────────────────────────────────────────────── */}
       <div className="pt-6 pb-4">
-        <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training</p>
-          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Goals</h1>
-          <p className="text-sm text-zinc-500 mt-1">Give the planner a target to adapt around.</p>
+        <div className="flex items-start justify-between gap-3 lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training</p>
+            <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Goals</h1>
+            <p className="text-sm text-zinc-500 mt-1">Give the planner a target to adapt around.</p>
+            {goals.length > 0 && (
+              <p className="text-xs text-zinc-400 mt-2">
+                {goals.length} active goal{goals.length !== 1 ? "s" : ""}
+                {goals.filter((g) => g.priority === 1).length > 0 &&
+                  ` · ${goals.filter((g) => g.priority === 1).length} primary`}
+              </p>
+            )}
+          </div>
           {goals.length > 0 && (
-            <p className="text-xs text-zinc-400 mt-2">
-              {goals.length} active goal{goals.length !== 1 ? "s" : ""}
-              {goals.filter((g) => g.priority === 1).length > 0 &&
-                ` · ${goals.filter((g) => g.priority === 1).length} primary`}
-            </p>
+            <button
+              onClick={() => setFormOpen(true)}
+              className="shrink-0 rounded-xl bg-zinc-900 px-3.5 py-2 text-xs font-medium text-white hover:bg-zinc-800 transition-colors"
+            >
+              + Add goal
+            </button>
           )}
         </div>
       </div>
@@ -238,7 +233,7 @@ export default function GoalsPage() {
           {/* ── Main: goals board ──────────────────────────────────────── */}
           <div className="space-y-3">
             {goals.length === 0 ? (
-              <EmptyGoalsState onAddClick={focusForm} />
+              <EmptyGoalsState onAddClick={() => setFormOpen(true)} />
             ) : (
               <StaggerList className="space-y-3">
                 {goals.map((g) => (
@@ -249,20 +244,22 @@ export default function GoalsPage() {
               </StaggerList>
             )}
 
-            {/* Mobile: form below list */}
-            <div className="lg:hidden space-y-3 mt-2">
-              <CreateGoalForm titleRef={mobileTitleRef} />
+            {/* Mobile: guidance below list */}
+            <div className="lg:hidden mt-2">
               <GoalGuidanceCard />
             </div>
           </div>
 
-          {/* ── Side rail: create + guidance ───────────────────────────── */}
+          {/* ── Side rail: guidance ─────────────────────────────────────── */}
           <aside className="hidden lg:flex lg:flex-col lg:gap-3">
-            <CreateGoalForm titleRef={desktopTitleRef} />
             <GoalGuidanceCard />
           </aside>
         </div>
       </PageWrapper>
+
+      <Dialog open={formOpen} onClose={() => setFormOpen(false)} title="New goal">
+        <CreateGoalForm titleRef={titleRef} onSuccess={() => setFormOpen(false)} />
+      </Dialog>
     </main>
   );
 }
