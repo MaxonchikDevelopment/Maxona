@@ -681,6 +681,8 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     scheduleEvents,
     currentWeekSessions,
     recurringSessions,
+    weekSummaryHistory,
+    plannedFixedSessions,
   ] = await Promise.all([
     prisma.goal.findMany({
       where: { userId, status: "active", deletedAt: null },
@@ -711,7 +713,31 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     prisma.recurringSession.findMany({
       where: { userId, isActive: true },
     }),
+    // Last few completed weeks — multi-week trend signal for planning
+    prisma.weekSummary.findMany({
+      where: { userId, weekStart: { lt: nextWeekStart } },
+      orderBy: { weekStart: "desc" },
+      take: 4,
+    }),
+    // Athlete-declared one-off fixed sessions for next week (survive regeneration)
+    prisma.plannedFixedSession.findMany({
+      where: { userId, scheduledDate: { gte: nextWeekStart, lte: nextWeekEnd } },
+    }),
   ]);
+
+  // Oldest → newest for a readable trajectory
+  const weekHistory = [...weekSummaryHistory].reverse().map((w) => {
+    const signals = (w.signals ?? {}) as { mainLimiter?: string | null };
+    return {
+      weekStart: toDateStr(w.weekStart),
+      adherenceByCount: w.adherenceByCount,
+      hardDone: w.hardDone,
+      hardPlanned: w.hardPlanned,
+      avgFeelScore: w.avgFeelScore,
+      mainLimiter: signals.mainLimiter ?? null,
+      carryForward: w.carryForward,
+    };
+  });
 
   // Current week check-ins as the most recent signal going into next week
   const recentCheckIns: RecentCheckIn[] = currentWeekSessions
@@ -817,6 +843,20 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     }
   }
 
+  // Athlete-declared one-off fixed sessions — same treatment as recurring fixed
+  // sessions (validated against availability/conflict rules downstream, not an
+  // override). notes are modality-prefixed so modalityKey/diff logic recognises them.
+  for (const ps of plannedFixedSessions) {
+    const label = ps.notes?.trim();
+    allFixedSessions.push({
+      date: toDateStr(ps.scheduledDate),
+      preferredSlot: ps.preferredSlot,
+      durationMin: ps.durationMin,
+      intensity: ps.intensity,
+      notes: label ? `${ps.modality}: ${label}` : ps.modality,
+    });
+  }
+
   // Injury window check — active injuries now affect next week's planning
   const injuryWindow = getInjuryWindow(recentCheckIns);
   let fixedSessions = allFixedSessions;
@@ -884,6 +924,7 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     replanReason: "weekly review — planning next week",
     parsedPreferences,
     goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
+    weekHistory: weekHistory.length > 0 ? weekHistory : undefined,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -960,7 +1001,7 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     unmetPreferences,
   });
 
-  return prisma.trainingPlan.create({
+  const draft = await prisma.trainingPlan.create({
     data: {
       userId,
       startsAt: nextWeekStart,
@@ -985,6 +1026,17 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
       },
     },
   });
+
+  // Mark declared fixed sessions as consumed by this draft. Rows persist across
+  // regenerations (queried by date, not plan), so we re-stamp the latest draft id.
+  if (plannedFixedSessions.length > 0) {
+    await prisma.plannedFixedSession.updateMany({
+      where: { id: { in: plannedFixedSessions.map((p) => p.id) } },
+      data: { consumedByPlanId: draft.id },
+    });
+  }
+
+  return draft;
 }
 
 function buildDeterministicFocusSummary(sessions: PlannedSession[], unmetPreferences?: string[]): string {

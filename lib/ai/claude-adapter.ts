@@ -239,6 +239,16 @@ When weeklyReview is present, treat it as the athlete's direct input for this pl
   - "Balanced" → follow default weekly structure
 - familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly
 - trainingPreferencesText: athlete's raw free-form text — the structured interpretation is in explicitPreferenceConstraints; use the raw text only for context not captured by the structured fields
+- fatigue (1–5, 1 fresh → 5 wrecked): ≥4 = bias to fewer/easier sessions and reduce total volume ~15%; combined with low motivation, prioritise recovery over load
+- soreness (1–5) + sorenessAreas: localized soreness means avoid loading that area — calf/knee/hip soreness → cap running volume and avoid hard running; shoulder/back soreness → avoid heavy HYROX/upper-body strength
+- motivation (1–5, 1 low → 5 high): ≤2 with high fatigue → keep the week light and rebuilding; ≥4 with green recovery supports a modest step-up
+
+## Multi-week trend (weekHistory)
+When weekHistory is present it summarises the last few completed weeks oldest → newest. Use it as trend context, not an override:
+- Rising adherence with green feel scores over 2+ weeks → load can step up modestly
+- Falling adherence or a recurring mainLimiter across weeks → hold or reduce load; do not stack another hard week
+- A limiter (e.g. fatigue, unresolved injury) repeating across weeks is a stronger signal than a single week — weight it accordingly
+Current-week check-ins and this cycle's weeklyReview always take priority over the historical trend.
 
 ## Explicit preference constraints (explicitPreferenceConstraints)
 When this object appears in the prompt, it contains preferences parsed deterministically from the athlete's free text (in any language).
@@ -485,6 +495,19 @@ function buildUserPrompt(context: PlanningContext): string {
           activeWarnings: context.readinessSummary.activeWarnings,
         }),
         affectsRemainingWeek: context.readinessSummary.affectsRemainingWeek,
+      },
+    }),
+    ...(context.weekHistory && context.weekHistory.length > 0 && {
+      weekHistory: {
+        note: "Retrospective of the last few completed weeks (oldest → newest). Use for trend context: adherence trajectory, recurring limiters, whether load can step up. Current-week and weeklyReview signals still take priority.",
+        weeks: context.weekHistory.map((w) => ({
+          weekStart: w.weekStart,
+          adherence: `${w.adherenceByCount}%`,
+          hard: `${w.hardDone}/${w.hardPlanned}`,
+          ...(w.avgFeelScore != null && { avgFeel: w.avgFeelScore }),
+          ...(w.mainLimiter && { mainLimiter: w.mainLimiter }),
+          ...(w.carryForward.length > 0 && { carryForward: w.carryForward }),
+        })),
       },
     }),
     ...(context.thisWeekCheckIns.length > 0 && {

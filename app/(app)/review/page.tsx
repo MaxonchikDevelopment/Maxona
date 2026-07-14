@@ -28,6 +28,22 @@ type DraftState = {
   selectedPriorities: string[];
   familyConstraints: string;
   trainingPreferencesText: string;
+  fatigue: number | null;
+  soreness: number | null;
+  motivation: number | null;
+  sorenessAreas: string[];
+};
+
+const SORENESS_AREAS = ["Calves", "Knees", "Hips", "Shoulders", "Back", "Quads"];
+
+type FixedSessionRow = {
+  id: string;
+  scheduledDate: string;
+  preferredSlot: string;
+  durationMin: number;
+  intensity: string;
+  modality: string;
+  notes: string | null;
 };
 
 type ExistingDraft = {
@@ -127,21 +143,35 @@ type ArchivePlan = {
   sessions: ArchiveSession[];
 } | null;
 
+const EMPTY_DRAFT: DraftState = {
+  recoveryScore: null,
+  selectedPriorities: [],
+  familyConstraints: "",
+  trainingPreferencesText: "",
+  fatigue: null,
+  soreness: null,
+  motivation: null,
+  sorenessAreas: [],
+};
+
 function loadDraft(): DraftState {
-  if (typeof window === "undefined")
-    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "", trainingPreferencesText: "" };
+  if (typeof window === "undefined") return EMPTY_DRAFT;
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return { recoveryScore: null, selectedPriorities: [], familyConstraints: "", trainingPreferencesText: "" };
+    if (!raw) return EMPTY_DRAFT;
     const parsed = JSON.parse(raw) as Partial<DraftState>;
     return {
       recoveryScore: parsed.recoveryScore ?? null,
       selectedPriorities: parsed.selectedPriorities ?? [],
       familyConstraints: parsed.familyConstraints ?? "",
       trainingPreferencesText: parsed.trainingPreferencesText ?? "",
+      fatigue: parsed.fatigue ?? null,
+      soreness: parsed.soreness ?? null,
+      motivation: parsed.motivation ?? null,
+      sorenessAreas: parsed.sorenessAreas ?? [],
     };
   } catch {
-    return { recoveryScore: null, selectedPriorities: [], familyConstraints: "", trainingPreferencesText: "" };
+    return EMPTY_DRAFT;
   }
 }
 
@@ -180,6 +210,10 @@ export default function ReviewPage() {
   const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [familyConstraints, setFamilyConstraints] = useState("");
   const [trainingPreferencesText, setTrainingPreferencesText] = useState("");
+  const [fatigue, setFatigue] = useState<number | null>(null);
+  const [soreness, setSoreness] = useState<number | null>(null);
+  const [motivation, setMotivation] = useState<number | null>(null);
+  const [sorenessAreas, setSorenessAreas] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -188,6 +222,7 @@ export default function ReviewPage() {
   const [archivePlan, setArchivePlan] = useState<ArchivePlan | undefined>(undefined);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
+  const [fixedSessions, setFixedSessions] = useState<FixedSessionRow[]>([]);
 
   useEffect(() => {
     const draft = loadDraft();
@@ -195,6 +230,10 @@ export default function ReviewPage() {
     setSelectedPriorities(draft.selectedPriorities);
     setFamilyConstraints(draft.familyConstraints);
     setTrainingPreferencesText(draft.trainingPreferencesText);
+    setFatigue(draft.fatigue);
+    setSoreness(draft.soreness);
+    setMotivation(draft.motivation);
+    setSorenessAreas(draft.sorenessAreas);
     setHydrated(true);
   }, []);
 
@@ -220,10 +259,46 @@ export default function ReviewPage() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/plans/fixed-sessions")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setFixedSessions((data?.sessions as FixedSessionRow[]) ?? []))
+      .catch(() => setFixedSessions([]));
+  }, []);
+
+  async function addFixedSession(input: {
+    dayOffset: number;
+    preferredSlot: string;
+    durationMin: number;
+    intensity: string;
+    modality: string;
+    notes: string;
+  }) {
+    const res = await fetch("/api/plans/fixed-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (res.ok) {
+      const row = (await res.json()) as FixedSessionRow;
+      setFixedSessions((prev) =>
+        [...prev, row].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))
+      );
+    }
+  }
+
+  async function removeFixedSession(id: string) {
+    setFixedSessions((prev) => prev.filter((s) => s.id !== id));
+    await fetch(`/api/plans/fixed-sessions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  useEffect(() => {
     if (!hydrated) return;
-    const draft: DraftState = { recoveryScore, selectedPriorities, familyConstraints, trainingPreferencesText };
+    const draft: DraftState = {
+      recoveryScore, selectedPriorities, familyConstraints, trainingPreferencesText,
+      fatigue, soreness, motivation, sorenessAreas,
+    };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  }, [recoveryScore, selectedPriorities, familyConstraints, trainingPreferencesText, hydrated]);
+  }, [recoveryScore, selectedPriorities, familyConstraints, trainingPreferencesText, fatigue, soreness, motivation, sorenessAreas, hydrated]);
 
   function togglePriority(opt: string) {
     setSelectedPriorities((prev) =>
@@ -240,6 +315,10 @@ export default function ReviewPage() {
       ...(selectedPriorities.length > 0 && { priorities: selectedPriorities }),
       ...(familyConstraints.trim() && { familyConstraints: familyConstraints.trim() }),
       ...(trainingPreferencesText.trim() && { trainingPreferencesText: trainingPreferencesText.trim() }),
+      ...(fatigue !== null && { fatigue }),
+      ...(soreness !== null && { soreness }),
+      ...(motivation !== null && { motivation }),
+      ...(soreness !== null && soreness >= 3 && sorenessAreas.length > 0 && { sorenessAreas }),
     };
 
     try {
@@ -360,6 +439,55 @@ export default function ReviewPage() {
         <p className="text-[10px] text-zinc-400">1 = very fatigued · 6 = fresh and ready</p>
       </div>
 
+      {/* Structured check-in */}
+      <div className="space-y-3 rounded-xl bg-zinc-50/60 border border-zinc-100 p-3">
+        <ScaleRow
+          label="Fatigue"
+          hint="1 fresh → 5 wrecked"
+          value={fatigue}
+          onChange={setFatigue}
+        />
+        <ScaleRow
+          label="Soreness"
+          hint="1 none → 5 severe"
+          value={soreness}
+          onChange={(v) => {
+            setSoreness(v);
+            if (v === null || v < 3) setSorenessAreas([]);
+          }}
+        />
+        {soreness !== null && soreness >= 3 && (
+          <div className="space-y-1.5">
+            <p className="text-[11px] text-zinc-500">Where? (tap all that apply)</p>
+            <div className="flex flex-wrap gap-1.5">
+              {SORENESS_AREAS.map((area) => (
+                <button
+                  key={area}
+                  onClick={() =>
+                    setSorenessAreas((prev) =>
+                      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]
+                    )
+                  }
+                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                    sorenessAreas.includes(area)
+                      ? "bg-orange-600 text-white border-orange-600"
+                      : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                  }`}
+                >
+                  {area}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <ScaleRow
+          label="Motivation"
+          hint="1 low → 5 high"
+          value={motivation}
+          onChange={setMotivation}
+        />
+      </div>
+
       {/* Priorities */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-zinc-700">
@@ -412,6 +540,13 @@ export default function ReviewPage() {
         />
       </div>
 
+      {/* Locked-in fixed sessions for next week */}
+      <FixedSessionsCard
+        sessions={fixedSessions}
+        onAdd={addFixedSession}
+        onRemove={removeFixedSession}
+      />
+
       {error && (
         <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{error}</p>
       )}
@@ -443,11 +578,21 @@ export default function ReviewPage() {
       {/* ── Hero header ──────────────────────────────────────────────── */}
       <div className="pt-6 pb-4">
         <div className="lg:rounded-2xl lg:bg-white/70 lg:backdrop-blur-sm lg:border lg:border-zinc-100/80 lg:shadow-sm lg:px-5 lg:py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Planning</p>
-          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Review & Plan</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Turn this week&apos;s signals into the next adaptive plan.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Planning</p>
+              <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Review & Plan</h1>
+              <p className="text-sm text-zinc-500 mt-1">
+                Turn this week&apos;s signals into the next adaptive plan.
+              </p>
+            </div>
+            <button
+              onClick={() => router.push("/history")}
+              className="shrink-0 rounded-xl border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 transition-colors"
+            >
+              History &amp; trends →
+            </button>
+          </div>
         </div>
       </div>
 
@@ -561,6 +706,213 @@ function MetricPill({
       <span className={`text-sm font-semibold tabular-nums leading-none ${accent ? "text-red-600" : "text-zinc-800"}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function ScaleRow({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs font-medium text-zinc-700">{label}</p>
+        <p className="text-[10px] text-zinc-400">{hint}</p>
+      </div>
+      <div className="flex gap-1.5">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            onClick={() => onChange(value === n ? null : n)}
+            className={`h-8 flex-1 rounded-lg border text-xs font-medium transition-colors ${
+              value === n
+                ? "bg-zinc-900 text-white border-zinc-900"
+                : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+            }`}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const FIXED_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const FIXED_SLOTS = ["morning", "daytime", "afternoon", "evening"];
+const FIXED_MODALITIES = ["running", "hyrox", "cycling", "swimming"];
+const FIXED_INTENSITIES = ["easy", "moderate", "hard"];
+
+function FixedSessionsCard({
+  sessions,
+  onAdd,
+  onRemove,
+}: {
+  sessions: FixedSessionRow[];
+  onAdd: (input: {
+    dayOffset: number;
+    preferredSlot: string;
+    durationMin: number;
+    intensity: string;
+    modality: string;
+    notes: string;
+  }) => Promise<void>;
+  onRemove: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [dayOffset, setDayOffset] = useState(5); // Sat
+  const [slot, setSlot] = useState("morning");
+  const [modality, setModality] = useState("running");
+  const [durationMin, setDurationMin] = useState(60);
+  const [intensity, setIntensity] = useState("moderate");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const selCls =
+    "rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300";
+
+  async function handleAdd() {
+    setSaving(true);
+    await onAdd({ dayOffset, preferredSlot: slot, durationMin, intensity, modality, notes: note });
+    setNote("");
+    setSaving(false);
+    setOpen(false);
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3">
+      <div>
+        <p className="text-xs font-medium text-zinc-700">Locked-in sessions next week</p>
+        <p className="text-[10px] text-zinc-400">
+          Sessions you already know about. The plan builds around these.
+        </p>
+      </div>
+
+      {sessions.length > 0 && (
+        <div className="space-y-1.5">
+          {sessions.map((s) => {
+            const d = new Date(s.scheduledDate + "T12:00:00Z");
+            const dayName = FIXED_DAYS[(d.getUTCDay() + 6) % 7];
+            return (
+              <div
+                key={s.id}
+                className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5"
+              >
+                <span className="text-xs text-zinc-700">
+                  {dayName} · <span className="capitalize">{s.preferredSlot}</span> ·{" "}
+                  <span className="capitalize">{s.modality}</span> · {s.durationMin}m ·{" "}
+                  <span className="capitalize">{s.intensity}</span>
+                  {s.notes ? <span className="text-zinc-400"> — {s.notes}</span> : null}
+                </span>
+                <button
+                  onClick={() => onRemove(s.id)}
+                  className="ml-2 shrink-0 text-zinc-400 hover:text-red-600 text-sm leading-none"
+                  aria-label="Remove"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {open ? (
+        <div className="space-y-2 rounded-lg border border-zinc-200 bg-white p-2.5">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-zinc-400">Day</span>
+              <select className={selCls} value={dayOffset} onChange={(e) => setDayOffset(Number(e.target.value))}>
+                {FIXED_DAYS.map((d, i) => (
+                  <option key={d} value={i}>{d}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-zinc-400">Slot</span>
+              <select className={selCls} value={slot} onChange={(e) => setSlot(e.target.value)}>
+                {FIXED_SLOTS.map((s) => (
+                  <option key={s} value={s} className="capitalize">{s}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-zinc-400">Type</span>
+              <select className={selCls} value={modality} onChange={(e) => setModality(e.target.value)}>
+                {FIXED_MODALITIES.map((m) => (
+                  <option key={m} value={m} className="capitalize">{m}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-zinc-400">Duration (min)</span>
+              <input
+                type="number"
+                min={10}
+                max={360}
+                step={5}
+                value={durationMin}
+                onChange={(e) => setDurationMin(Number(e.target.value))}
+                className={selCls}
+              />
+            </label>
+          </div>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-zinc-400">Intensity</span>
+            <div className="flex gap-1.5">
+              {FIXED_INTENSITIES.map((i) => (
+                <button
+                  key={i}
+                  onClick={() => setIntensity(i)}
+                  className={`flex-1 rounded-lg border px-2 py-1.5 text-xs capitalize transition-colors ${
+                    intensity === i
+                      ? "bg-zinc-900 text-white border-zinc-900"
+                      : "border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                  }`}
+                >
+                  {i}
+                </button>
+              ))}
+            </div>
+          </label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Note (e.g. Group long run)"
+            className={selCls + " w-full"}
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleAdd}
+              disabled={saving}
+              className="flex-1 rounded-lg bg-zinc-900 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            >
+              {saving ? "Adding…" : "Add"}
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full rounded-lg border border-dashed border-zinc-300 py-2 text-xs font-medium text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 transition-colors"
+        >
+          + Add fixed session
+        </button>
+      )}
     </div>
   );
 }

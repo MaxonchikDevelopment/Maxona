@@ -61,6 +61,12 @@ export interface WeeklyReview {
   familyConstraints?: string;
   trainingPreferencesText?: string;
   parsedConstraints?: ParsedTemporalConstraint[];
+  // Structured pre-plan check-in (planner context only; not yet persisted —
+  // a WeekSummary migration would make these first-class history).
+  fatigue?: number; // 1 fresh → 5 wrecked
+  soreness?: number; // 1 none → 5 severe
+  motivation?: number; // 1 low → 5 high
+  sorenessAreas?: string[];
 }
 
 export interface ParsedPreferences {
@@ -82,6 +88,18 @@ export interface ReadinessSummary {
   latestEntry?: ReadinessEntry;
   activeWarnings: ReadinessEntry[];
   affectsRemainingWeek: boolean;
+}
+
+// Compact per-week retrospective drawn from persisted WeekSummary rows, oldest
+// → newest, fed to the planner as a multi-week trend signal.
+export interface WeekHistoryEntry {
+  weekStart: string;
+  adherenceByCount: number;
+  hardDone: number;
+  hardPlanned: number;
+  avgFeelScore: number | null;
+  mainLimiter: string | null;
+  carryForward: string[];
 }
 
 export interface PlanningContext {
@@ -108,6 +126,7 @@ export interface PlanningContext {
   readinessSummary?: ReadinessSummary;
   parsedPreferences?: ParsedPreferences;
   goalGuidance?: GoalGuidance;
+  weekHistory?: WeekHistoryEntry[];
 }
 
 export interface PlannedSession {

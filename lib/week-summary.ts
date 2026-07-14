@@ -1,6 +1,7 @@
 import type { TrainingSession, CheckIn, DailyReadiness, StravaActivity, SessionStravaActivityLink } from "@prisma/client";
 import { deriveExecutionSummary } from "@/lib/execution-summary";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 export type WeekSummarySession = TrainingSession & {
   checkIn: CheckIn | null;
@@ -267,4 +268,93 @@ export function computeWeekSummary(
     sessions: sessionResults,
     carryForward: carryForward.slice(0, 5),
   };
+}
+
+export type KeySession = {
+  date: string;
+  label: string;
+  intensity: string;
+  status: string;
+  feelScore: number | null;
+  quality: string | null;
+};
+
+/** Distils a WeekSummaryResult into the compact fields persisted on WeekSummary. */
+function deriveSummaryExtras(result: WeekSummaryResult): {
+  avgFeelScore: number | null;
+  keySessions: KeySession[];
+} {
+  const feels = result.sessions
+    .map((s) => s.checkIn?.feelScore)
+    .filter((f): f is number => typeof f === "number");
+  const avgFeelScore =
+    feels.length > 0
+      ? parseFloat((feels.reduce((a, b) => a + b, 0) / feels.length).toFixed(1))
+      : null;
+
+  const keySessions: KeySession[] = result.sessions
+    .filter((s) => s.status === "done" && (s.intensity === "hard" || s.durationMin >= 75))
+    .slice(0, 6)
+    .map((s) => ({
+      date: s.date,
+      label: (s.notes ?? s.intensity).split(":")[0].trim(),
+      intensity: s.intensity,
+      status: s.status,
+      feelScore: s.checkIn?.feelScore ?? null,
+      quality: s.execution?.qualityLabel ?? null,
+    }));
+
+  return { avgFeelScore, keySessions };
+}
+
+/**
+ * Persists the week retrospective as a durable WeekSummary row. Idempotent via
+ * the @@unique([userId, weekStart]) upsert — safe under concurrent rollover
+ * calls. Returns false (never throws) when the write fails so callers can treat
+ * it as best-effort and never let it block plan activation.
+ */
+export async function persistWeekSummary(
+  db: PrismaClient | Prisma.TransactionClient,
+  userId: string,
+  plan: { id: string; startsAt: Date; endsAt: Date },
+  sessions: WeekSummarySession[],
+  readinessRecords: DailyReadiness[],
+  overrides?: { recoveryScore?: number | null; reviewNotes?: string | null; narrative?: string | null }
+): Promise<boolean> {
+  try {
+    const result = computeWeekSummary(plan, sessions, readinessRecords);
+    const { avgFeelScore, keySessions } = deriveSummaryExtras(result);
+
+    const data = {
+      planId: plan.id,
+      weekEnd: plan.endsAt,
+      planned: result.planned,
+      done: result.done,
+      skipped: result.skipped,
+      plannedDurationMin: result.plannedDurationMin,
+      actualMovingMin: result.actualMovingMin,
+      adherenceByCount: result.adherenceByCount,
+      adherenceByDuration: result.adherenceByDuration,
+      hardPlanned: result.hardPlanned,
+      hardDone: result.hardDone,
+      avgFeelScore,
+      executionQuality: result.executionQuality as unknown as Prisma.InputJsonValue,
+      signals: result.signals as unknown as Prisma.InputJsonValue,
+      keySessions: keySessions as unknown as Prisma.InputJsonValue,
+      carryForward: result.carryForward,
+      recoveryScore: overrides?.recoveryScore ?? null,
+      reviewNotes: overrides?.reviewNotes ?? null,
+      narrative: overrides?.narrative ?? null,
+    };
+
+    await db.weekSummary.upsert({
+      where: { userId_weekStart: { userId, weekStart: plan.startsAt } },
+      create: { userId, weekStart: plan.startsAt, ...data },
+      update: data,
+    });
+    return true;
+  } catch (err) {
+    console.error("[week-summary] persistWeekSummary failed:", err);
+    return false;
+  }
 }
