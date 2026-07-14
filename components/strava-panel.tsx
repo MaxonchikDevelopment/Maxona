@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef } from "react";
+import { ACTIVITY_MATCH_WINDOW_DAYS } from "@/lib/strava/constants";
 
 // Module-level: track last auto-sync time across panel opens (resets on page reload)
 let lastAutoSyncMs = 0;
@@ -330,7 +331,9 @@ export function StravaPanel({
           {loadingPicker ? (
             <p className="text-xs text-gray-400">Loading…</p>
           ) : available.length === 0 ? (
-            <p className="text-xs text-gray-400">No unattached activities within ±2 days.</p>
+            <p className="text-xs text-gray-400">
+              No unattached activities within ±{ACTIVITY_MATCH_WINDOW_DAYS} days.
+            </p>
           ) : visibleActivities.length === 0 ? (
             // No same-day activities, prompt to show older
             <div className="space-y-1">

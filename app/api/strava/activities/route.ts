@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { scoreCandidate, labelForScore } from "@/lib/strava/suggest";
 import { getSessionUserIdFromRequest } from "@/lib/auth/session";
+import { ACTIVITY_MATCH_WINDOW_DAYS } from "@/lib/strava/constants";
 
 // Returns synced Strava activities.
-// ?sessionDate=YYYY-MM-DD  — filter to ±2 days around that date
+// ?sessionDate=YYYY-MM-DD  — filter to ±ACTIVITY_MATCH_WINDOW_DAYS days around that date
 // ?excludeSessionId=...    — exclude activities already linked to that session
 // ?sessionDurationMin=N    — planned session duration for scoring
 // ?sessionNotes=...        — session notes for sport-type inference
@@ -26,9 +27,11 @@ export async function GET(request: NextRequest) {
     const [y, m, d] = sessionDate.split("-").map(Number);
     const base = new Date(Date.UTC(y, m - 1, d));
     const from = new Date(base);
-    from.setUTCDate(from.getUTCDate() - 2);
+    from.setUTCDate(from.getUTCDate() - ACTIVITY_MATCH_WINDOW_DAYS);
+    // Upper bound is N+1 days at 00:00 UTC (not N), so day+N is fully covered —
+    // an activity any time on day+N is still < 00:00 of day+N+1.
     const to = new Date(base);
-    to.setUTCDate(to.getUTCDate() + 3);
+    to.setUTCDate(to.getUTCDate() + ACTIVITY_MATCH_WINDOW_DAYS + 1);
     dateFilter = { gte: from, lte: to };
   }
 
