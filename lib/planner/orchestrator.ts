@@ -726,6 +726,49 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
       category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
     }));
 
+  // Completed/skipped sessions from the week just finished — the highest-priority
+  // retrospective signal for next week's draft (mirrors thisWeekCheckIns/
+  // currentWeekDoneSessions treatment in generateWeeklyPlan).
+  const doneSessionsThisWeek = currentWeekSessions.filter(
+    (s) => s.status === "done" || s.status === "skipped"
+  );
+
+  const nextWeekSessionDeltas = new Map<string, ExecutionDelta>();
+  if (doneSessionsThisWeek.length > 0) {
+    const doneStravaLinks = await prisma.sessionStravaActivityLink.findMany({
+      where: { sessionId: { in: doneSessionsThisWeek.map((s) => s.id) } },
+      include: { activity: true },
+      orderBy: { isPrimary: "desc" },
+    });
+    const linksBySession = new Map<string, typeof doneStravaLinks>();
+    for (const l of doneStravaLinks) {
+      const list = linksBySession.get(l.sessionId) ?? [];
+      list.push(l);
+      linksBySession.set(l.sessionId, list);
+    }
+    for (const s of doneSessionsThisWeek) {
+      const links = linksBySession.get(s.id);
+      if (!links?.length) continue;
+      const delta = deriveExecutionDelta(
+        { durationMin: s.durationMin, notes: s.notes, intensity: s.intensity },
+        links.map((l) => l.activity)
+      );
+      if (delta) nextWeekSessionDeltas.set(s.id, delta);
+    }
+  }
+
+  const thisWeekCheckIns: RecentCheckIn[] = doneSessionsThisWeek
+    .filter((s) => s.checkIn != null)
+    .map((s) => ({
+      sessionId: s.id,
+      sessionDate: toDateStr(s.scheduledDate),
+      sessionIntensity: s.intensity,
+      feelScore: s.checkIn!.feelScore,
+      notes: s.checkIn!.notes,
+      resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
+      category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
+    }));
+
   // Parse family constraints and training preferences (both async, run in parallel)
   let parsedWeeklyReview = weeklyReview;
   const [familyParsed, parsedPreferences] = await Promise.all([
@@ -823,10 +866,17 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     scheduleEvents,
     previousSessions: currentWeekSessions,
     recentCheckIns,
-    thisWeekCheckIns: [],
+    thisWeekCheckIns,
     weekStart: nextWeekStart,
     todayStr,
-    currentWeekDoneSessions: [],
+    currentWeekDoneSessions: doneSessionsThisWeek.map((s) => ({
+      date: toDateStr(s.scheduledDate),
+      durationMin: s.durationMin,
+      intensity: s.intensity,
+      notes: s.notes,
+      status: s.status,
+      ...(nextWeekSessionDeltas.has(s.id) && { executionDelta: nextWeekSessionDeltas.get(s.id) }),
+    })),
     fixedSessions,
     optionalSlots,
     safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
