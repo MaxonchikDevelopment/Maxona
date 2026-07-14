@@ -23,11 +23,20 @@ function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
 }
 
-export function GoalCard({ goal }: { goal: GoalProp }) {
+export function GoalCard({
+  goal,
+  onEdit,
+  isNextUp,
+}: {
+  goal: GoalProp;
+  onEdit?: () => void;
+  isNextUp?: boolean;
+}) {
   const [deleting, setDeleting] = useState(false);
   const qc = useQueryClient();
 
-  async function deleteGoal() {
+  async function deleteGoal(e: React.MouseEvent) {
+    e.stopPropagation();
     setDeleting(true);
     await fetch(`/api/goals/${goal.id}`, { method: "DELETE" });
     qc.invalidateQueries({ queryKey: ["goals"] });
@@ -41,10 +50,20 @@ export function GoalCard({ goal }: { goal: GoalProp }) {
     <motion.div
       whileHover={{ y: -1 }}
       transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-      className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-2.5"
+      onClick={onEdit}
+      role={onEdit ? "button" : undefined}
+      tabIndex={onEdit ? 0 : undefined}
+      className={`rounded-2xl bg-white border shadow-card p-4 space-y-2.5 ${onEdit ? "cursor-pointer" : ""} ${
+        isNextUp ? "border-indigo-200 ring-1 ring-indigo-100" : "border-zinc-100"
+      }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
+          {isNextUp && (
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-500 mb-0.5">
+              Next up
+            </p>
+          )}
           <h3 className="text-sm font-semibold text-zinc-900 leading-snug">{goal.title}</h3>
           {goal.description && (
             <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{goal.description}</p>

@@ -9,8 +9,10 @@ import type {
 } from "@prisma/client";
 import type { CheckInCategory } from "@/lib/checkin-utils";
 import type { ExecutionDelta } from "@/lib/planner/execution-delta";
+import type { GoalGuidance } from "@/lib/planner/goal-guidance";
 
 export type { ExecutionDelta };
+export type { GoalGuidance };
 
 export interface ParsedTemporalConstraint {
   day: string;
@@ -105,6 +107,7 @@ export interface PlanningContext {
   replanReason?: string;
   readinessSummary?: ReadinessSummary;
   parsedPreferences?: ParsedPreferences;
+  goalGuidance?: GoalGuidance;
 }
 
 export interface PlannedSession {

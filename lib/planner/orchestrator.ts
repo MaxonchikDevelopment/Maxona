@@ -11,6 +11,7 @@ import { renderChangeExplanation, renderNextWeekDraftSummary, type ChangeSummary
 import { enforceExplicitPreferences } from "@/lib/planner/preference-constraints";
 import { parseLLMPreferences } from "@/lib/ai/parse-training-preferences";
 import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
+import { computeGoalGuidance } from "@/lib/planner/goal-guidance";
 import type {
   PlanningContext,
   RecentCheckIn,
@@ -45,6 +46,18 @@ function getInjuryWindow(
     injuryDate,
     protectUntil: toDateStr(addDays(injuryDateObj, 2)),
   };
+}
+
+function toGoalGuidanceInputs(
+  goals: Array<{ id: string; title: string; discipline: string | null; targetDate: Date | null; priority: number | null }>
+) {
+  return goals.map((g) => ({
+    id: g.id,
+    title: g.title,
+    discipline: g.discipline,
+    targetDate: g.targetDate ? toDateStr(g.targetDate) : null,
+    priority: g.priority,
+  }));
 }
 
 // ─── Readiness summary ───────────────────────────────────────────────────────
@@ -556,6 +569,7 @@ export async function generateWeeklyPlan(
     weeklyReview: parsedWeeklyReview,
     replanReason,
     readinessSummary,
+    goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -819,6 +833,7 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     weeklyReview: parsedWeeklyReview,
     replanReason: "weekly review — planning next week",
     parsedPreferences,
+    goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
