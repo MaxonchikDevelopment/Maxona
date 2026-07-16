@@ -23,6 +23,15 @@ import type {
   ReadinessSummary,
   ReadinessEntry,
 } from "@/lib/ai/adapter";
+import type { PlannedFixedSession } from "@prisma/client";
+
+// Shared between the fixedSessions payload sent to Claude and the
+// consumedByPlanId matching after generation, so both sides agree on the
+// same label for a given row.
+function plannedFixedSessionNotes(ps: PlannedFixedSession): string {
+  const label = ps.notes?.trim();
+  return label ? `${ps.modality}: ${label}` : ps.modality;
+}
 
 const RULES = [
   noConflictSchedule,
@@ -847,13 +856,12 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
   // sessions (validated against availability/conflict rules downstream, not an
   // override). notes are modality-prefixed so modalityKey/diff logic recognises them.
   for (const ps of plannedFixedSessions) {
-    const label = ps.notes?.trim();
     allFixedSessions.push({
       date: toDateStr(ps.scheduledDate),
       preferredSlot: ps.preferredSlot,
       durationMin: ps.durationMin,
       intensity: ps.intensity,
-      notes: label ? `${ps.modality}: ${label}` : ps.modality,
+      notes: plannedFixedSessionNotes(ps),
     });
   }
 
@@ -1027,11 +1035,36 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     },
   });
 
-  // Mark declared fixed sessions as consumed by this draft. Rows persist across
-  // regenerations (queried by date, not plan), so we re-stamp the latest draft id.
-  if (plannedFixedSessions.length > 0) {
+  // Mark declared fixed sessions as consumed by this draft — but only the ones that
+  // actually survived rules filtering/dedup into the persisted set. A fixed session
+  // can still be dropped (e.g. blocked date, hard-session spacing); stamping it as
+  // consumed regardless would hide that it silently vanished from the plan. Rows
+  // persist across regenerations (queried by date, not plan), so we re-stamp the
+  // latest draft id for whichever ones made it in this time.
+  const survivingFixedKeys = new Set(
+    validSessions
+      .filter((s) => s.planningType === "fixed")
+      .map((s) => `${toDateStr(s.scheduledDate)}|${s.notes ?? ""}`)
+  );
+
+  const consumedIds: string[] = [];
+  for (const ps of plannedFixedSessions) {
+    const key = `${toDateStr(ps.scheduledDate)}|${plannedFixedSessionNotes(ps)}`;
+    if (survivingFixedKeys.has(key)) {
+      consumedIds.push(ps.id);
+    } else {
+      console.warn(
+        `[orchestrator] fixed session dropped from draft ${draft.id}: ` +
+          `${toDateStr(ps.scheduledDate)} "${plannedFixedSessionNotes(ps)}" ` +
+          `(plannedFixedSession id=${ps.id}) did not survive into the persisted plan — ` +
+          `leaving consumedByPlanId null so it's retried on next generation.`
+      );
+    }
+  }
+
+  if (consumedIds.length > 0) {
     await prisma.plannedFixedSession.updateMany({
-      where: { id: { in: plannedFixedSessions.map((p) => p.id) } },
+      where: { id: { in: consumedIds } },
       data: { consumedByPlanId: draft.id },
     });
   }
