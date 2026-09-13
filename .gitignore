@@ -8,3 +8,5 @@ coverage
 .vercel
 tsconfig.tsbuildinfo
 .env*.local
+*.sql
+test-fixtures/
