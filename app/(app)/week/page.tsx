@@ -187,6 +187,7 @@ export default async function WeekPage() {
       prisma.stravaConnection.findUnique({ where: { userId: userId } }),
       prisma.trainingPlan.findFirst({
         where: { userId: userId, status: "active" },
+        orderBy: { startsAt: "desc" },
         include: {
           sessions: {
             include: { checkIn: true },

@@ -204,6 +204,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      await tx.trainingPlan.updateMany({
+        where: { userId, status: "active" },
+        data: { status: "archived" },
+      });
+
       const plan = await tx.trainingPlan.create({
         data: {
           userId,
