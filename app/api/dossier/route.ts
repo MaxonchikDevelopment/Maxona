@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserIdFromRequest } from "@/lib/auth/session";
 import type { Prisma } from "@prisma/client";
+import { athleteDossierFactsSchema } from "@/lib/dossier/schema";
 
 export async function GET(request: NextRequest) {
   const userId = await getSessionUserIdFromRequest(request);
@@ -30,7 +31,15 @@ export async function PUT(request: NextRequest) {
   if (!b || typeof b !== "object" || typeof b.facts !== "object" || b.facts === null || Array.isArray(b.facts)) {
     return NextResponse.json({ error: "facts must be a JSON object" }, { status: 400 });
   }
-  const facts = b.facts as Prisma.InputJsonValue;
+
+  const parsed = athleteDossierFactsSchema.safeParse(b.facts);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid facts shape", details: parsed.error.format() },
+      { status: 400 },
+    );
+  }
+  const facts = parsed.data as Prisma.InputJsonValue;
 
   const existing = await prisma.athleteDossier.findUnique({ where: { userId } });
 
