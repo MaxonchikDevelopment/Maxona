@@ -684,6 +684,13 @@ export default function ReviewPage() {
             )}
           </aside>
         </div>
+
+        {/* ── Advanced tools: export / import / dossier ───────────────── */}
+        <div className="space-y-3 mt-3 lg:max-w-[600px]">
+          <ExportContextCard />
+          <ImportPlanCard />
+          <DossierCard />
+        </div>
       </PageWrapper>
     </main>
   );
@@ -1153,6 +1160,225 @@ function CarryForwardBlock({ bullets }: { bullets: string[] }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function ExportContextCard() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function handleExport() {
+    setLoading(true);
+    setError(null);
+    setCopied(false);
+    try {
+      const res = await fetch("/api/plans/export-context");
+      if (!res.ok) throw new Error("Failed to export context");
+      const data = (await res.json()) as { markdown: string };
+      await navigator.clipboard.writeText(data.markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setError("Could not export context. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-3">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-0.5">
+          Export context
+        </p>
+        <p className="text-xs text-zinc-500">
+          Copies a markdown summary of availability, schedule, and last week to your clipboard.
+        </p>
+      </div>
+      <button
+        onClick={handleExport}
+        disabled={loading}
+        className="w-full rounded-xl bg-zinc-900 py-2.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-zinc-800 transition-colors"
+      >
+        {loading ? "Exporting…" : copied ? "Copied to clipboard ✓" : "Export context"}
+      </button>
+      {error && (
+        <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{error}</p>
+      )}
+    </div>
+  );
+}
+
+function ImportPlanCard() {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ planId: string; sessionsCreated: number; fixedSessionsCreated: number } | null>(null);
+
+  async function handleSubmit() {
+    setError(null);
+    setResult(null);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      setError("That isn't valid JSON. Fix it and try again.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/plans/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? "Import failed.");
+        return;
+      }
+      setResult(data);
+      setText("");
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-0.5">
+            Import plan
+          </p>
+          <p className="text-xs text-zinc-500">Paste a raw plan JSON to create it directly.</p>
+        </div>
+        <span className="text-[10px] text-zinc-400 shrink-0">{open ? "▲ hide" : "▼ show"}</span>
+      </button>
+
+      {open && (
+        <div className="pt-2 border-t border-zinc-100 space-y-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder='{ "weekStart": "2026-09-14", "weekEnd": "2026-09-20", "sessions": [...] }'
+            rows={6}
+            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-mono text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300 resize-none"
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !text.trim()}
+            className="w-full rounded-xl bg-zinc-900 py-2.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-zinc-800 transition-colors"
+          >
+            {submitting ? "Importing…" : "Import plan"}
+          </button>
+          {error && (
+            <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{error}</p>
+          )}
+          {result && (
+            <p className="text-xs text-emerald-700 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
+              Imported plan {result.planId} · {result.sessionsCreated} session{result.sessionsCreated === 1 ? "" : "s"}
+              {result.fixedSessionsCreated > 0
+                ? ` · ${result.fixedSessionsCreated} fixed session${result.fixedSessionsCreated === 1 ? "" : "s"}`
+                : ""}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DossierCard() {
+  const [text, setText] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/dossier")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: { facts: unknown; version: number }) => {
+        setText(JSON.stringify(data.facts, null, 2));
+        setVersion(data.version);
+      })
+      .catch(() => setLoadError("Could not load dossier."));
+  }, []);
+
+  async function handleSave() {
+    if (text === null) return;
+    setError(null);
+
+    let facts: unknown;
+    try {
+      facts = JSON.parse(text);
+    } catch {
+      setError("That isn't valid JSON. Fix it and try again.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/dossier", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ facts }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? "Save failed.");
+        return;
+      }
+      setText(JSON.stringify(data.facts, null, 2));
+      setVersion(data.version);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Dossier</p>
+        {version !== null && <span className="text-[10px] font-mono text-zinc-400">v{version}</span>}
+      </div>
+      {loadError ? (
+        <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{loadError}</p>
+      ) : text === null ? (
+        <p className="text-xs text-zinc-400">Loading dossier…</p>
+      ) : (
+        <>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={8}
+            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-mono text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-300 resize-none"
+          />
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full rounded-xl bg-zinc-900 py-2.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-zinc-800 transition-colors"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {error && (
+            <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{error}</p>
+          )}
+        </>
+      )}
     </div>
   );
 }
