@@ -24,6 +24,7 @@
     "@tanstack/react-query": "^5.0.0",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
+    "fit-file-parser": "^5.0.2",
     "motion": "^12.38.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
