@@ -108,6 +108,8 @@ model User {
   aiInsightCaches       AiInsightCache[]
   weekSummaries         WeekSummary[]
   plannedFixedSessions  PlannedFixedSession[]
+  athleteDossier        AthleteDossier?
+  tunableDefaults       TunableDefaults[]
 }
 
 model AvailabilityWindow {
@@ -179,6 +181,8 @@ model TrainingPlan {
   replanReason      String?
   focusSummary      String?
   changeExplanation String?
+  blockLabel        String?
+  blockPhase        String?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -219,6 +223,7 @@ model TrainingSession {
   stravaLinks     SessionStravaActivityLink[]
   workoutPlan     SessionWorkoutPlan?
   workoutFeedback SessionWorkoutFeedback?
+  metrics         SessionMetrics?
 }
 
 model CheckIn {
@@ -323,18 +328,20 @@ model StravaWebhookEvent {
 }
 
 model SessionWorkoutPlan {
-  id           String   @id @default(cuid())
-  sessionId    String   @unique
-  userId       String
-  planType     String
-  goal         String
-  target       String?
-  blocks       Json
-  rules        Json
-  alternatives Json?
-  summary      String?
-  generatedAt  DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  sessionId      String   @unique
+  userId         String
+  planType       String
+  goal           String
+  target         String?
+  blocks         Json
+  rules          Json
+  alternatives   Json?
+  summary        String?
+  rationale      String?
+  evaluationMode String?
+  generatedAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   session TrainingSession @relation(fields: [sessionId], references: [id])
   user    User            @relation(fields: [userId], references: [id])
@@ -488,6 +495,7 @@ model WeekSummary {
   recoveryScore Int? // from the WeeklyReview at generation
   reviewNotes   String? // trainingPreferences / family text snapshot
   narrative     String? // optional AI 1-liner ("solid week, ran short twice")
+  narrativeMd   String? @db.Text
 
   createdAt DateTime @default(now())
 
@@ -519,4 +527,49 @@ model PlannedFixedSession {
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId, scheduledDate])
+}
+
+model AthleteDossier {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  version   Int      @default(1)
+  facts     Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model TunableDefaults {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  hrDisciplinePct    Float?
+  efStopThresholdPct Float?
+  jumpRatioCeiling   Float?
+  safetyPattern      Json?
+  rationale          String
+  revisedAt          DateTime @default(now())
+
+  @@index([userId, revisedAt])
+}
+
+model SessionMetrics {
+  id              String          @id @default(cuid())
+  sessionId       String          @unique
+  session         TrainingSession @relation(fields: [sessionId], references: [id])
+  source          String
+  movingTimeSec   Int
+  elapsedTimeSec  Int
+  pauses          Json
+  distanceKm      Float
+  avgHr           Float?
+  efWhole         Float?
+  efFirstHalf     Float?
+  efSecondHalf    Float?
+  decouplingPct   Float?
+  decouplingValid Boolean         @default(false)
+  zoneShare       Json?
+  cadenceSpm      Float?
+  powerAvg        Float?
+  createdAt       DateTime        @default(now())
 }
