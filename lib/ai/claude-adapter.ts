@@ -34,6 +34,10 @@ export class ClaudeAdapter implements AIAdapter {
         durationMin: s.durationMin,
         intensity: s.intensity as PlannedSession["intensity"],
         notes: s.notes,
+        distanceKm: s.distanceKm,
+        targetPaceMinPerKm: s.targetPaceMinPerKm,
+        targetHrZone: s.targetHrZone,
+        subtype: s.subtype,
       })),
     };
   }
@@ -48,6 +52,10 @@ interface SubmitPlanInput {
     durationMin: number;
     intensity: string;
     notes?: string;
+    distanceKm?: number;
+    targetPaceMinPerKm?: string;
+    targetHrZone?: { min: number; max: number };
+    subtype?: string;
   }>;
 }
 
@@ -79,6 +87,12 @@ Use ONLY these four modalities. Do not invent others. The notes field is REQUIRE
 
 Format notes as "<modality>: <subtype and brief detail>".
 Examples: "running: long run 18 km easy pace", "HYROX group class: full race simulation", "cycling: 60 min easy aerobic spin", "swimming: 2 km steady"
+
+## Structured targets (distanceKm, targetPaceMinPerKm, targetHrZone, subtype)
+In addition to notes, fill these optional fields when the session type supports a concrete
+target — running and cycling sessions with a clear distance/pace/HR intent. Leave them
+undefined when they don't apply (HYROX group class, swimming, strength work, or any session
+without a specific numeric target) — never fabricate a value just to fill the field.
 
 ## Typical session durations
 - running easy/recovery: 45–60 min
@@ -298,6 +312,31 @@ const SUBMIT_PLAN_TOOL = {
               type: "string",
               description:
                 "Modality and optional subtype from the allowed list. E.g.: 'running: long run', 'HYROX group class', 'cycling: easy aerobic', 'swimming'.",
+            },
+            distanceKm: {
+              type: "number",
+              description:
+                "Optional. Target distance in km — only for running/cycling sessions with a clear distance target. Omit for HYROX/swimming/strength or when no specific distance is intended.",
+            },
+            targetPaceMinPerKm: {
+              type: "string",
+              description:
+                "Optional. Target pace as 'M:SS' per km, e.g. '5:30'. Only for running sessions with a clear pace target. Omit when not applicable.",
+            },
+            targetHrZone: {
+              type: "object",
+              description:
+                "Optional. Target HR range in bpm for the session. Only when a clear HR target applies (e.g. easy/tempo runs, steady cycling). Omit for strength/HYROX or when no HR target is intended.",
+              properties: {
+                min: { type: "number" },
+                max: { type: "number" },
+              },
+              required: ["min", "max"],
+            },
+            subtype: {
+              type: "string",
+              description:
+                "Optional short label for the session subtype, e.g. 'tempo run', 'long run', 'full race simulation'. Omit if notes already fully captures it.",
             },
           },
           required: [
