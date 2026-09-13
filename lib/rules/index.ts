@@ -76,6 +76,7 @@ export function filterSessions(
     }
 
     if (
+      s.planningType !== "fixed" &&
       constraints.maxWeeklyMinutes !== Infinity &&
       totalMinutes + s.durationMin > constraints.maxWeeklyMinutes
     ) {

@@ -70,35 +70,44 @@ enum ScheduleEventSource {
   derived
 }
 
-model User {
-  id               String   @id @default(cuid())
-  name             String
-  login            String?  @unique
-  passwordHash     String?
-  isActive         Boolean  @default(true)
-  preferredLanguage String  @default("en")
-  timezone         String   @default("Europe/Warsaw")
-  constraints      Json     @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+enum SessionModality {
+  hyrox
+  running
+  cycling
+  swimming
+}
 
-  availabilityWindows AvailabilityWindow[]
-  scheduleEvents      ScheduleEvent[]
-  goals               Goal[]
-  trainingPlans       TrainingPlan[]
-  trainingSessions    TrainingSession[]
-  checkIns            CheckIn[]
-  recurringSessions   RecurringSession[]
-  dailyReadiness      DailyReadiness[]
-  stravaConnection    StravaConnection?
-  stravaActivities    StravaActivity[]
-  trainingProfile     UserTrainingProfile?
-  hybridRaceProfile   HybridRaceProfile?
+model User {
+  id                String   @id @default(cuid())
+  name              String
+  login             String?  @unique
+  passwordHash      String?
+  isActive          Boolean  @default(true)
+  preferredLanguage String   @default("en")
+  timezone          String   @default("Europe/Warsaw")
+  constraints       Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  availabilityWindows   AvailabilityWindow[]
+  scheduleEvents        ScheduleEvent[]
+  goals                 Goal[]
+  trainingPlans         TrainingPlan[]
+  trainingSessions      TrainingSession[]
+  checkIns              CheckIn[]
+  recurringSessions     RecurringSession[]
+  dailyReadiness        DailyReadiness[]
+  stravaConnection      StravaConnection?
+  stravaActivities      StravaActivity[]
+  trainingProfile       UserTrainingProfile?
+  hybridRaceProfile     HybridRaceProfile?
   workoutPlans          SessionWorkoutPlan[]
   workoutFeedbacks      SessionWorkoutFeedback[]
   nutritionProfile      NutritionProfile?
-  stravaActivityStreams  StravaActivityStream[]
+  stravaActivityStreams StravaActivityStream[]
   aiInsightCaches       AiInsightCache[]
+  weekSummaries         WeekSummary[]
+  plannedFixedSessions  PlannedFixedSession[]
 }
 
 model AvailabilityWindow {
@@ -160,18 +169,18 @@ model RecurringSession {
 }
 
 model TrainingPlan {
-  id           String     @id @default(cuid())
-  userId       String
-  startsAt     DateTime   @db.Date
-  endsAt       DateTime   @db.Date
-  status       PlanStatus @default(draft)
-  revision     Int        @default(1)
-  parentPlanId String?
+  id                String     @id @default(cuid())
+  userId            String
+  startsAt          DateTime   @db.Date
+  endsAt            DateTime   @db.Date
+  status            PlanStatus @default(draft)
+  revision          Int        @default(1)
+  parentPlanId      String?
   replanReason      String?
   focusSummary      String?
   changeExplanation String?
   createdAt         DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  updatedAt         DateTime   @updatedAt
 
   user     User               @relation(fields: [userId], references: [id])
   goals    TrainingPlanGoal[]
@@ -382,21 +391,21 @@ model SessionWorkoutFeedback {
 }
 
 model StravaActivityStream {
-  id               String   @id @default(cuid())
+  id               String @id @default(cuid())
   userId           String
-  stravaActivityId String   @unique
+  stravaActivityId String @unique
 
-  time             Json?
-  heartrate        Json?
-  distance         Json?
-  velocitySmooth   Json?
-  altitude         Json?
-  cadence          Json?
-  watts            Json?
+  time           Json?
+  heartrate      Json?
+  distance       Json?
+  velocitySmooth Json?
+  altitude       Json?
+  cadence        Json?
+  watts          Json?
 
-  fetchedAt        DateTime @default(now())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  fetchedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user     User           @relation(fields: [userId], references: [id])
   activity StravaActivity @relation(fields: [stravaActivityId], references: [id])
@@ -444,4 +453,70 @@ model AiInsightCache {
 
   @@unique([userId, kind, scopeKey])
   @@index([userId, kind])
+}
+
+// Durable per-week retrospective, written once at week rollover (see
+// activateDraftIfReady). One row per completed week — @@unique guards
+// against double-writing on both review-generation and rollover.
+model WeekSummary {
+  id     String @id @default(cuid())
+  userId String
+
+  planId    String? // archived TrainingPlan this summarizes (informal ref — plans may be pruned later)
+  weekStart DateTime @db.Date
+  weekEnd   DateTime @db.Date
+
+  // adherence / volume, frozen at rollover
+  planned             Int
+  done                Int
+  skipped             Int
+  plannedDurationMin  Int
+  actualMovingMin     Int?
+  adherenceByCount    Int
+  adherenceByDuration Int?
+  hardPlanned         Int
+  hardDone            Int
+
+  // structured, queryable trend fields
+  avgFeelScore     Float?
+  executionQuality Json // ExecutionQuality bucket counts
+  signals          Json // {lowReadinessDays, fatigueDays, injuryDays, unresolvedIssues, mainLimiter}
+  keySessions      Json // [{date, label, intensity, actual}]
+  carryForward     String[] @default([])
+
+  // subjective + narrative
+  recoveryScore Int? // from the WeeklyReview at generation
+  reviewNotes   String? // trainingPreferences / family text snapshot
+  narrative     String? // optional AI 1-liner ("solid week, ran short twice")
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, weekStart])
+  @@index([userId, weekStart])
+}
+
+// One-off "fixed" sessions the athlete declares during Review for a future
+// (usually next) week — e.g. "Saturday's group run is locked in." Consumed
+// by generateNextWeekDraft as additional fixedSessions. Rows persist across
+// draft regenerations; consumedByPlanId is only set on the plan that
+// actually included them.
+model PlannedFixedSession {
+  id            String           @id @default(cuid())
+  userId        String
+  scheduledDate DateTime         @db.Date
+  preferredSlot TimeSlot
+  durationMin   Int
+  intensity     SessionIntensity @default(moderate)
+  modality      SessionModality
+  notes         String?
+
+  consumedByPlanId String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, scheduledDate])
 }

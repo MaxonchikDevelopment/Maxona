@@ -11,6 +11,7 @@ import { renderChangeExplanation, renderNextWeekDraftSummary, type ChangeSummary
 import { enforceExplicitPreferences } from "@/lib/planner/preference-constraints";
 import { parseLLMPreferences } from "@/lib/ai/parse-training-preferences";
 import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
+import { computeGoalGuidance } from "@/lib/planner/goal-guidance";
 import type {
   PlanningContext,
   RecentCheckIn,
@@ -22,6 +23,15 @@ import type {
   ReadinessSummary,
   ReadinessEntry,
 } from "@/lib/ai/adapter";
+import type { PlannedFixedSession } from "@prisma/client";
+
+// Shared between the fixedSessions payload sent to Claude and the
+// consumedByPlanId matching after generation, so both sides agree on the
+// same label for a given row.
+function plannedFixedSessionNotes(ps: PlannedFixedSession): string {
+  const label = ps.notes?.trim();
+  return label ? `${ps.modality}: ${label}` : ps.modality;
+}
 
 const RULES = [
   noConflictSchedule,
@@ -45,6 +55,18 @@ function getInjuryWindow(
     injuryDate,
     protectUntil: toDateStr(addDays(injuryDateObj, 2)),
   };
+}
+
+function toGoalGuidanceInputs(
+  goals: Array<{ id: string; title: string; discipline: string | null; targetDate: Date | null; priority: number | null }>
+) {
+  return goals.map((g) => ({
+    id: g.id,
+    title: g.title,
+    discipline: g.discipline,
+    targetDate: g.targetDate ? toDateStr(g.targetDate) : null,
+    priority: g.priority,
+  }));
 }
 
 // ─── Readiness summary ───────────────────────────────────────────────────────
@@ -556,6 +578,7 @@ export async function generateWeeklyPlan(
     weeklyReview: parsedWeeklyReview,
     replanReason,
     readinessSummary,
+    goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -667,6 +690,8 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     scheduleEvents,
     currentWeekSessions,
     recurringSessions,
+    weekSummaryHistory,
+    plannedFixedSessions,
   ] = await Promise.all([
     prisma.goal.findMany({
       where: { userId, status: "active", deletedAt: null },
@@ -697,10 +722,77 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     prisma.recurringSession.findMany({
       where: { userId, isActive: true },
     }),
+    // Last few completed weeks — multi-week trend signal for planning
+    prisma.weekSummary.findMany({
+      where: { userId, weekStart: { lt: nextWeekStart } },
+      orderBy: { weekStart: "desc" },
+      take: 4,
+    }),
+    // Athlete-declared one-off fixed sessions for next week (survive regeneration)
+    prisma.plannedFixedSession.findMany({
+      where: { userId, scheduledDate: { gte: nextWeekStart, lte: nextWeekEnd } },
+    }),
   ]);
+
+  // Oldest → newest for a readable trajectory
+  const weekHistory = [...weekSummaryHistory].reverse().map((w) => {
+    const signals = (w.signals ?? {}) as { mainLimiter?: string | null };
+    return {
+      weekStart: toDateStr(w.weekStart),
+      adherenceByCount: w.adherenceByCount,
+      hardDone: w.hardDone,
+      hardPlanned: w.hardPlanned,
+      avgFeelScore: w.avgFeelScore,
+      mainLimiter: signals.mainLimiter ?? null,
+      carryForward: w.carryForward,
+    };
+  });
 
   // Current week check-ins as the most recent signal going into next week
   const recentCheckIns: RecentCheckIn[] = currentWeekSessions
+    .filter((s) => s.checkIn != null)
+    .map((s) => ({
+      sessionId: s.id,
+      sessionDate: toDateStr(s.scheduledDate),
+      sessionIntensity: s.intensity,
+      feelScore: s.checkIn!.feelScore,
+      notes: s.checkIn!.notes,
+      resolvedAt: s.checkIn!.resolvedAt ? s.checkIn!.resolvedAt.toISOString() : null,
+      category: categorizeCheckIn(s.checkIn!.feelScore, s.checkIn!.notes),
+    }));
+
+  // Completed/skipped sessions from the week just finished — the highest-priority
+  // retrospective signal for next week's draft (mirrors thisWeekCheckIns/
+  // currentWeekDoneSessions treatment in generateWeeklyPlan).
+  const doneSessionsThisWeek = currentWeekSessions.filter(
+    (s) => s.status === "done" || s.status === "skipped"
+  );
+
+  const nextWeekSessionDeltas = new Map<string, ExecutionDelta>();
+  if (doneSessionsThisWeek.length > 0) {
+    const doneStravaLinks = await prisma.sessionStravaActivityLink.findMany({
+      where: { sessionId: { in: doneSessionsThisWeek.map((s) => s.id) } },
+      include: { activity: true },
+      orderBy: { isPrimary: "desc" },
+    });
+    const linksBySession = new Map<string, typeof doneStravaLinks>();
+    for (const l of doneStravaLinks) {
+      const list = linksBySession.get(l.sessionId) ?? [];
+      list.push(l);
+      linksBySession.set(l.sessionId, list);
+    }
+    for (const s of doneSessionsThisWeek) {
+      const links = linksBySession.get(s.id);
+      if (!links?.length) continue;
+      const delta = deriveExecutionDelta(
+        { durationMin: s.durationMin, notes: s.notes, intensity: s.intensity },
+        links.map((l) => l.activity)
+      );
+      if (delta) nextWeekSessionDeltas.set(s.id, delta);
+    }
+  }
+
+  const thisWeekCheckIns: RecentCheckIn[] = doneSessionsThisWeek
     .filter((s) => s.checkIn != null)
     .map((s) => ({
       sessionId: s.id,
@@ -760,6 +852,19 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     }
   }
 
+  // Athlete-declared one-off fixed sessions — same treatment as recurring fixed
+  // sessions (validated against availability/conflict rules downstream, not an
+  // override). notes are modality-prefixed so modalityKey/diff logic recognises them.
+  for (const ps of plannedFixedSessions) {
+    allFixedSessions.push({
+      date: toDateStr(ps.scheduledDate),
+      preferredSlot: ps.preferredSlot,
+      durationMin: ps.durationMin,
+      intensity: ps.intensity,
+      notes: plannedFixedSessionNotes(ps),
+    });
+  }
+
   // Injury window check — active injuries now affect next week's planning
   const injuryWindow = getInjuryWindow(recentCheckIns);
   let fixedSessions = allFixedSessions;
@@ -809,16 +914,25 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     scheduleEvents,
     previousSessions: currentWeekSessions,
     recentCheckIns,
-    thisWeekCheckIns: [],
+    thisWeekCheckIns,
     weekStart: nextWeekStart,
     todayStr,
-    currentWeekDoneSessions: [],
+    currentWeekDoneSessions: doneSessionsThisWeek.map((s) => ({
+      date: toDateStr(s.scheduledDate),
+      durationMin: s.durationMin,
+      intensity: s.intensity,
+      notes: s.notes,
+      status: s.status,
+      ...(nextWeekSessionDeltas.has(s.id) && { executionDelta: nextWeekSessionDeltas.get(s.id) }),
+    })),
     fixedSessions,
     optionalSlots,
     safetyBlockedSessions: safetyBlockedSessions.length > 0 ? safetyBlockedSessions : undefined,
     weeklyReview: parsedWeeklyReview,
     replanReason: "weekly review — planning next week",
     parsedPreferences,
+    goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
+    weekHistory: weekHistory.length > 0 ? weekHistory : undefined,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -895,7 +1009,7 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     unmetPreferences,
   });
 
-  return prisma.trainingPlan.create({
+  const draft = await prisma.trainingPlan.create({
     data: {
       userId,
       startsAt: nextWeekStart,
@@ -920,6 +1034,42 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
       },
     },
   });
+
+  // Mark declared fixed sessions as consumed by this draft — but only the ones that
+  // actually survived rules filtering/dedup into the persisted set. A fixed session
+  // can still be dropped (e.g. blocked date, hard-session spacing); stamping it as
+  // consumed regardless would hide that it silently vanished from the plan. Rows
+  // persist across regenerations (queried by date, not plan), so we re-stamp the
+  // latest draft id for whichever ones made it in this time.
+  const survivingFixedKeys = new Set(
+    validSessions
+      .filter((s) => s.planningType === "fixed")
+      .map((s) => `${toDateStr(s.scheduledDate)}|${s.notes ?? ""}`)
+  );
+
+  const consumedIds: string[] = [];
+  for (const ps of plannedFixedSessions) {
+    const key = `${toDateStr(ps.scheduledDate)}|${plannedFixedSessionNotes(ps)}`;
+    if (survivingFixedKeys.has(key)) {
+      consumedIds.push(ps.id);
+    } else {
+      console.warn(
+        `[orchestrator] fixed session dropped from draft ${draft.id}: ` +
+          `${toDateStr(ps.scheduledDate)} "${plannedFixedSessionNotes(ps)}" ` +
+          `(plannedFixedSession id=${ps.id}) did not survive into the persisted plan — ` +
+          `leaving consumedByPlanId null so it's retried on next generation.`
+      );
+    }
+  }
+
+  if (consumedIds.length > 0) {
+    await prisma.plannedFixedSession.updateMany({
+      where: { id: { in: consumedIds } },
+      data: { consumedByPlanId: draft.id },
+    });
+  }
+
+  return draft;
 }
 
 function buildDeterministicFocusSummary(sessions: PlannedSession[], unmetPreferences?: string[]): string {

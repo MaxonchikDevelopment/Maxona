@@ -51,7 +51,7 @@ interface SubmitPlanInput {
   }>;
 }
 
-const SYSTEM_PROMPT = `You are an adaptive sports training assistant for an endurance athlete targeting both a marathon and a HYROX competition.
+const SYSTEM_PROMPT = `You are an adaptive sports training assistant. Tailor the plan to the athlete's active goals in the \`goals\` array below — do not assume any specific discipline is targeted by default.
 
 ## Your task
 Generate a structured 7-day training plan using the submit_plan tool.
@@ -88,17 +88,43 @@ Examples: "running: long run 18 km easy pace", "HYROX group class: full race sim
 - cycling: 45–75 min
 - swimming: 45–60 min
 
-## Weekly structure (adapt to availability and constraints)
-- 1–2 HYROX group classes per week (the real group session)
-- 1 long run — Saturday or Sunday morning, easy intensity, 90–150 min
-- 1–2 additional runs (easy/tempo/interval) for marathon base
-- Cycling or swimming optional for active recovery
-- Wednesday = office day — rest or short easy session only
-- Hard sessions (tempo, interval, HYROX group class at hard intensity) never on consecutive days
+## Weekly structure (adapt to availability, constraints, and goal-driven prioritization below)
+- Structure the week around the modalities implied by active goals, fixedSessions, and optionalSlots — do not force a modality that has no supporting goal or fixedSession.
+- If a long-distance running goal is active (marathon, half marathon, etc.), include 1 long run — Saturday or Sunday morning, easy intensity, 90–150 min.
+- If HYROX is an active goal, or a fixedSession/optionalSlot for it exists, include 1–2 HYROX group classes per week.
+- Cycling or swimming optional for active recovery.
+- Wednesday = office day — rest or short easy session only.
+- Hard sessions (tempo, interval, HYROX group class at hard intensity) never on consecutive days.
 
-## Multi-goal balance — REQUIRED
-Both marathon AND HYROX must be addressed every week.
-A plan with only running or only HYROX group class is wrong.
+## Goal-driven prioritization — REQUIRED
+Use the \`goals\` array and the deterministic \`goalGuidance\` block (when present) to decide weekly focus.
+- Address each active goal's discipline at least once this week if feasible.
+- Bias total volume and session specificity toward the highest-weight goal in goalGuidance.perGoal. goalGuidance.primaryFocus is the nearest-dated goal among the top priority tier — it should generally get the week's key/hard session.
+- If goalGuidance is absent (no active goals), fall back to a balanced general-fitness week using whatever modalities fixedSessions/optionalSlots/allowedModalities imply. Do not invent a marathon or HYROX focus that isn't backed by a goal or fixedSession.
+
+## Taper rule
+When goalGuidance.primaryFocus or any entry in goalGuidance.perGoal has phase = "taper" (its target date is within roughly the next 7–14 days):
+- Reduce that discipline's weekly volume by roughly 30–50% versus a normal week.
+- Preserve some intensity/sharpening — do not make the week all-easy.
+- Add extra rest; do NOT start a new overload block for that discipline this week.
+
+## Competing close goals
+When two or more goals have overlapping near-term target dates (both in build or taper phase):
+- Allocate session share by goalGuidance weight — the higher-weight goal gets the week's key/hard slot.
+- The lower-weight goal gets a maintenance-only session.
+- Prefer distinct modalities across the two so load is not double-counted on one movement pattern.
+
+## Undated / far goals
+Goals with no targetDate, or with phase = "base" (beyond roughly 8 weeks out), get maintenance-touch sessions only:
+- Never taper for these.
+- Never let them dominate the week over a nearer, higher-weight goal.
+
+## Precedence order — CRITICAL
+When signals conflict, apply in this order (highest wins):
+1. Active injury / safety signals (see check-in and readiness rules below)
+2. Weekly-review explicit priorities (see "Weekly review context")
+3. Goal-derived weighting (goalGuidance, this section)
+4. Default weekly structure above
 
 ## Intensity mapping
 - easy: RPE 4–5, conversational pace (long runs, recovery)
@@ -213,6 +239,16 @@ When weeklyReview is present, treat it as the athlete's direct input for this pl
   - "Balanced" → follow default weekly structure
 - familyConstraints: additional blocks or reduced availability beyond scheduleEvents — respect them strictly
 - trainingPreferencesText: athlete's raw free-form text — the structured interpretation is in explicitPreferenceConstraints; use the raw text only for context not captured by the structured fields
+- fatigue (1–5, 1 fresh → 5 wrecked): ≥4 = bias to fewer/easier sessions and reduce total volume ~15%; combined with low motivation, prioritise recovery over load
+- soreness (1–5) + sorenessAreas: localized soreness means avoid loading that area — calf/knee/hip soreness → cap running volume and avoid hard running; shoulder/back soreness → avoid heavy HYROX/upper-body strength
+- motivation (1–5, 1 low → 5 high): ≤2 with high fatigue → keep the week light and rebuilding; ≥4 with green recovery supports a modest step-up
+
+## Multi-week trend (weekHistory)
+When weekHistory is present it summarises the last few completed weeks oldest → newest. Use it as trend context, not an override:
+- Rising adherence with green feel scores over 2+ weeks → load can step up modestly
+- Falling adherence or a recurring mainLimiter across weeks → hold or reduce load; do not stack another hard week
+- A limiter (e.g. fatigue, unresolved injury) repeating across weeks is a stronger signal than a single week — weight it accordingly
+Current-week check-ins and this cycle's weeklyReview always take priority over the historical trend.
 
 ## Explicit preference constraints (explicitPreferenceConstraints)
 When this object appears in the prompt, it contains preferences parsed deterministically from the athlete's free text (in any language).
@@ -340,6 +376,33 @@ function buildUserPrompt(context: PlanningContext): string {
       ...(g.priority != null && { priority: g.priority }),
       status: g.status,
     })),
+    ...(context.goalGuidance && context.goalGuidance.perGoal.length > 0 && {
+      goalGuidance: {
+        note: "Deterministically computed goal weighting — use to decide discipline focus, session allocation, and taper decisions per the 'Goal-driven prioritization' rules.",
+        ...(context.goalGuidance.primaryFocus && {
+          primaryFocus: {
+            title: context.goalGuidance.primaryFocus.title,
+            discipline: context.goalGuidance.primaryFocus.discipline,
+            daysUntil: context.goalGuidance.primaryFocus.daysUntil,
+            phase: context.goalGuidance.primaryFocus.phase,
+          },
+        }),
+        perGoal: context.goalGuidance.perGoal.map((g) => ({
+          title: g.title,
+          discipline: g.discipline,
+          daysUntil: g.daysUntil,
+          phase: g.phase,
+          weight: g.weight,
+        })),
+        ...(context.goalGuidance.taperGoal && {
+          taperGoal: {
+            title: context.goalGuidance.taperGoal.title,
+            discipline: context.goalGuidance.taperGoal.discipline,
+            daysUntil: context.goalGuidance.taperGoal.daysUntil,
+          },
+        }),
+      },
+    }),
     ...(context.fixedSessions.length > 0 && {
       fixedSessions: {
         note: "These sessions are FIXED. Include each one exactly as specified with planningType: 'fixed'.",
@@ -432,6 +495,19 @@ function buildUserPrompt(context: PlanningContext): string {
           activeWarnings: context.readinessSummary.activeWarnings,
         }),
         affectsRemainingWeek: context.readinessSummary.affectsRemainingWeek,
+      },
+    }),
+    ...(context.weekHistory && context.weekHistory.length > 0 && {
+      weekHistory: {
+        note: "Retrospective of the last few completed weeks (oldest → newest). Use for trend context: adherence trajectory, recurring limiters, whether load can step up. Current-week and weeklyReview signals still take priority.",
+        weeks: context.weekHistory.map((w) => ({
+          weekStart: w.weekStart,
+          adherence: `${w.adherenceByCount}%`,
+          hard: `${w.hardDone}/${w.hardPlanned}`,
+          ...(w.avgFeelScore != null && { avgFeel: w.avgFeelScore }),
+          ...(w.mainLimiter && { mainLimiter: w.mainLimiter }),
+          ...(w.carryForward.length > 0 && { carryForward: w.carryForward }),
+        })),
       },
     }),
     ...(context.thisWeekCheckIns.length > 0 && {

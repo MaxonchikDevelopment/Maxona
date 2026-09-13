@@ -96,6 +96,33 @@ console.log("\n── filterSessions ──────────────�
   expect("sessions within budget pass", result.length, 2);
 }
 
+{
+  console.log("\nScenario 4b: fixed session exempt from maxWeeklyMinutes cap");
+  const sessions = [
+    session({ dateStr: "2026-04-28", durationMin: 90, planningType: "generated" }),
+    session({ dateStr: "2026-04-29", durationMin: 90, planningType: "generated" }), // would push total to 180 > 100 cap
+    session({ dateStr: "2026-04-30", durationMin: 60, planningType: "fixed", notes: "HYROX group class" }),
+  ];
+  const result = filterSessions(sessions, { ...noConstraints, maxWeeklyMinutes: 100 });
+  expect("generated session over cap dropped, fixed session kept", result.length, 2);
+  expect(
+    "fixed session survives despite exceeding cap",
+    result.some((s) => s.planningType === "fixed"),
+    true
+  );
+}
+
+{
+  console.log("\nScenario 4c: fixed session minutes still count toward cap for later sessions");
+  const sessions = [
+    session({ dateStr: "2026-04-28", durationMin: 90, planningType: "fixed", notes: "HYROX group class" }),
+    session({ dateStr: "2026-04-29", durationMin: 90, planningType: "generated" }), // 90+90=180 > 100 cap, should be dropped
+  ];
+  const result = filterSessions(sessions, { ...noConstraints, maxWeeklyMinutes: 100 });
+  expect("fixed session kept, later generated session dropped", result.length, 1);
+  expect("survivor is the fixed session", result[0].planningType, "fixed");
+}
+
 // ─── deduplicateSessions ─────────────────────────────────────────────────────
 
 console.log("\n── deduplicateSessions ──────────────────────────────────────");
