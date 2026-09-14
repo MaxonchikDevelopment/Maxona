@@ -214,6 +214,15 @@ model TrainingSession {
   durationMin   Int
   intensity     SessionIntensity
   notes         String?
+  // Structured generation-time snapshot from the weekly planner's submit_plan
+  // output (lib/ai/adapter.ts PlannedSession) — distinct from SessionWorkoutPlan,
+  // which is a separate on-demand LLM breakdown. Optional: only running/cycling
+  // sessions with a concrete target populate these.
+  distanceKm          Float?
+  targetPaceMinPerKm  String?
+  targetHrZoneMin     Int?
+  targetHrZoneMax     Int?
+  subtype             String?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
