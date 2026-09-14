@@ -216,3 +216,56 @@ than a theoretical one.
   above, not fixed.
 - `efWhole` validity-flag gap on `SessionMetrics` (noted in the Step 4
   report) — still open, unrelated to this step's scope.
+
+## Test 4 — empty weekHistory (first-ever rollover)
+
+Added a fourth throwaway user to `scripts/smoke-test-tunable-review.ts`,
+same outgoing-week shape as Test 1 (2 done sessions, one with
+`SessionMetrics` — `decouplingValid: true, decouplingPct: 9.0`), but with
+**zero prior `WeekSummary` rows** — no `seedWeekHistoryRow` calls — to
+simulate a user's very first-ever rollover, where `weekHistory` passed into
+the review is an empty array. Run through the real `activateDraftIfReady`
+path, same as Tests 1–3. Report only, no pass/fail assertion (per task).
+
+Validation before running: `npx tsc --noEmit` clean, `npm run build`
+succeeded, `git grep "user_maxon" -- app lib components` and
+`git grep "const USER_ID" -- app lib components` both empty.
+
+**Result:**
+
+- `activateDraftIfReady` returned `true` (rollover completed normally).
+- A **new** `TunableDefaults` row **was** created.
+- Values: `hrDisciplinePct: 80 → 80`, `efStopThresholdPct: 8 → 8`,
+  `jumpRatioCeiling: 1.1 → 1.1` — all three held at current defaults,
+  unchanged.
+- Rationale (verbatim):
+
+  > This is the first completed week with real athlete data (2026-09-07 to
+  > 2026-09-13), so all three tunables are held at their initial defaults.
+  > [...] hrDisciplinePct (80): No HR discipline data is available to
+  > evaluate session targeting quality. [...] efStopThresholdPct (8): The
+  > single decoupling session recorded an avgDecouplingPct of 9%, which sits
+  > above the current threshold of 8%. This is a mild flag, but with only 1
+  > decoupling session and an empty weekHistory, there is no trend to anchor
+  > on. [...] Lowering the threshold further on a single data point from the
+  > first week would be premature and overly reactive — the slow-moving
+  > profile rule applies. Holding at 8%. jumpRatioCeiling (1.1): weekHistory
+  > is empty, meaning there is no multi-week volume trend to assess. [...]
+  > there is neither a signal to loosen nor tighten volume progression.
+  > Holding at 1.1 [...] Revisit next week: if avgDecouplingPct remains
+  > above 8% across a second session, a downward adjustment of
+  > efStopThresholdPct toward 7.5% should be considered.
+
+**Assessment:** matches the conservative behavior the task described as
+appropriate. Even though the single completed session's `decouplingPct`
+(9.0%) technically exceeds the current `efStopThresholdPct` (8.0), the
+model explicitly declined to react to it — citing the empty `weekHistory`
+and single-sample size as insufficient grounds for a swing, and holding all
+three values at their existing defaults. It also self-documented a
+"revisit next week" condition rather than acting preemptively. No
+unwarranted single-week swing observed. The row-creation behavior itself
+(a new row is written even when all values are unchanged from the previous
+row) matches Test 1's pattern and is unrelated to the empty-history case
+specifically — not something this test was scoped to evaluate further.
+
+Not fixed — per the task, this session reports the actual behavior only.
