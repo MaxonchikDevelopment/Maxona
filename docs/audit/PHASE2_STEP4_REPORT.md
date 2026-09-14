@@ -271,4 +271,4 @@ end-to-end, unchanged from persisted `WeekSummary.signals` through to the
   `lib/week-summary.ts` (+38/-2), `scripts/smoke-test-week-history.ts`
   (+352 new) — plus this report.
 
-Commit: (see git log — appended below after committing)
+Commit: `56c3dba` — fix(planner): exclude hard-intensity sessions from avgEfWhole
