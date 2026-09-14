@@ -20,6 +20,12 @@
  *     archive/activate transaction completes) and no new TunableDefaults row
  *     (the review failed and was swallowed). ANTHROPIC_MODEL is restored
  *     immediately after.
+ *  4. empty-weekHistory user — same outgoing-week shape as (1) (2 done
+ *     sessions with SessionMetrics), but ZERO prior WeekSummary rows —
+ *     simulates a user's very first-ever rollover. Reports (does not assert
+ *     pass/fail on) whether a new TunableDefaults row was created, what
+ *     values came back, and whether the rationale reflects the lack of
+ *     history rather than swinging on one week of data.
  *
  * All synthetic data is deleted afterward regardless of outcome.
  *
@@ -273,6 +279,32 @@ async function main() {
     }
     void initial2;
     void initial3;
+
+    // ---------- Test 4: empty weekHistory (first-ever rollover) ----------
+    console.log(`\n=== Test 4: empty weekHistory (first-ever rollover) → report only, no assertion ===`);
+    const user4 = await seedUser("firstrollover");
+    createdUserIds.push(user4.id);
+    const initial4 = await prisma.tunableDefaults.create({
+      data: { userId: user4.id, hrDisciplinePct: 80, efStopThresholdPct: 8, jumpRatioCeiling: 1.1, rationale: "Initial defaults — not yet athlete-tuned, pending first week of data." },
+    });
+    // No seedWeekHistoryRow calls — zero prior WeekSummary rows for this user.
+    await seedRolloverPlans(user4.id, { doneSessions: true, decouplingPct: 9.0 });
+
+    const rolled4 = await activateDraftIfReady(user4.id, todayStr);
+    console.log(`activateDraftIfReady returned: ${rolled4}`);
+
+    const latest4 = await prisma.tunableDefaults.findFirst({ where: { userId: user4.id }, orderBy: { revisedAt: "desc" } });
+    const priorWeekSummaryCount4 = await prisma.weekSummary.count({ where: { userId: user4.id } });
+    console.log(`prior WeekSummary rows for this user: ${priorWeekSummaryCount4}`);
+    if (latest4 && latest4.id !== initial4.id) {
+      console.log(`New TunableDefaults row created (id=${latest4.id}).`);
+      console.log(`  hrDisciplinePct: ${initial4.hrDisciplinePct} → ${latest4.hrDisciplinePct}`);
+      console.log(`  efStopThresholdPct: ${initial4.efStopThresholdPct} → ${latest4.efStopThresholdPct}`);
+      console.log(`  jumpRatioCeiling: ${initial4.jumpRatioCeiling} → ${latest4.jumpRatioCeiling}`);
+      console.log(`  rationale: ${latest4.rationale}`);
+    } else {
+      console.log(`No new TunableDefaults row was created (still just the initial one).`);
+    }
 
     console.log(`\nRESULT: ${exitCode === 0 ? "PASS" : "FAIL"}`);
   } catch (err) {
