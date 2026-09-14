@@ -69,11 +69,22 @@ Supabase (PostgreSQL), TanStack Query, Anthropic Claude API, deployed on Vercel.
       AvailabilityWindow    (recurring time slots by day-of-week; CRUD via UI)
       ScheduleEvent         (one-off temporal blocks: manual, household, travel; CRUD via UI)
       RecurringSession      (weekly fixed sessions, e.g. HYROX class; CRUD via UI)
+      PlannedFixedSession   (athlete-declared one-off fixed session for a future week;
+                             survives regeneration; consumedByPlanId links it once planned)
       Goal                  (soft-deletable; discipline, targetDate, priority fields)
       TrainingPlan          (user-level weekly plan; one active at a time)
         TrainingPlanGoal    (join: snapshot of active goals at generation time)
         TrainingSession     (scheduled by date + slot; fixed | preferred | generated)
-      CheckIn               (always linked to a TrainingSession)
+          SessionMetrics    (physiological actuals per session: EF, decoupling, zone share)
+      CheckIn                (always linked to a TrainingSession)
+      WeekSummary            (rollover snapshot: adherence, volume, trend fields per week)
+      AthleteDossier         (freeform facts JSON — maxHr, lthrEstimate, injury history, etc.)
+      TunableDefaults        (revisable planner tunables: hrDisciplinePct, efStopThresholdPct,
+                               jumpRatioCeiling, safetyPattern, with required rationale)
+      NutritionProfile       (diet/meal preferences and constraints)
+      StravaConnection, StravaActivity, StravaActivityStream,
+      SessionStravaActivityLink, StravaWebhookEvent (Strava integration model set —
+        linking training sessions to synced activities and their streams)
 
 ## MVP-0 Planning Model
 
