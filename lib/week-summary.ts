@@ -1,4 +1,4 @@
-import type { TrainingSession, CheckIn, DailyReadiness, StravaActivity, SessionStravaActivityLink } from "@prisma/client";
+import type { TrainingSession, CheckIn, DailyReadiness, StravaActivity, SessionStravaActivityLink, SessionMetrics } from "@prisma/client";
 import { deriveExecutionSummary } from "@/lib/execution-summary";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import type { Prisma, PrismaClient } from "@prisma/client";
@@ -6,6 +6,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 export type WeekSummarySession = TrainingSession & {
   checkIn: CheckIn | null;
   stravaLinks: (SessionStravaActivityLink & { activity: StravaActivity })[];
+  metrics?: SessionMetrics | null;
 };
 
 export type WeekSummarySessionResult = {
@@ -57,6 +58,10 @@ export type WeekSummaryResult = {
     injuryDays: number;
     unresolvedIssues: number;
     mainLimiter: string | null;
+    avgDecouplingPct?: number;
+    decouplingSessionCount?: number;
+    avgEfWhole?: number;
+    efSessionCount?: number;
   };
   sessions: WeekSummarySessionResult[];
   carryForward: string[];
@@ -243,6 +248,26 @@ export function computeWeekSummary(
     carryForward.push(`${fatigueDays} fatigue signals this week — start next week with an easy day`);
   }
 
+  // Only average decoupling across sessions the pipeline marked valid — an
+  // invalid/short session's ratio isn't a real aerobic-decoupling reading.
+  const validDecouplingPcts = sessions
+    .map((s) => s.metrics)
+    .filter((m): m is SessionMetrics => !!m && m.decouplingValid && m.decouplingPct != null)
+    .map((m) => m.decouplingPct as number);
+  const avgDecouplingPct =
+    validDecouplingPcts.length > 0
+      ? parseFloat((validDecouplingPcts.reduce((a, b) => a + b, 0) / validDecouplingPcts.length).toFixed(1))
+      : undefined;
+
+  // efWhole has no validity flag in SessionMetrics — every non-null value is included.
+  const efWholeValues = sessions
+    .map((s) => s.metrics?.efWhole)
+    .filter((v): v is number => v != null);
+  const avgEfWhole =
+    efWholeValues.length > 0
+      ? parseFloat((efWholeValues.reduce((a, b) => a + b, 0) / efWholeValues.length).toFixed(3))
+      : undefined;
+
   return {
     weekStart: plan.startsAt.toISOString().split("T")[0],
     weekEnd: plan.endsAt.toISOString().split("T")[0],
@@ -264,6 +289,14 @@ export function computeWeekSummary(
       injuryDays,
       unresolvedIssues,
       mainLimiter,
+      ...(avgDecouplingPct != null && {
+        avgDecouplingPct,
+        decouplingSessionCount: validDecouplingPcts.length,
+      }),
+      ...(avgEfWhole != null && {
+        avgEfWhole,
+        efSessionCount: efWholeValues.length,
+      }),
     },
     sessions: sessionResults,
     carryForward: carryForward.slice(0, 5),

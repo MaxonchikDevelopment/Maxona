@@ -273,6 +273,7 @@ When weekHistory is present it summarises the last few completed weeks oldest �
 - Rising adherence with green feel scores over 2+ weeks → load can step up modestly
 - Falling adherence or a recurring mainLimiter across weeks → hold or reduce load; do not stack another hard week
 - A limiter (e.g. fatigue, unresolved injury) repeating across weeks is a stronger signal than a single week — weight it accordingly
+- When avgDecouplingPct is present and rises week over week (each entry only reflects sessions with valid decoupling data — check the sample size), treat that as a fatigue/overreach signal worth being more conservative about — not a hard threshold, use judgment alongside the other signals
 Current-week check-ins and this cycle's weeklyReview always take priority over the historical trend.
 
 ## Explicit preference constraints (explicitPreferenceConstraints)
@@ -579,6 +580,14 @@ function buildUserPrompt(context: PlanningContext): string {
           ...(w.avgFeelScore != null && { avgFeel: w.avgFeelScore }),
           ...(w.mainLimiter && { mainLimiter: w.mainLimiter }),
           ...(w.carryForward.length > 0 && { carryForward: w.carryForward }),
+          ...(w.avgDecouplingPct != null && {
+            avgDecouplingPct: w.avgDecouplingPct,
+            decouplingSessionCount: w.decouplingSessionCount,
+          }),
+          ...(w.avgEfWhole != null && {
+            avgEfWhole: w.avgEfWhole,
+            efSessionCount: w.efSessionCount,
+          }),
         })),
       },
     }),

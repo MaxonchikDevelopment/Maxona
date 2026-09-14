@@ -34,6 +34,7 @@ export async function activateDraftIfReady(
         include: {
           checkIn: true,
           stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
+          metrics: true,
         },
       },
     },

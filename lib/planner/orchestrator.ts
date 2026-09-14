@@ -412,7 +412,13 @@ export async function generateWeeklyPlan(
 
   // Oldest → newest for a readable trajectory
   const weekHistory = [...weekSummaryHistory].reverse().map((w) => {
-    const signals = (w.signals ?? {}) as { mainLimiter?: string | null };
+    const signals = (w.signals ?? {}) as {
+      mainLimiter?: string | null;
+      avgDecouplingPct?: number;
+      decouplingSessionCount?: number;
+      avgEfWhole?: number;
+      efSessionCount?: number;
+    };
     return {
       weekStart: toDateStr(w.weekStart),
       adherenceByCount: w.adherenceByCount,
@@ -421,6 +427,14 @@ export async function generateWeeklyPlan(
       avgFeelScore: w.avgFeelScore,
       mainLimiter: signals.mainLimiter ?? null,
       carryForward: w.carryForward,
+      ...(signals.avgDecouplingPct != null && {
+        avgDecouplingPct: signals.avgDecouplingPct,
+        decouplingSessionCount: signals.decouplingSessionCount,
+      }),
+      ...(signals.avgEfWhole != null && {
+        avgEfWhole: signals.avgEfWhole,
+        efSessionCount: signals.efSessionCount,
+      }),
     };
   });
 
@@ -775,7 +789,13 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
 
   // Oldest → newest for a readable trajectory
   const weekHistory = [...weekSummaryHistory].reverse().map((w) => {
-    const signals = (w.signals ?? {}) as { mainLimiter?: string | null };
+    const signals = (w.signals ?? {}) as {
+      mainLimiter?: string | null;
+      avgDecouplingPct?: number;
+      decouplingSessionCount?: number;
+      avgEfWhole?: number;
+      efSessionCount?: number;
+    };
     return {
       weekStart: toDateStr(w.weekStart),
       adherenceByCount: w.adherenceByCount,
@@ -784,6 +804,14 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
       avgFeelScore: w.avgFeelScore,
       mainLimiter: signals.mainLimiter ?? null,
       carryForward: w.carryForward,
+      ...(signals.avgDecouplingPct != null && {
+        avgDecouplingPct: signals.avgDecouplingPct,
+        decouplingSessionCount: signals.decouplingSessionCount,
+      }),
+      ...(signals.avgEfWhole != null && {
+        avgEfWhole: signals.avgEfWhole,
+        efSessionCount: signals.efSessionCount,
+      }),
     };
   });
 

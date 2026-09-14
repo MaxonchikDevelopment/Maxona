@@ -100,6 +100,12 @@ export interface WeekHistoryEntry {
   avgFeelScore: number | null;
   mainLimiter: string | null;
   carryForward: string[];
+  // Only present when >=1 session that week had decouplingValid/efWhole data —
+  // sample size always travels with the average so it's never read as authoritative.
+  avgDecouplingPct?: number;
+  decouplingSessionCount?: number;
+  avgEfWhole?: number;
+  efSessionCount?: number;
 }
 
 export interface PlanningContext {
