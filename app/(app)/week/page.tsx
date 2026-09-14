@@ -31,6 +31,7 @@ type PlanWithSessions = {
   startsAt: Date;
   focusSummary: string | null;
   changeExplanation: string | null;
+  blockLabel: string | null;
   sessions: Array<{
     id: string;
     scheduledDate: Date;
@@ -515,7 +516,14 @@ export default async function WeekPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Training Week</p>
-              <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 leading-none">Week</h1>
+                {plan.blockLabel && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">
+                    {plan.blockLabel}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="mt-1">
               <ReplanButton mode="replan" />

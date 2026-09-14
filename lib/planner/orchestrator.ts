@@ -11,7 +11,7 @@ import { renderChangeExplanation, renderNextWeekDraftSummary, type ChangeSummary
 import { enforceExplicitPreferences } from "@/lib/planner/preference-constraints";
 import { parseLLMPreferences } from "@/lib/ai/parse-training-preferences";
 import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
-import { computeGoalGuidance } from "@/lib/planner/goal-guidance";
+import { computeGoalGuidance, type GoalGuidance } from "@/lib/planner/goal-guidance";
 import { getOrCreateTunableDefaults } from "@/lib/planner/tunable-defaults";
 import type {
   PlanningContext,
@@ -68,6 +68,23 @@ function toGoalGuidanceInputs(
     targetDate: g.targetDate ? toDateStr(g.targetDate) : null,
     priority: g.priority,
   }));
+}
+
+// Derives the plan-level season block from the primary goal's guidance —
+// reuses computeGoalGuidance's priority×proximity weighting rather than
+// re-deriving phase/dominance logic here.
+function deriveSeasonBlock(goalGuidance: GoalGuidance): {
+  blockPhase: string | null;
+  blockLabel: string | null;
+} {
+  const primary = goalGuidance.primaryFocus;
+  if (!primary) return { blockPhase: null, blockLabel: null };
+
+  const phaseLabel = primary.phase.charAt(0).toUpperCase() + primary.phase.slice(1);
+  const discipline = primary.discipline?.trim();
+  const blockLabel = discipline ? `${discipline} ${phaseLabel}` : phaseLabel;
+
+  return { blockPhase: primary.phase, blockLabel };
 }
 
 // ─── Readiness summary ───────────────────────────────────────────────────────
@@ -590,6 +607,9 @@ export async function generateWeeklyPlan(
     getOrCreateTunableDefaults(userId),
   ]);
 
+  const goalGuidance = computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr);
+  const seasonBlock = deriveSeasonBlock(goalGuidance);
+
   const planningCtx: PlanningContext = {
     user: {
       id: user.id,
@@ -619,7 +639,7 @@ export async function generateWeeklyPlan(
     weeklyReview: parsedWeeklyReview,
     replanReason,
     readinessSummary,
-    goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
+    goalGuidance,
     weekHistory: weekHistory.length > 0 ? weekHistory : undefined,
     athleteDossier: {
       facts: (dossier?.facts as Record<string, unknown>) ?? {},
@@ -686,6 +706,8 @@ export async function generateWeeklyPlan(
         replanReason: replanReason ?? null,
         focusSummary: buildDeterministicFocusSummary(validSessions),
         changeExplanation,
+        blockPhase: seasonBlock.blockPhase,
+        blockLabel: seasonBlock.blockLabel,
         goals: {
           create: goals.map((g) => ({ goalId: g.id })),
         },
@@ -979,6 +1001,9 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     getOrCreateTunableDefaults(userId),
   ]);
 
+  const goalGuidance = computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr);
+  const seasonBlock = deriveSeasonBlock(goalGuidance);
+
   const planningCtx: PlanningContext = {
     user: {
       id: user.id,
@@ -1008,7 +1033,7 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     weeklyReview: parsedWeeklyReview,
     replanReason: "weekly review — planning next week",
     parsedPreferences,
-    goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
+    goalGuidance,
     weekHistory: weekHistory.length > 0 ? weekHistory : undefined,
     athleteDossier: {
       facts: (nextWeekDossier?.facts as Record<string, unknown>) ?? {},
@@ -1106,6 +1131,8 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
       revision: 1,
       replanReason: "weekly review",
       focusSummary,
+      blockPhase: seasonBlock.blockPhase,
+      blockLabel: seasonBlock.blockLabel,
       goals: {
         create: goals.map((g) => ({ goalId: g.id })),
       },
