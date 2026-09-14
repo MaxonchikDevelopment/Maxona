@@ -147,7 +147,18 @@ Wire the two dead tables into the planner: read AthleteDossier.facts and current
 Deepen continuity: extend weekHistory to generateWeeklyPlan (not just drafts), and roll SessionMetrics (EF, decoupling, zone share trend) into persistWeekSummary in rollover.ts so the LLM sees real physiological trend, not just adherence counts. DONE — 51f7941, e2acfc4, 7993ace, 56c3dba, 08130d4.
 Silent weekly TunableDefaults review — hook into the same persistWeekSummary path in rollover.ts, now that there's a bootstrap story (from step 2) and real trend data to revise against (from step 4). DONE — 54e6e9f, f2ccf16, 7897d29.
 Re-open the negotiation-step question. The app currently does one-shot full generation (button → complete plan, no confirm step) with a rules layer already catching safety issues. Before building a negotiation UI: decide whether that's still wanted now that the underlying output is about to get much richer/more personalized, or whether it's lower priority than getting steps 1–5 right first. This is your call, not a technical one. DONE — decided: no negotiation step, one-shot generation stays as-is.
-Season-block skeleton — before designing anything new, check whether TrainingPlan.blockLabel/.blockPhase are actually populated by any current write path (recon didn't confirm this either way), and whether goal-guidance.ts's existing per-goal phase (base/build/taper) computation can just be aggregated into a plan-level block/phase instead of inventing new logic from scratch.
+Season-block skeleton — before designing anything new, check whether TrainingPlan.blockLabel/.blockPhase are actually populated by any current write path (recon didn't confirm this either way), and whether goal-guidance.ts's existing per-goal phase (base/build/taper) computation can just be aggregated into a plan-level block/phase instead of inventing new logic from scratch. DONE — 7001edf, b0cb02d.
+
+11.3.1 Phase 2 status: COMPLETE (2026-09-14)
+
+1. CLAUDE.md domain-model fix — 999c06d.
+2. Lock contracts (Zod schema for AthleteDossierFacts, structured session-output schema) — 440d174, 7ea4a67, ed995f9.
+3. Wire AthleteDossier/TunableDefaults into the planner — 440d174, 7ea4a67, 76e9794, acc264c.
+4. Deepen continuity (weekHistory in generateWeeklyPlan, SessionMetrics rolled into WeekSummary) — 51f7941, e2acfc4, 7993ace, 56c3dba, 08130d4.
+5. Silent weekly TunableDefaults review — 54e6e9f, f2ccf16, 7897d29.
+6. Negotiation-step question re-opened and closed (decision: no negotiation step) — no code change.
+7. Season-block skeleton — 7001edf, b0cb02d.
+
 11.4 Process note
 
 The recon agent could not find this file or 11_PHASE1_HANDOFF_AND_PHASE2_BRIEF.md anywhere in the repo — there was no docs/audit/ directory at all. These files were only ever placed in Claude.ai project knowledge / chat outputs, never copied into the actual git repo where local Claude Code looks for them. Fix: create docs/audit/ in the real repo and put both files there (see chat for the concrete next prompt) before running any further Claude Code sessions that reference them by path.
