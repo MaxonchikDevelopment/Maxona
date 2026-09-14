@@ -1,16 +1,20 @@
 /**
  * Smoke test for the new submit_plan tool schema (structured session-output
- * fields: distanceKm, targetPaceMinPerKm, targetHrZone, subtype).
+ * fields: distanceKm, targetPaceMinPerKm, targetHrZone, subtype), plus the
+ * AthleteDossier/TunableDefaults wiring added in Phase 2 Step 2.
  *
  * Creates a throwaway dummy user (never touches user_maxon), gives it the
  * minimal viable planning context — one active Goal, wide-open availability
- * for a full week, no prior sessions — and calls generateWeeklyPlan(userId)
- * for real (real Anthropic API call, not mocked). Confirms the call succeeds
- * with no tool-schema validation error, the plan has sessions, and reports
- * whether the new structured fields came back populated for a running or
- * cycling session.
+ * for a full week, no prior sessions, and a seeded AthleteDossier
+ * (maxHr/lthrEstimate) — and calls generateWeeklyPlan(userId) for real (real
+ * Anthropic API call, not mocked). Confirms the call succeeds with no
+ * tool-schema validation error, the plan has sessions, reports whether the
+ * new structured fields came back populated for a running or cycling
+ * session, and confirms exactly one TunableDefaults row got bootstrapped
+ * with the expected initial rationale.
  *
- * All synthetic data is deleted afterward regardless of outcome.
+ * All synthetic data (including the dossier row) is deleted afterward
+ * regardless of outcome.
  *
  * Run with:  npx tsx --env-file=.env.local scripts/smoke-test-plan-schema.ts
  */
@@ -79,6 +83,14 @@ async function main() {
     goalId = goal.id;
     console.log(`✓ Seeded active goal: ${goalId}`);
 
+    await prisma.athleteDossier.create({
+      data: {
+        userId: dummyUserId,
+        facts: { maxHr: 185, lthrEstimate: 172 },
+      },
+    });
+    console.log(`✓ Seeded AthleteDossier: {maxHr: 185, lthrEstimate: 172}`);
+
     console.log(`\nCalling generateWeeklyPlan(${dummyUserId})...\n`);
     const plan = await generateWeeklyPlan(dummyUserId);
 
@@ -118,6 +130,30 @@ async function main() {
       console.log(`\nNo running/cycling session in the returned plan to inspect structured fields on.`);
     }
 
+    const tunableRows = await prisma.tunableDefaults.findMany({ where: { userId: dummyUserId } });
+    console.log(`\nTunableDefaults rows for dummy user: ${tunableRows.length}`);
+    if (tunableRows.length === 1) {
+      const row = tunableRows[0];
+      console.log(`  hrDisciplinePct: ${row.hrDisciplinePct}`);
+      console.log(`  efStopThresholdPct: ${row.efStopThresholdPct}`);
+      console.log(`  jumpRatioCeiling: ${row.jumpRatioCeiling}`);
+      console.log(`  rationale: ${JSON.stringify(row.rationale)}`);
+      if (row.rationale !== "Initial defaults — not yet athlete-tuned, pending first week of data.") {
+        console.log(`  ✗ FAIL: rationale does not match expected initial rationale string.`);
+        exitCode = 1;
+      }
+    } else {
+      console.log(`  ✗ FAIL: expected exactly 1 TunableDefaults row, found ${tunableRows.length}.`);
+      exitCode = 1;
+    }
+
+    if (runOrCycle) {
+      console.log(
+        `\nSanity check — targetHrZone vs seeded lthrEstimate=172: ` +
+          `${JSON.stringify(runOrCycle.targetHrZone)} (not required to match exactly, eyeball only)`
+      );
+    }
+
     console.log(`\nRESULT: PASS`);
   } catch (err) {
     exitCode = 1;
@@ -136,6 +172,8 @@ async function main() {
         await prisma.goal.deleteMany({ where: { id: goalId } });
       }
       await prisma.availabilityWindow.deleteMany({ where: { userId: dummyUserId } });
+      await prisma.tunableDefaults.deleteMany({ where: { userId: dummyUserId } });
+      await prisma.athleteDossier.deleteMany({ where: { userId: dummyUserId } });
       await prisma.user.delete({ where: { id: dummyUserId } });
       console.log(`\n✓ Cleaned up synthetic user ${dummyUserId} and all related rows.`);
 
