@@ -93,6 +93,13 @@ In addition to notes, fill these optional fields when the session type supports 
 target — running and cycling sessions with a clear distance/pace/HR intent. Leave them
 undefined when they don't apply (HYROX group class, swimming, strength work, or any session
 without a specific numeric target) — never fabricate a value just to fill the field.
+When \`athleteProfile.maxHr\` and/or \`athleteProfile.lthrEstimate\` are present in the
+"Athlete profile & tunable thresholds" section below, use them to ground targetHrZone bounds
+instead of guessing (e.g. zone bounds as a percentage of lthrEstimate or maxHr for the
+session's intensity). When \`athleteProfile.tunables.hrDisciplinePct\` or
+\`.efStopThresholdPct\` are present, let them inform how conservative to be with
+intensity/duration on borderline calls — a lower hrDisciplinePct or efStopThresholdPct means
+lean more conservative.
 
 ## Typical session durations
 - running easy/recovery: 45–60 min
@@ -438,6 +445,21 @@ function buildUserPrompt(context: PlanningContext): string {
             title: context.goalGuidance.taperGoal.title,
             discipline: context.goalGuidance.taperGoal.discipline,
             daysUntil: context.goalGuidance.taperGoal.daysUntil,
+          },
+        }),
+      },
+    }),
+    ...((Object.keys(context.athleteDossier?.facts ?? {}).length > 0 || context.tunableDefaults) && {
+      athleteProfile: {
+        note: "Athlete profile & tunable thresholds — ground structured targets (targetHrZone, etc.) in these when present, per the 'Structured targets' rules. Do not fabricate values for fields not listed here.",
+        ...(context.athleteDossier && Object.keys(context.athleteDossier.facts).length > 0 &&
+          context.athleteDossier.facts),
+        ...(context.tunableDefaults && {
+          tunables: {
+            ...(context.tunableDefaults.hrDisciplinePct != null && { hrDisciplinePct: context.tunableDefaults.hrDisciplinePct }),
+            ...(context.tunableDefaults.efStopThresholdPct != null && { efStopThresholdPct: context.tunableDefaults.efStopThresholdPct }),
+            ...(context.tunableDefaults.jumpRatioCeiling != null && { jumpRatioCeiling: context.tunableDefaults.jumpRatioCeiling }),
+            rationale: context.tunableDefaults.rationale,
           },
         }),
       },
