@@ -361,6 +361,7 @@ export async function generateWeeklyPlan(
     recurringSessions,
     prevPlannedSessions,
     weeklyReadinessList,
+    weekSummaryHistory,
   ] = await Promise.all([
     prisma.goal.findMany({
       where: { userId, status: "active", deletedAt: null },
@@ -401,7 +402,27 @@ export async function generateWeeklyPlan(
       where: { userId, date: { gte: weekStart, lte: weekEnd } },
       orderBy: { date: "desc" },
     }),
+    // Last few completed weeks — multi-week trend signal for planning
+    prisma.weekSummary.findMany({
+      where: { userId, weekStart: { lt: weekStart } },
+      orderBy: { weekStart: "desc" },
+      take: 4,
+    }),
   ]);
+
+  // Oldest → newest for a readable trajectory
+  const weekHistory = [...weekSummaryHistory].reverse().map((w) => {
+    const signals = (w.signals ?? {}) as { mainLimiter?: string | null };
+    return {
+      weekStart: toDateStr(w.weekStart),
+      adherenceByCount: w.adherenceByCount,
+      hardDone: w.hardDone,
+      hardPlanned: w.hardPlanned,
+      avgFeelScore: w.avgFeelScore,
+      mainLimiter: signals.mainLimiter ?? null,
+      carryForward: w.carryForward,
+    };
+  });
 
   // Strava execution deltas — separate batch query avoids Prisma 6 multi-include type bug
   const sessionDeltas = new Map<string, ExecutionDelta>();
@@ -585,6 +606,7 @@ export async function generateWeeklyPlan(
     replanReason,
     readinessSummary,
     goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
+    weekHistory: weekHistory.length > 0 ? weekHistory : undefined,
     athleteDossier: {
       facts: (dossier?.facts as Record<string, unknown>) ?? {},
       version: dossier?.version ?? 0,
