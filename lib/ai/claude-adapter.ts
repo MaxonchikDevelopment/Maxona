@@ -274,6 +274,7 @@ When weekHistory is present it summarises the last few completed weeks oldest �
 - Falling adherence or a recurring mainLimiter across weeks → hold or reduce load; do not stack another hard week
 - A limiter (e.g. fatigue, unresolved injury) repeating across weeks is a stronger signal than a single week — weight it accordingly
 - When avgDecouplingPct is present and rises week over week (each entry only reflects sessions with valid decoupling data — check the sample size), treat that as a fatigue/overreach signal worth being more conservative about — not a hard threshold, use judgment alongside the other signals
+- avgEfWhole reflects easy/moderate-intensity sessions only — an aerobic-efficiency trend, not an all-sessions average (hard efforts are excluded, since EF differs by design across intensities)
 Current-week check-ins and this cycle's weeklyReview always take priority over the historical trend.
 
 ## Explicit preference constraints (explicitPreferenceConstraints)

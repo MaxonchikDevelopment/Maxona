@@ -259,8 +259,11 @@ export function computeWeekSummary(
       ? parseFloat((validDecouplingPcts.reduce((a, b) => a + b, 0) / validDecouplingPcts.length).toFixed(1))
       : undefined;
 
-  // efWhole has no validity flag in SessionMetrics — every non-null value is included.
+  // EF is an aerobic-efficiency signal that only makes sense within a stable
+  // intensity band — mixing in hard-effort sessions blends different
+  // physiological regimes into one meaningless number. Restrict to easy/moderate.
   const efWholeValues = sessions
+    .filter((s) => s.intensity === "easy" || s.intensity === "moderate")
     .map((s) => s.metrics?.efWhole)
     .filter((v): v is number => v != null);
   const avgEfWhole =

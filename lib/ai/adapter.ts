@@ -104,6 +104,9 @@ export interface WeekHistoryEntry {
   // sample size always travels with the average so it's never read as authoritative.
   avgDecouplingPct?: number;
   decouplingSessionCount?: number;
+  // Easy/moderate-intensity sessions only — an aerobic-efficiency trend signal,
+  // not an all-intensity average (hard efforts are excluded; EF differs by design
+  // across intensities, so blending them would not be physiologically meaningful).
   avgEfWhole?: number;
   efSessionCount?: number;
 }

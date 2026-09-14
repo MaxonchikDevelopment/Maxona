@@ -167,3 +167,108 @@ and 0.018).
 - `app/api/plans/review/stats/route.ts` (in-progress-week stats) —
   intentionally not updated to include `metrics`; out of scope for this
   step, which targeted `persistWeekSummary`/archived weeks specifically.
+
+## Follow-up fix
+
+Same branch, one additional commit, fixing a gap this report had flagged
+but not fixed: `avgEfWhole` was averaging `efWhole` across every session
+regardless of intensity — easy, moderate, and hard sessions blended into
+one number.
+
+**Why this is wrong:** EF (efficiency factor, pace/output per heart-rate
+beat) is only a meaningful *aerobic-efficiency* trend signal within a
+stable intensity band. A hard interval session and an easy aerobic run
+have deliberately different EF by design — that's not noise, it's the
+point of training at different intensities. Averaging them together
+produces a number that doesn't track anything real, unlike
+`avgDecouplingPct`, which was already correctly gated by
+`decouplingValid` (itself gated on a duration threshold) so short/invalid
+sessions never entered that average.
+
+**Fix:** `computeWeekSummary` in `lib/week-summary.ts` now restricts the
+`efWhole` values feeding `avgEfWhole`/`efSessionCount` to sessions with
+`intensity === "easy" || intensity === "moderate"`, using the existing
+`SessionIntensity` Prisma enum already present on each
+`WeekSummarySession`. Hard-intensity sessions are excluded from this
+average entirely, even though `efWhole` itself still has no validity flag
+(that schema gap remains, as noted above). Zero qualifying sessions →
+the fields are omitted from `signals` entirely, same discipline as
+before (never a fabricated 0/null).
+
+Updated the field-level comments so nobody misreads the semantics later:
+- `WeekHistoryEntry.avgEfWhole` in `lib/ai/adapter.ts` — now documented
+  as an easy/moderate-only aerobic-efficiency trend, not an all-sessions
+  average.
+- The `## Multi-week trend (weekHistory)` system-prompt section in
+  `lib/ai/claude-adapter.ts` — added a line stating the same restriction,
+  so Claude doesn't read a rising/falling `avgEfWhole` as reflecting hard
+  efforts too.
+
+### Test additions
+
+Extended `scripts/smoke-test-week-history.ts`:
+- Changed the existing "invalid decoupling" session's intensity to `hard`
+  (it already had `efWhole: 0.018` and `decouplingValid: false`) so the
+  fixture now also exercises the new intensity filter — updated the
+  assertion to expect `avgEfWhole` = only the moderate-intensity session's
+  value (0.015, count=1), not the two-session average.
+- Added a second archived week with one `done` session and **no**
+  `SessionMetrics` row at all (the common real-world case: no FIT upload
+  that week). Asserts `persistWeekSummary` returns `true` (no crash) and
+  that `avgDecouplingPct`, `decouplingSessionCount`, `avgEfWhole`, and
+  `efSessionCount` are all absent from `signals` — not written as
+  zero/null.
+- Cleanup unchanged in structure (deletes by `userId` across both
+  archived plans); confirmed zero leftover rows in the follow-up query.
+
+### Test output
+
+Decoupling-validity + intensity-filtering week:
+```json
+{
+  "avgEfWhole": 0.015,
+  "injuryDays": 0,
+  "fatigueDays": 0,
+  "mainLimiter": null,
+  "efSessionCount": 1,
+  "avgDecouplingPct": 3.2,
+  "lowReadinessDays": 0,
+  "unresolvedIssues": 0,
+  "decouplingSessionCount": 1
+}
+```
+PASS: `avgDecouplingPct` reflects only the valid session (3.2%, n=1).
+PASS: `avgEfWhole` excludes the hard-intensity session (0.015, n=1) —
+previously this would have been `(0.015+0.018)/2 = 0.0165`.
+
+No-metrics week:
+```json
+{
+  "injuryDays": 0,
+  "fatigueDays": 0,
+  "mainLimiter": null,
+  "lowReadinessDays": 0,
+  "unresolvedIssues": 0
+}
+```
+PASS: no crash, all 4 decoupling/EF fields absent entirely.
+
+`generateWeeklyPlan`'s captured `PlanningContext.weekHistory` (both
+archived weeks, oldest → newest) confirmed the no-metrics week carries no
+decoupling/EF keys while the other week carries the filtered values —
+end-to-end, unchanged from persisted `WeekSummary.signals` through to the
+`PlanningContext` handed to Claude.
+
+### Validation
+
+- `npx tsc --noEmit` — clean.
+- `npm run build` — succeeded.
+- `git grep "user_maxon" -- app lib components` — no matches.
+- `git grep "const USER_ID" -- app lib components` — no matches.
+- `git diff --stat main` (all commits on this branch combined):
+  `lib/ai/adapter.ts` (+9), `lib/ai/claude-adapter.ts` (+10),
+  `lib/planner/orchestrator.ts` (+52/-1), `lib/planner/rollover.ts` (+1),
+  `lib/week-summary.ts` (+38/-2), `scripts/smoke-test-week-history.ts`
+  (+352 new) — plus this report.
+
+Commit: (see git log — appended below after committing)

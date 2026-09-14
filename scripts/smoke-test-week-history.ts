@@ -3,15 +3,22 @@
  * and SessionMetrics (decouplingPct / efWhole) rolled into persistWeekSummary.
  *
  * Creates a throwaway dummy user (never touches user_maxon) with:
- *  - one archived past-week TrainingPlan containing 2 done sessions, one with
- *    SessionMetrics.decouplingValid=true and one with decouplingValid=false
+ *  - one archived past-week TrainingPlan containing 2 done sessions: a
+ *    moderate-intensity one with SessionMetrics.decouplingValid=true, and a
+ *    hard-intensity one with decouplingValid=false
+ *  - a second archived past-week TrainingPlan with 1 done session and no
+ *    SessionMetrics row at all (no FIT upload that week)
  *  - an active goal + wide-open availability so generateWeeklyPlan can run
  *
- * Calls persistWeekSummary directly on the archived week and asserts the
- * signals.avgDecouplingPct only reflects the valid session, then calls
- * generateWeeklyPlan(userId) for real (real Anthropic API call, not mocked)
- * and logs PlanningContext.weekHistory right before the Claude call to
- * confirm it is non-empty and carries the new decoupling/EF fields.
+ * Calls persistWeekSummary directly on both archived weeks and asserts:
+ *  - avgDecouplingPct only reflects the valid session
+ *  - avgEfWhole only reflects easy/moderate-intensity sessions (the hard
+ *    session's efWhole is excluded even though it has no validity flag)
+ *  - the no-metrics week omits avgDecouplingPct/avgEfWhole and their counts
+ *    entirely rather than crashing or writing zero/null
+ * Then calls generateWeeklyPlan(userId) for real (real Anthropic API call,
+ * not mocked) and logs PlanningContext.weekHistory right before the Claude
+ * call to confirm it is non-empty and carries the new decoupling/EF fields.
  *
  * All synthetic data is deleted afterward regardless of outcome.
  *
@@ -50,6 +57,7 @@ async function main() {
   let dummyUserId: string | null = null;
   let goalId: string | null = null;
   let archivedPlanId: string | null = null;
+  let noMetricsPlanId: string | null = null;
   let exitCode = 0;
 
   try {
@@ -201,11 +209,79 @@ async function main() {
         exitCode = 1;
       }
 
-      const expectedAvgEf = parseFloat(((0.015 + 0.018) / 2).toFixed(3));
-      if (signals.avgEfWhole === expectedAvgEf && signals.efSessionCount === 2) {
-        console.log(`✓ PASS: avgEfWhole averages both sessions (no validity flag) — ${expectedAvgEf}, count=2.`);
+      // invalidSession is intensity "hard" — its efWhole (0.018) must now be
+      // excluded from the average entirely, regardless of decouplingValid.
+      const expectedAvgEf = 0.015;
+      if (signals.avgEfWhole === expectedAvgEf && signals.efSessionCount === 1) {
+        console.log(`✓ PASS: avgEfWhole excludes the hard-intensity session — ${expectedAvgEf}, count=1.`);
       } else {
-        console.log(`✗ FAIL: expected avgEfWhole=${expectedAvgEf}/count=2, got ${signals.avgEfWhole}/${signals.efSessionCount}`);
+        console.log(`✗ FAIL: expected avgEfWhole=${expectedAvgEf}/count=1, got ${signals.avgEfWhole}/${signals.efSessionCount}`);
+        exitCode = 1;
+      }
+    }
+
+    // --- Part A2: no-metrics archived week — persistWeekSummary must not crash
+    // and must omit avgDecouplingPct/avgEfWhole (and their counts) entirely ---
+    const noMetricsStart = addDaysUtc(new Date(), -21);
+    noMetricsStart.setUTCHours(0, 0, 0, 0);
+    const noMetricsEnd = addDaysUtc(noMetricsStart, 6);
+
+    const noMetricsPlan = await prisma.trainingPlan.create({
+      data: {
+        userId: dummyUserId,
+        startsAt: noMetricsStart,
+        endsAt: noMetricsEnd,
+        status: "archived",
+        revision: 1,
+        focusSummary: "Synthetic archived week with no SessionMetrics (no FIT upload)",
+      },
+    });
+    noMetricsPlanId = noMetricsPlan.id;
+    console.log(`\n✓ Created no-metrics archived plan ${noMetricsPlanId} (${noMetricsStart.toISOString().split("T")[0]} → ${noMetricsEnd.toISOString().split("T")[0]})`);
+
+    await prisma.trainingSession.create({
+      data: {
+        planId: noMetricsPlanId,
+        userId: dummyUserId,
+        scheduledDate: addDaysUtc(noMetricsStart, 1),
+        preferredSlot: "morning",
+        planningType: "generated",
+        durationMin: 50,
+        intensity: "easy",
+        status: "done",
+        notes: "Running: easy 8km",
+      },
+    });
+    console.log(`✓ Created 1 done session with no SessionMetrics row`);
+
+    const noMetricsSessions = await prisma.trainingSession.findMany({
+      where: { planId: noMetricsPlanId },
+      include: {
+        checkIn: true,
+        stravaLinks: { include: { activity: true }, orderBy: { createdAt: "asc" } },
+        metrics: true,
+      },
+    });
+
+    const ok2 = await persistWeekSummary(prisma, dummyUserId, noMetricsPlan, noMetricsSessions, []);
+    console.log(`persistWeekSummary (no-metrics week) returned: ${ok2}`);
+
+    const noMetricsSummary = await prisma.weekSummary.findUnique({
+      where: { userId_weekStart: { userId: dummyUserId, weekStart: noMetricsStart } },
+    });
+
+    if (!noMetricsSummary) {
+      console.log(`✗ FAIL: no WeekSummary row was persisted for the no-metrics week.`);
+      exitCode = 1;
+    } else {
+      const signals2 = noMetricsSummary.signals as Record<string, unknown>;
+      console.log(`No-metrics WeekSummary.signals: ${JSON.stringify(signals2, null, 2)}`);
+      const keys = ["avgDecouplingPct", "decouplingSessionCount", "avgEfWhole", "efSessionCount"];
+      const present = keys.filter((k) => k in signals2);
+      if (present.length === 0 && ok2) {
+        console.log(`✓ PASS: no-metrics week did not crash and omits all 4 decoupling/EF fields entirely.`);
+      } else {
+        console.log(`✗ FAIL: expected all 4 fields absent, found present=${JSON.stringify(present)}, ok=${ok2}`);
         exitCode = 1;
       }
     }
