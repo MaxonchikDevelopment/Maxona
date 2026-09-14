@@ -71,7 +71,13 @@ export type SessionProp = {
   nutritionAdvice?: NutritionAdvice | null;
 };
 
-function formatSessionTarget(session: SessionProp): string | null {
+export function formatSessionTarget(session: {
+  distanceKm?: number | null;
+  targetPaceMinPerKm?: string | null;
+  targetHrZoneMin?: number | null;
+  targetHrZoneMax?: number | null;
+  subtype?: string | null;
+}): string | null {
   const parts: string[] = [];
   if (session.distanceKm != null) parts.push(`${session.distanceKm}km`);
   if (session.targetPaceMinPerKm) parts.push(`${session.targetPaceMinPerKm}/km`);

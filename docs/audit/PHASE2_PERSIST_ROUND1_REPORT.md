@@ -343,3 +343,87 @@ that Round 1's schema-only change left open.
 
 Not merged — branch `phase2-persist-structured-fields` still off `main`,
 reporting back before merge per instructions.
+
+## Round 2 follow-up checks
+
+### 1. Draft preview coverage
+
+Confirmed via `git show db58f1e` that only the real `TrainingSession` mapping
+sites in `app/(app)/week/page.tsx` (the `plan`/`draftPlan` session `select`
+around what's now line ~618) and `SessionProp`/`session-card.tsx` picked up
+`distanceKm`/`targetPaceMinPerKm`/`targetHrZoneMin-Max`/`subtype` in that
+commit. The `DraftSession` type and `DraftPreview` component (then ~line
+621-705) were left untouched — no reference to any of the four fields.
+
+**Read: oversight, not intentional.** The Prisma query that populates
+`draftPlan` (`app/(app)/week/page.tsx`, the `trainingPlan.findFirst({
+status: "draft" })` call) uses a bare `include: { sessions: { include:
+{ checkIn: true } } }` — no `select` — so the four new columns were already
+being fetched from the DB on every page load; they just weren't threaded
+through the `DraftSession` type or rendered. Given the draft preview
+otherwise mirrors the real card's fields (duration, slot, first line of
+notes), dropping only these four looked like a gap left over from the
+round-1 commit touching the real-session path and not the draft path,
+rather than a deliberate "keep drafts lightweight" decision.
+
+**Change made** (fixes the gap, minimal):
+- `components/session-card.tsx` — `formatSessionTarget` exported and its
+  parameter narrowed from `SessionProp` to a small inline `Pick`-shaped type
+  (just the 4 fields), so it can be reused outside `SessionProp` without
+  pulling in unrelated required fields.
+- `app/(app)/week/page.tsx` — `DraftSession` type gains the 4 fields;
+  `DraftPreview`'s per-session row now renders `formatSessionTarget(s)` next
+  to the slot/duration line, same condition-gated pattern as the two
+  `session-card.tsx` sites. No change needed to the Prisma query (already
+  fetching the columns via bare `include`) or to how `draftPlan` is passed
+  into `DraftPreview` (structural typing already satisfied since the Prisma
+  result is a superset of `DraftSession`).
+
+### 2. Partial-field rendering
+
+`formatSessionTarget` (`components/session-card.tsx`) uses a filter+join
+pattern — builds a `parts: string[]` array, pushing only fields that are
+actually present, then `parts.length > 0 ? parts.join(" · ") : null`:
+
+```ts
+export function formatSessionTarget(session: {
+  distanceKm?: number | null;
+  targetPaceMinPerKm?: string | null;
+  targetHrZoneMin?: number | null;
+  targetHrZoneMax?: number | null;
+  subtype?: string | null;
+}): string | null {
+  const parts: string[] = [];
+  if (session.distanceKm != null) parts.push(`${session.distanceKm}km`);
+  if (session.targetPaceMinPerKm) parts.push(`${session.targetPaceMinPerKm}/km`);
+  if (session.targetHrZoneMin != null && session.targetHrZoneMax != null) {
+    parts.push(`${session.targetHrZoneMin}–${session.targetHrZoneMax}bpm`);
+  }
+  if (session.subtype) parts.push(session.subtype);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+```
+
+Because the separator is only introduced by `.join(" · ")` over an array
+that only contains present fields, there is no way to get a leading,
+trailing, or doubled `·` — e.g. subtype-only (typical HYROX/strength case)
+produces `parts = ["strength"]` → `"strength"`, no separator at all. Both
+call sites in `session-card.tsx` (compact and expanded card) additionally
+gate the whole `<p>` on `formatSessionTarget(session) &&`, so nothing
+renders when all four fields are absent. **No bug found — already correct.**
+
+The session detail page (`app/(app)/sessions/[id]/page.tsx`) doesn't use
+this helper at all — it renders each of the 4 fields as its own
+independently-gated chip `<span>` in a `flex flex-wrap gap-*` row (lines
+~216-234), so there's no shared separator character to go stray there
+either; each chip either renders whole or not at all.
+
+### Validation (after the draft-preview change)
+
+- `npx tsc --noEmit` — clean.
+- `npm run build` — succeeded.
+- `git grep "user_maxon" -- app lib components` — no matches.
+- `git grep "const USER_ID" -- app lib components` — no matches.
+
+Not committed yet — reporting per instructions before any further branch
+action; not merged.

@@ -11,6 +11,7 @@ import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { activateDraftIfReady } from "@/lib/planner/rollover";
 import { normalizeCoachBullets } from "@/lib/format-bullets";
 import { formatIntensity, formatSlot } from "@/lib/format-labels";
+import { formatSessionTarget } from "@/components/session-card";
 import { generateWeeklyNutritionFocus } from "@/lib/ai/weekly-nutrition-focus";
 import { hashInputs, getCachedInsight, setCachedInsight } from "@/lib/ai/insight-cache";
 import { timed } from "@/lib/perf";
@@ -624,6 +625,11 @@ type DraftSession = {
   intensity: string;
   notes: string | null;
   preferredSlot: string;
+  distanceKm: number | null;
+  targetPaceMinPerKm: string | null;
+  targetHrZoneMin: number | null;
+  targetHrZoneMax: number | null;
+  subtype: string | null;
 };
 
 function DraftPreview({
@@ -689,6 +695,9 @@ function DraftPreview({
                       </span>
                       <span className="text-xs text-zinc-400">{s.durationMin} min</span>
                       <span className="text-xs text-zinc-400">{formatSlot(s.preferredSlot)}</span>
+                      {formatSessionTarget(s) && (
+                        <span className="text-xs text-zinc-500">{formatSessionTarget(s)}</span>
+                      )}
                       {s.notes && (
                         <span className="text-xs text-zinc-500">{s.notes.split(":")[0]}</span>
                       )}
