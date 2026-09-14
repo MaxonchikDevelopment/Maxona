@@ -721,6 +721,11 @@ export async function generateWeeklyPlan(
           durationMin: s.durationMin,
           intensity: s.intensity,
           notes: s.notes ?? null,
+          distanceKm: s.distanceKm ?? null,
+          targetPaceMinPerKm: s.targetPaceMinPerKm ?? null,
+          targetHrZoneMin: s.targetHrZone?.min ?? null,
+          targetHrZoneMax: s.targetHrZone?.max ?? null,
+          subtype: s.subtype ?? null,
         })),
       });
     }
@@ -1113,6 +1118,11 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
           durationMin: s.durationMin,
           intensity: s.intensity,
           notes: s.notes ?? null,
+          distanceKm: s.distanceKm ?? null,
+          targetPaceMinPerKm: s.targetPaceMinPerKm ?? null,
+          targetHrZoneMin: s.targetHrZone?.min ?? null,
+          targetHrZoneMax: s.targetHrZone?.max ?? null,
+          subtype: s.subtype ?? null,
         })),
       },
     },

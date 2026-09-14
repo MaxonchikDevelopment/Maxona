@@ -1,7 +1,9 @@
 /**
  * Smoke test for the new submit_plan tool schema (structured session-output
  * fields: distanceKm, targetPaceMinPerKm, targetHrZone, subtype), plus the
- * AthleteDossier/TunableDefaults wiring added in Phase 2 Step 2.
+ * AthleteDossier/TunableDefaults wiring added in Phase 2 Step 2, plus (Round 2)
+ * confirming those structured fields are actually persisted to the
+ * TrainingSession row by both generateWeeklyPlan and generateNextWeekDraft.
  *
  * Creates a throwaway dummy user (never touches user_maxon), gives it the
  * minimal viable planning context — one active Goal, wide-open availability
@@ -10,8 +12,11 @@
  * Anthropic API call, not mocked). Confirms the call succeeds with no
  * tool-schema validation error, the plan has sessions, reports whether the
  * new structured fields came back populated for a running or cycling
- * session, and confirms exactly one TunableDefaults row got bootstrapped
- * with the expected initial rationale.
+ * session, confirms they are actually non-null on the persisted
+ * TrainingSession row (not just the in-memory PlanResult), confirms exactly
+ * one TunableDefaults row got bootstrapped with the expected initial
+ * rationale, and then repeats the persistence check for
+ * generateNextWeekDraft's draft-plan sessions.
  *
  * All synthetic data (including the dossier row) is deleted afterward
  * regardless of outcome.
@@ -20,7 +25,7 @@
  */
 
 import { PrismaClient } from "@prisma/client";
-import { generateWeeklyPlan } from "../lib/planner/orchestrator";
+import { generateWeeklyPlan, generateNextWeekDraft } from "../lib/planner/orchestrator";
 import { ClaudeAdapter } from "../lib/ai/claude-adapter";
 import type { PlanResult } from "../lib/ai/adapter";
 
@@ -125,7 +130,44 @@ async function main() {
       console.log(`  targetPaceMinPerKm: ${JSON.stringify(runOrCycle.targetPaceMinPerKm)}`);
       console.log(`  targetHrZone: ${JSON.stringify(runOrCycle.targetHrZone)}`);
       console.log(`  subtype: ${JSON.stringify(runOrCycle.subtype)}`);
-      console.log(`  (Not persisted to TrainingSession — no DB columns exist for these fields.)`);
+
+      const persistedRunOrCycle = sessions.find((s) => /^(running|cycling)/i.test((s.notes ?? "").trim()));
+      console.log(`\nPersisted TrainingSession row for the same session:`);
+      if (persistedRunOrCycle) {
+        console.log(`  distanceKm: ${JSON.stringify(persistedRunOrCycle.distanceKm)}`);
+        console.log(`  targetPaceMinPerKm: ${JSON.stringify(persistedRunOrCycle.targetPaceMinPerKm)}`);
+        console.log(
+          `  targetHrZoneMin/Max: ${JSON.stringify(persistedRunOrCycle.targetHrZoneMin)}/${JSON.stringify(persistedRunOrCycle.targetHrZoneMax)}`
+        );
+        console.log(`  subtype: ${JSON.stringify(persistedRunOrCycle.subtype)}`);
+
+        if (runOrCycle.distanceKm != null && persistedRunOrCycle.distanceKm == null) {
+          console.log(`  ✗ FAIL: distanceKm present on PlanResult but null on persisted row.`);
+          exitCode = 1;
+        }
+        if (runOrCycle.targetPaceMinPerKm != null && persistedRunOrCycle.targetPaceMinPerKm == null) {
+          console.log(`  ✗ FAIL: targetPaceMinPerKm present on PlanResult but null on persisted row.`);
+          exitCode = 1;
+        }
+        if (runOrCycle.targetHrZone != null && persistedRunOrCycle.targetHrZoneMin == null) {
+          console.log(`  ✗ FAIL: targetHrZone present on PlanResult but targetHrZoneMin null on persisted row.`);
+          exitCode = 1;
+        }
+        if (
+          persistedRunOrCycle.distanceKm == null &&
+          persistedRunOrCycle.targetPaceMinPerKm == null &&
+          persistedRunOrCycle.targetHrZoneMin == null &&
+          persistedRunOrCycle.subtype == null
+        ) {
+          console.log(`  ✗ FAIL: all structured fields null on persisted generateWeeklyPlan row.`);
+          exitCode = 1;
+        } else {
+          console.log(`  ✓ PASS: structured fields persisted to TrainingSession for generateWeeklyPlan.`);
+        }
+      } else {
+        console.log(`  ✗ FAIL: could not find persisted running/cycling session row to check.`);
+        exitCode = 1;
+      }
     } else {
       console.log(`\nNo running/cycling session in the returned plan to inspect structured fields on.`);
     }
@@ -154,7 +196,50 @@ async function main() {
       );
     }
 
-    console.log(`\nRESULT: PASS`);
+    console.log(`\nCalling generateNextWeekDraft(${dummyUserId})...\n`);
+    const draft = await generateNextWeekDraft(dummyUserId);
+    const draftSessions = await prisma.trainingSession.findMany({
+      where: { planId: draft.id },
+      orderBy: { scheduledDate: "asc" },
+    });
+    console.log(`✓ generateNextWeekDraft succeeded. Draft plan ${draft.id} has ${draftSessions.length} session(s).`);
+
+    const draftRawRunOrCycle = (capturedPlanResult?.sessions ?? []).find((s) =>
+      /^(running|cycling)/i.test((s.notes ?? "").trim())
+    );
+    const draftPersistedRunOrCycle = draftSessions.find((s) => /^(running|cycling)/i.test((s.notes ?? "").trim()));
+
+    if (draftRawRunOrCycle) {
+      console.log(`\nDraft raw PlanResult session "${draftRawRunOrCycle.notes}":`);
+      console.log(`  distanceKm: ${JSON.stringify(draftRawRunOrCycle.distanceKm)}`);
+      console.log(`  targetPaceMinPerKm: ${JSON.stringify(draftRawRunOrCycle.targetPaceMinPerKm)}`);
+      console.log(`  targetHrZone: ${JSON.stringify(draftRawRunOrCycle.targetHrZone)}`);
+      console.log(`  subtype: ${JSON.stringify(draftRawRunOrCycle.subtype)}`);
+
+      if (draftPersistedRunOrCycle) {
+        console.log(`\nPersisted draft TrainingSession row:`);
+        console.log(`  distanceKm: ${JSON.stringify(draftPersistedRunOrCycle.distanceKm)}`);
+        console.log(`  targetPaceMinPerKm: ${JSON.stringify(draftPersistedRunOrCycle.targetPaceMinPerKm)}`);
+        console.log(
+          `  targetHrZoneMin/Max: ${JSON.stringify(draftPersistedRunOrCycle.targetHrZoneMin)}/${JSON.stringify(draftPersistedRunOrCycle.targetHrZoneMax)}`
+        );
+        console.log(`  subtype: ${JSON.stringify(draftPersistedRunOrCycle.subtype)}`);
+
+        if (draftRawRunOrCycle.distanceKm != null && draftPersistedRunOrCycle.distanceKm == null) {
+          console.log(`  ✗ FAIL: distanceKm present on draft PlanResult but null on persisted draft row.`);
+          exitCode = 1;
+        } else {
+          console.log(`  ✓ PASS: structured fields persisted to TrainingSession for generateNextWeekDraft.`);
+        }
+      } else {
+        console.log(`  ✗ FAIL: could not find persisted running/cycling session row on the draft plan.`);
+        exitCode = 1;
+      }
+    } else {
+      console.log(`\nNo running/cycling session in the draft plan to inspect structured fields on.`);
+    }
+
+    console.log(`\nRESULT: ${exitCode === 0 ? "PASS" : "FAIL"}`);
   } catch (err) {
     exitCode = 1;
     console.error(`\nRESULT: FAIL`);

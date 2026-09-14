@@ -155,8 +155,6 @@ export interface PlannedSession {
   notes?: string;
   // Structured supplement to `notes`, filled when the session type supports
   // a concrete target (running/cycling); left undefined otherwise (e.g. strength).
-  // Not yet persisted — TrainingSession/SessionWorkoutPlan have no columns for
-  // these, so they are dropped after generation until a migration adds them.
   distanceKm?: number;
   targetPaceMinPerKm?: string;
   targetHrZone?: { min: number; max: number };
