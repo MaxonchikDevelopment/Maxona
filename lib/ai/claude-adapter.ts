@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AIAdapter, PlanningContext, PlanResult, PlannedSession } from "./adapter";
+import { computeZonesFromDossier } from "../training/zones-from-dossier";
 
 export class ClaudeAdapter implements AIAdapter {
   private client: Anthropic;
@@ -93,10 +94,13 @@ In addition to notes, fill these optional fields when the session type supports 
 target — running and cycling sessions with a clear distance/pace/HR intent. Leave them
 undefined when they don't apply (HYROX group class, swimming, strength work, or any session
 without a specific numeric target) — never fabricate a value just to fill the field.
-When \`athleteProfile.maxHr\` and/or \`athleteProfile.lthrEstimate\` are present in the
-"Athlete profile & tunable thresholds" section below, use them to ground targetHrZone bounds
-instead of guessing (e.g. zone bounds as a percentage of lthrEstimate or maxHr for the
-session's intensity). When \`athleteProfile.tunables.hrDisciplinePct\` or
+When \`athleteProfile.computedZones\` is present in the "Athlete profile & tunable thresholds"
+section below, targetHrZone for a session should generally fall within the matching named
+band — easy/recovery run → \`computedZones.easy\`, tempo run → \`computedZones.tempo\`,
+interval/hard effort → \`computedZones.threshold\` — with small judgment-based adjustments
+allowed, not required to match exactly. If \`computedZones\` is absent but
+\`athleteProfile.maxHr\` and/or \`athleteProfile.lthrEstimate\` are present, ground
+targetHrZone bounds in them instead of guessing. When \`athleteProfile.tunables.hrDisciplinePct\` or
 \`.efStopThresholdPct\` are present, let them inform how conservative to be with
 intensity/duration on borderline calls — a lower hrDisciplinePct or efStopThresholdPct means
 lean more conservative.
@@ -454,6 +458,13 @@ function buildUserPrompt(context: PlanningContext): string {
         note: "Athlete profile & tunable thresholds — ground structured targets (targetHrZone, etc.) in these when present, per the 'Structured targets' rules. Do not fabricate values for fields not listed here.",
         ...(context.athleteDossier && Object.keys(context.athleteDossier.facts).length > 0 &&
           context.athleteDossier.facts),
+        ...(context.athleteDossier && (() => {
+          const facts = context.athleteDossier!.facts as { maxHr?: unknown; lthrEstimate?: unknown };
+          const maxHr = typeof facts.maxHr === "number" ? facts.maxHr : null;
+          const lthrEstimate = typeof facts.lthrEstimate === "number" ? facts.lthrEstimate : null;
+          const computedZones = computeZonesFromDossier(maxHr, lthrEstimate);
+          return computedZones ? { computedZones } : {};
+        })()),
         ...(context.tunableDefaults && {
           tunables: {
             ...(context.tunableDefaults.hrDisciplinePct != null && { hrDisciplinePct: context.tunableDefaults.hrDisciplinePct }),
