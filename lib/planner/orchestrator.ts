@@ -12,6 +12,7 @@ import { enforceExplicitPreferences } from "@/lib/planner/preference-constraints
 import { parseLLMPreferences } from "@/lib/ai/parse-training-preferences";
 import { deriveExecutionDelta, type ExecutionDelta } from "@/lib/planner/execution-delta";
 import { computeGoalGuidance } from "@/lib/planner/goal-guidance";
+import { getOrCreateTunableDefaults } from "@/lib/planner/tunable-defaults";
 import type {
   PlanningContext,
   RecentCheckIn,
@@ -549,6 +550,11 @@ export async function generateWeeklyPlan(
     }
   }
 
+  const [dossier, tunableDefaults] = await Promise.all([
+    prisma.athleteDossier.findUnique({ where: { userId } }),
+    getOrCreateTunableDefaults(userId),
+  ]);
+
   const planningCtx: PlanningContext = {
     user: {
       id: user.id,
@@ -579,6 +585,17 @@ export async function generateWeeklyPlan(
     replanReason,
     readinessSummary,
     goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
+    athleteDossier: {
+      facts: (dossier?.facts as Record<string, unknown>) ?? {},
+      version: dossier?.version ?? 0,
+    },
+    tunableDefaults: {
+      hrDisciplinePct: tunableDefaults.hrDisciplinePct,
+      efStopThresholdPct: tunableDefaults.efStopThresholdPct,
+      jumpRatioCeiling: tunableDefaults.jumpRatioCeiling,
+      safetyPattern: tunableDefaults.safetyPattern,
+      rationale: tunableDefaults.rationale,
+    },
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -902,6 +919,11 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     }
   }
 
+  const [nextWeekDossier, nextWeekTunableDefaults] = await Promise.all([
+    prisma.athleteDossier.findUnique({ where: { userId } }),
+    getOrCreateTunableDefaults(userId),
+  ]);
+
   const planningCtx: PlanningContext = {
     user: {
       id: user.id,
@@ -933,6 +955,17 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     parsedPreferences,
     goalGuidance: computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr),
     weekHistory: weekHistory.length > 0 ? weekHistory : undefined,
+    athleteDossier: {
+      facts: (nextWeekDossier?.facts as Record<string, unknown>) ?? {},
+      version: nextWeekDossier?.version ?? 0,
+    },
+    tunableDefaults: {
+      hrDisciplinePct: nextWeekTunableDefaults.hrDisciplinePct,
+      efStopThresholdPct: nextWeekTunableDefaults.efStopThresholdPct,
+      jumpRatioCeiling: nextWeekTunableDefaults.jumpRatioCeiling,
+      safetyPattern: nextWeekTunableDefaults.safetyPattern,
+      rationale: nextWeekTunableDefaults.rationale,
+    },
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);

@@ -127,6 +127,14 @@ export interface PlanningContext {
   parsedPreferences?: ParsedPreferences;
   goalGuidance?: GoalGuidance;
   weekHistory?: WeekHistoryEntry[];
+  athleteDossier?: { facts: Record<string, unknown>; version: number };
+  tunableDefaults?: {
+    hrDisciplinePct: number | null;
+    efStopThresholdPct: number | null;
+    jumpRatioCeiling: number | null;
+    safetyPattern: unknown;
+    rationale: string;
+  };
 }
 
 export interface PlannedSession {
