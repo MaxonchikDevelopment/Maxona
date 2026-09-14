@@ -170,3 +170,176 @@ migration not deployed.
 
 Backup file: `backup_pre_structured_fields_20260914_2106.sql` (repo root,
 untracked, 1.7 MB).
+
+## Round 2
+
+### 1. Migration deploy
+
+Followed the safety pattern exactly:
+
+1. `vercel env pull .env.production.local --environment=production` —
+   succeeded (same 3 secrets redacted as `[SENSITIVE]` as Round 1: `AUTH_PASSWORD`,
+   `OWNER_PASSWORD`, `SESSION_SECRET`; `DIRECT_URL`/`DATABASE_URL` came back real).
+2. `set -a; source .env.production.local; set +a`
+3. `npx prisma migrate deploy` — output:
+   ```
+   24 migrations found in prisma/migrations
+   Applying migration `20260914210000_add_session_structured_fields`
+   All migrations have been successfully applied.
+   ```
+   Applied cleanly, no errors.
+4. `rm .env.production.local` — done.
+
+Production `TrainingSession` table now has the 5 new nullable columns.
+
+### 2. Persistence wiring
+
+Commit `086121a` — `feat(planner): persist structured session-output fields
+to TrainingSession`.
+
+- `lib/planner/orchestrator.ts`
+  - `generateWeeklyPlan`'s `tx.trainingSession.createMany` (~line 714): added
+    `distanceKm: s.distanceKm ?? null`, `targetPaceMinPerKm: s.targetPaceMinPerKm ?? null`,
+    `targetHrZoneMin: s.targetHrZone?.min ?? null`, `targetHrZoneMax: s.targetHrZone?.max ?? null`,
+    `subtype: s.subtype ?? null`.
+  - `generateNextWeekDraft`'s draft `sessions: { create: ... }` (~line 1106):
+    identical treatment — this was the site found during Round 1 recon but
+    not in the original task description; now fixed so the draft path stops
+    silently dropping these fields too.
+- `lib/ai/adapter.ts` — removed the now-stale comment on `PlannedSession`
+  ("Not yet persisted... dropped after generation until a migration adds
+  them") since that's no longer true.
+
+### 3. UI wiring
+
+Commit `db58f1e` — `feat(ui): display structured session-output fields on
+cards and detail page`.
+
+- Read `components/ui/status-chip.tsx` first, per instructions — confirmed
+  the existing chip idiom (`rounded-full ... px-2.5 py-1 text-[11px]
+  font-medium`, muted zinc background for neutral/informational chips) and
+  matched it in the detail-page chips rather than inventing a new style.
+- `components/session-card.tsx`
+  - `SessionProp` gains `distanceKm?`, `targetPaceMinPerKm?`,
+    `targetHrZoneMin?`, `targetHrZoneMax?`, `subtype?` (all nullable/optional).
+  - New `formatSessionTarget(session)` helper builds a compact string like
+    `"10km · 6:10/km · 120–138bpm · easy run"` from whichever of the four
+    fields are present, joined with `·`; returns `null` when none are
+    present (checked at both render sites, so nothing renders — no empty
+    line/chip).
+  - Added right after both existing `notes` render sites (compact/collapsed
+    card and expanded card) as a `text-xs text-zinc-400` line, consistent
+    with the muted secondary-text style already used nearby (e.g. duration/slot
+    text).
+- `app/(app)/sessions/[id]/page.tsx` — "A: Session chips" section (~line
+  195-222): added 4 conditional chips (distance, pace, HR zone, subtype),
+  same `rounded-full bg-zinc-50 border border-zinc-200 px-2.5 py-1
+  text-[11px] font-medium text-zinc-500` style as the existing duration/slot
+  chips in that row. Sections B (Coach overview) and C (Workout blocks) —
+  both `SessionWorkoutPlan`-only per Round 1's confirmed separation — were
+  not touched.
+- `app/(app)/today/page.tsx` and `app/(app)/week/page.tsx` — both build
+  `SessionProp` objects from Prisma query results fetched via `include`
+  (full scalars, no `select` narrowing), so the new columns were already on
+  the query result; just added them to the object-literal mappings that
+  construct `SessionProp`/push into `sessionsByDate`. `week/page.tsx` also
+  needed the same 5 fields added to its explicit `PlanWithSessions` type
+  (the Prisma-6-inference-bug workaround type already in that file) so
+  TypeScript would see them. The draft-preview path in `week/page.tsx`
+  (`DraftSession`/`DraftPreview`) renders through a separate simple text
+  list, not `SessionCard` — left untouched, out of scope per the task's
+  explicit file list.
+
+### Test
+
+Extended `scripts/smoke-test-plan-schema.ts` (same fixture, same cleanup
+discipline — nothing new added to the synthetic-data set):
+
+- After `generateWeeklyPlan`, query the actual persisted `TrainingSession`
+  rows (not just `capturedPlanResult`, which is what the Round 1 version of
+  this test checked) and confirm the running/cycling session's
+  `distanceKm`/`targetPaceMinPerKm`/`targetHrZoneMin`/`targetHrZoneMax`/`subtype`
+  are non-null in the DB, matching what came back in the raw `PlanResult`.
+- Added a second phase: call `generateNextWeekDraft(dummyUserId)` for real
+  (live Anthropic API call), then query the draft plan's persisted
+  `TrainingSession` rows the same way, confirming the same fields are
+  non-null there too.
+- Also made the final `RESULT: PASS/FAIL` line reflect the actual
+  `exitCode` instead of unconditionally printing `PASS` (a latent
+  correctness gap in the Round 1 test that would have masked new failures
+  introduced here — fixed since this round adds several new failure checks
+  that would otherwise never surface at the summary line).
+
+### Test output (actual run)
+
+```
+Calling generateWeeklyPlan(cmu1mnow40000seyxoric8wzo)...
+
+✓ generateWeeklyPlan succeeded — no tool-schema validation error.
+Plan cmu1mnyb8000fseyxvx55eeg2 has 4 session(s).
+  - 2026-09-14 morning easy 50min :: running: easy run — aerobic base, conversational pace
+  ...
+
+Structured fields on raw PlanResult session "running: easy run — aerobic base, conversational pace":
+  distanceKm: 10
+  targetPaceMinPerKm: "6:10"
+  targetHrZone: {"min":120,"max":138}
+  subtype: "easy run"
+
+Persisted TrainingSession row for the same session:
+  distanceKm: 10
+  targetPaceMinPerKm: "6:10"
+  targetHrZoneMin/Max: 120/138
+  subtype: "easy run"
+  ✓ PASS: structured fields persisted to TrainingSession for generateWeeklyPlan.
+
+TunableDefaults rows for dummy user: 1
+  ...
+
+Calling generateNextWeekDraft(cmu1mnow40000seyxoric8wzo)...
+
+✓ generateNextWeekDraft succeeded. Draft plan cmu1mo7d5000lseyxvte889u4 has 4 session(s).
+
+Draft raw PlanResult session "running: easy run — aerobic base, conversational pace":
+  distanceKm: 10
+  targetPaceMinPerKm: "6:00"
+  targetHrZone: {"min":120,"max":138}
+  subtype: "easy run"
+
+Persisted draft TrainingSession row:
+  distanceKm: 10
+  targetPaceMinPerKm: "6:00"
+  targetHrZoneMin/Max: 120/138
+  subtype: "easy run"
+  ✓ PASS: structured fields persisted to TrainingSession for generateNextWeekDraft.
+
+RESULT: PASS
+
+✓ Cleaned up synthetic user cmu1mnow40000seyxoric8wzo and all related rows.
+✓ Follow-up check: user present=false, leftover availability rows=0
+```
+
+Confirms, with real DB values, that both write sites now save the
+structured fields end-to-end — closing the "generated but discarded" gap
+that Round 1's schema-only change left open.
+
+### Validation
+
+- `npx tsc --noEmit` — clean, both commits.
+- `npm run build` — succeeded, both commits.
+- `git grep "user_maxon" -- app lib components` — no matches.
+- `git grep "const USER_ID" -- app lib components` — no matches.
+- `git diff --stat main` (all commits on this branch combined):
+  `app/(app)/sessions/[id]/page.tsx` (+20), `app/(app)/today/page.tsx` (+5),
+  `app/(app)/week/page.tsx` (+10), `components/session-card.tsx` (+22),
+  `lib/ai/adapter.ts` (-2), `lib/planner/orchestrator.ts` (+10),
+  `prisma/schema.prisma` (+9, from Round 1), plus the Round 1 migration file
+  and `scripts/smoke-test-plan-schema.ts` (+97/-8) — plus this report.
+
+### Commits
+
+- `086121a` — `feat(planner): persist structured session-output fields to TrainingSession`
+- `db58f1e` — `feat(ui): display structured session-output fields on cards and detail page`
+
+Not merged — branch `phase2-persist-structured-fields` still off `main`,
+reporting back before merge per instructions.
