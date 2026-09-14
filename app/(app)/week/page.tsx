@@ -39,6 +39,11 @@ type PlanWithSessions = {
     durationMin: number;
     intensity: string;
     notes: string | null;
+    distanceKm: number | null;
+    targetPaceMinPerKm: string | null;
+    targetHrZoneMin: number | null;
+    targetHrZoneMax: number | null;
+    subtype: string | null;
     checkIn: {
       id: string;
       feelScore: number;
@@ -467,6 +472,11 @@ export default async function WeekPage() {
       durationMin: s.durationMin,
       intensity: s.intensity,
       notes: s.notes,
+      distanceKm: s.distanceKm,
+      targetPaceMinPerKm: s.targetPaceMinPerKm,
+      targetHrZoneMin: s.targetHrZoneMin,
+      targetHrZoneMax: s.targetHrZoneMax,
+      subtype: s.subtype,
       checkIn: s.checkIn
         ? {
             id: s.checkIn.id,

@@ -293,6 +293,11 @@ export default async function TodayPage() {
     durationMin: s.durationMin,
     intensity: s.intensity,
     notes: s.notes,
+    distanceKm: s.distanceKm,
+    targetPaceMinPerKm: s.targetPaceMinPerKm,
+    targetHrZoneMin: s.targetHrZoneMin,
+    targetHrZoneMax: s.targetHrZoneMax,
+    subtype: s.subtype,
     checkIn: s.checkIn
       ? {
           id: s.checkIn.id,

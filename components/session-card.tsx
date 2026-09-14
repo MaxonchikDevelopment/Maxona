@@ -57,6 +57,11 @@ export type SessionProp = {
   durationMin: number;
   intensity: string;
   notes: string | null;
+  distanceKm?: number | null;
+  targetPaceMinPerKm?: string | null;
+  targetHrZoneMin?: number | null;
+  targetHrZoneMax?: number | null;
+  subtype?: string | null;
   checkIn: CheckInProp | null;
   stravaLinks?: StravaLinkProp[];
   stravaConnected?: boolean;
@@ -65,6 +70,17 @@ export type SessionProp = {
   hrAnalytics?: HrAnalytics | null;
   nutritionAdvice?: NutritionAdvice | null;
 };
+
+function formatSessionTarget(session: SessionProp): string | null {
+  const parts: string[] = [];
+  if (session.distanceKm != null) parts.push(`${session.distanceKm}km`);
+  if (session.targetPaceMinPerKm) parts.push(`${session.targetPaceMinPerKm}/km`);
+  if (session.targetHrZoneMin != null && session.targetHrZoneMax != null) {
+    parts.push(`${session.targetHrZoneMin}–${session.targetHrZoneMax}bpm`);
+  }
+  if (session.subtype) parts.push(session.subtype);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 // Keyword list mirrors lib/checkin-utils.ts — specific injury/pain indicators only
 const INJURY_KEYWORDS = [
@@ -658,6 +674,9 @@ export function SessionCard({
         ) : (
           session.notes && <p className="text-xs text-zinc-500 line-clamp-1">{session.notes}</p>
         )}
+        {formatSessionTarget(session) && (
+          <p className="text-xs text-zinc-400 line-clamp-1">{formatSessionTarget(session)}</p>
+        )}
         {compactExecLine && (
           <p className="text-xs text-zinc-600">{compactExecLine}</p>
         )}
@@ -778,6 +797,9 @@ export function SessionCard({
       {/* Notes shown here for done/upcoming; skipped branch renders its own to avoid duplication */}
       {session.notes && !isSkipped && (
         <p className="text-sm text-zinc-600">{session.notes}</p>
+      )}
+      {formatSessionTarget(session) && (
+        <p className="text-xs text-zinc-400">{formatSessionTarget(session)}</p>
       )}
 
       {done ? (

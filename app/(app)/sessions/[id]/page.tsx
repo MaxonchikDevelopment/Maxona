@@ -213,6 +213,26 @@ export default async function SessionCoachViewPage({
                   Optional
                 </span>
               )}
+              {session.distanceKm != null && (
+                <span className="rounded-full bg-zinc-50 border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
+                  {session.distanceKm}km
+                </span>
+              )}
+              {session.targetPaceMinPerKm && (
+                <span className="rounded-full bg-zinc-50 border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
+                  {session.targetPaceMinPerKm}/km
+                </span>
+              )}
+              {session.targetHrZoneMin != null && session.targetHrZoneMax != null && (
+                <span className="rounded-full bg-zinc-50 border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
+                  {session.targetHrZoneMin}–{session.targetHrZoneMax}bpm
+                </span>
+              )}
+              {session.subtype && (
+                <span className="rounded-full bg-zinc-50 border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 capitalize">
+                  {session.subtype}
+                </span>
+              )}
               {intentLabel && (
                 <span className="rounded-full bg-indigo-50 border border-indigo-100 px-2.5 py-1 text-[11px] font-medium text-indigo-600">
                   {intentLabel}
