@@ -32,7 +32,7 @@ const SUBMIT_TUNABLES_TOOL = {
       },
       jumpRatioCeiling: {
         type: "number",
-        description: "Max allowed week-over-week volume increase ratio (mirrors the deterministic MaxWeeklyVolumeIncreaseRule).",
+        description: "Max allowed week-over-week volume increase ratio (directly enforced by the deterministic MaxWeeklyVolumeIncreaseRule).",
       },
       rationale: {
         type: "string",
@@ -49,7 +49,7 @@ const SYSTEM_PROMPT = `You are reviewing an adaptive athlete's weekly tunable tr
 ## What each threshold means
 - hrDisciplinePct: share of planned session time expected to sit inside the prescribed HR zone before a session is flagged as off-target. Conservative starting point: 80.
 - efStopThresholdPct: aerobic decoupling % (see avgDecouplingPct in the data below) above which a long/key session is flagged as a stop-signal. Validated FIT reference runs sit at 6.63%/10.54%, so 8% sits between them.
-- jumpRatioCeiling: max allowed week-over-week volume increase, mirrors the existing MaxWeeklyVolumeIncreaseRule (+10%, i.e. 1.1) from the deterministic rules engine.
+- jumpRatioCeiling: max allowed week-over-week volume increase; this value directly drives the deterministic MaxWeeklyVolumeIncreaseRule enforcement (bootstrap default +10%, i.e. 1.1).
 
 ## Your task
 Given the just-completed week's WeekSummary and recent weekHistory trend, decide whether any of these three values should shift, and submit your decision via submit_tunables.

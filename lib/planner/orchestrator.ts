@@ -4,7 +4,7 @@ import { applyRules, filterSessions, deduplicateSessions, toDateStr, type RuleCo
 import { noConflictSchedule } from "@/lib/rules/no-conflict-schedule";
 import { noOutsideAvailability } from "@/lib/rules/no-outside-availability";
 import { minRestHardSessions } from "@/lib/rules/min-rest-hard-sessions";
-import { maxWeeklyVolume } from "@/lib/rules/max-weekly-volume";
+import { buildMaxWeeklyVolumeRule } from "@/lib/rules/max-weekly-volume";
 import { categorizeCheckIn } from "@/lib/checkin-utils";
 import { parseFamilyConstraints } from "@/lib/ai/parse-family-constraints";
 import { renderChangeExplanation, renderNextWeekDraftSummary, type ChangeSummaryPayload } from "@/lib/ai/coach-advice";
@@ -34,11 +34,10 @@ function plannedFixedSessionNotes(ps: PlannedFixedSession): string {
   return label ? `${ps.modality}: ${label}` : ps.modality;
 }
 
-const RULES = [
+const OTHER_RULES = [
   noConflictSchedule,
   noOutsideAvailability,
   minRestHardSessions,
-  maxWeeklyVolume,
 ];
 
 function getInjuryWindow(
@@ -573,6 +572,11 @@ export async function generateWeeklyPlan(
     );
   }
 
+  const [dossier, tunableDefaults] = await Promise.all([
+    prisma.athleteDossier.findUnique({ where: { userId } }),
+    getOrCreateTunableDefaults(userId),
+  ]);
+
   const ruleCtx: RuleContext = {
     availabilityWindows,
     scheduleEvents,
@@ -581,7 +585,11 @@ export async function generateWeeklyPlan(
     constraints: user.constraints as Record<string, unknown>,
   };
 
-  const constraints = applyRules(RULES, ruleCtx);
+  const rules = [
+    ...OTHER_RULES,
+    buildMaxWeeklyVolumeRule(tunableDefaults.jumpRatioCeiling ?? 1.1),
+  ];
+  const constraints = applyRules(rules, ruleCtx);
 
   const doneMinutesThisWeek = currentWeekDoneSessions.reduce(
     (sum, s) => sum + s.durationMin,
@@ -601,11 +609,6 @@ export async function generateWeeklyPlan(
       cursor = addDays(cursor, 1);
     }
   }
-
-  const [dossier, tunableDefaults] = await Promise.all([
-    prisma.athleteDossier.findUnique({ where: { userId } }),
-    getOrCreateTunableDefaults(userId),
-  ]);
 
   const goalGuidance = computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr);
   const seasonBlock = deriveSeasonBlock(goalGuidance);
@@ -979,6 +982,11 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     );
   }
 
+  const [nextWeekDossier, nextWeekTunableDefaults] = await Promise.all([
+    prisma.athleteDossier.findUnique({ where: { userId } }),
+    getOrCreateTunableDefaults(userId),
+  ]);
+
   const ruleCtx: RuleContext = {
     availabilityWindows,
     scheduleEvents,
@@ -986,7 +994,11 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     weekStart: nextWeekStart,
     constraints: user.constraints as Record<string, unknown>,
   };
-  const constraints = applyRules(RULES, ruleCtx);
+  const nextWeekRules = [
+    ...OTHER_RULES,
+    buildMaxWeeklyVolumeRule(nextWeekTunableDefaults.jumpRatioCeiling ?? 1.1),
+  ];
+  const constraints = applyRules(nextWeekRules, ruleCtx);
 
   if (injuryWindow) {
     let cursor = addDays(new Date(injuryWindow.injuryDate + "T00:00:00Z"), 1);
@@ -995,11 +1007,6 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
       cursor = addDays(cursor, 1);
     }
   }
-
-  const [nextWeekDossier, nextWeekTunableDefaults] = await Promise.all([
-    prisma.athleteDossier.findUnique({ where: { userId } }),
-    getOrCreateTunableDefaults(userId),
-  ]);
 
   const goalGuidance = computeGoalGuidance(toGoalGuidanceInputs(goals), todayStr);
   const seasonBlock = deriveSeasonBlock(goalGuidance);
