@@ -455,18 +455,28 @@ function buildUserPrompt(context: PlanningContext): string {
         }),
       },
     }),
-    ...((Object.keys(context.athleteDossier?.facts ?? {}).length > 0 || context.tunableDefaults) && {
+    ...((Object.keys(context.athleteDossier?.facts ?? {}).length > 0 || context.tunableDefaults ||
+      context.userTrainingProfile) && {
       athleteProfile: {
         note: "Athlete profile & tunable thresholds — ground structured targets (targetHrZone, etc.) in these when present, per the 'Structured targets' rules. Do not fabricate values for fields not listed here.",
         ...(context.athleteDossier && Object.keys(context.athleteDossier.facts).length > 0 &&
           context.athleteDossier.facts),
-        ...(context.athleteDossier && (() => {
-          const facts = context.athleteDossier!.facts as { maxHr?: unknown; lthrEstimate?: unknown };
-          const maxHr = typeof facts.maxHr === "number" ? facts.maxHr : null;
-          const lthrEstimate = typeof facts.lthrEstimate === "number" ? facts.lthrEstimate : null;
-          const computedZones = computeZonesFromDossier(maxHr, lthrEstimate);
-          return computedZones ? { computedZones } : {};
-        })()),
+        ...(() => {
+          const facts = (context.athleteDossier?.facts ?? {}) as { maxHr?: unknown; lthrEstimate?: unknown };
+          const dossierMaxHr = typeof facts.maxHr === "number" ? facts.maxHr : null;
+          const dossierLthrEstimate = typeof facts.lthrEstimate === "number" ? facts.lthrEstimate : null;
+          // Dossier always wins when present; UserTrainingProfile is fallback-only
+          // grounding for users with no dossier HR facts yet.
+          const resolvedMaxHr = dossierMaxHr ?? context.userTrainingProfile?.maxHr ?? null;
+          const resolvedLthrEstimate =
+            dossierLthrEstimate ?? context.userTrainingProfile?.thresholdHr ?? null;
+          const computedZones = computeZonesFromDossier(resolvedMaxHr, resolvedLthrEstimate);
+          return {
+            ...(resolvedMaxHr != null && { maxHr: resolvedMaxHr }),
+            ...(resolvedLthrEstimate != null && { lthrEstimate: resolvedLthrEstimate }),
+            ...(computedZones ? { computedZones } : {}),
+          };
+        })(),
         ...(context.tunableDefaults && {
           tunables: {
             ...(context.tunableDefaults.hrDisciplinePct != null && { hrDisciplinePct: context.tunableDefaults.hrDisciplinePct }),

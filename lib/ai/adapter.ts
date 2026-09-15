@@ -144,6 +144,9 @@ export interface PlanningContext {
     safetyPattern: unknown;
     rationale: string;
   };
+  // Fallback HR grounding when AthleteDossier.facts has no maxHr/lthrEstimate —
+  // narrow by design, not a general UserTrainingProfile passthrough.
+  userTrainingProfile?: { maxHr: number | null; thresholdHr: number | null } | null;
 }
 
 export interface PlannedSession {

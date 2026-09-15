@@ -572,9 +572,13 @@ export async function generateWeeklyPlan(
     );
   }
 
-  const [dossier, tunableDefaults] = await Promise.all([
+  const [dossier, tunableDefaults, userTrainingProfile] = await Promise.all([
     prisma.athleteDossier.findUnique({ where: { userId } }),
     getOrCreateTunableDefaults(userId),
+    prisma.userTrainingProfile.findUnique({
+      where: { userId },
+      select: { maxHr: true, thresholdHr: true },
+    }),
   ]);
 
   const ruleCtx: RuleContext = {
@@ -655,6 +659,7 @@ export async function generateWeeklyPlan(
       safetyPattern: tunableDefaults.safetyPattern,
       rationale: tunableDefaults.rationale,
     },
+    userTrainingProfile: userTrainingProfile ?? null,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
@@ -982,9 +987,13 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
     );
   }
 
-  const [nextWeekDossier, nextWeekTunableDefaults] = await Promise.all([
+  const [nextWeekDossier, nextWeekTunableDefaults, nextWeekTrainingProfile] = await Promise.all([
     prisma.athleteDossier.findUnique({ where: { userId } }),
     getOrCreateTunableDefaults(userId),
+    prisma.userTrainingProfile.findUnique({
+      where: { userId },
+      select: { maxHr: true, thresholdHr: true },
+    }),
   ]);
 
   const ruleCtx: RuleContext = {
@@ -1053,6 +1062,7 @@ export async function generateNextWeekDraft(userId: string, weeklyReview?: Weekl
       safetyPattern: nextWeekTunableDefaults.safetyPattern,
       rationale: nextWeekTunableDefaults.rationale,
     },
+    userTrainingProfile: nextWeekTrainingProfile ?? null,
   };
 
   const planResult = await new ClaudeAdapter().generatePlan(planningCtx);
