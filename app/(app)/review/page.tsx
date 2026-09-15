@@ -690,6 +690,7 @@ export default function ReviewPage() {
           <ExportContextCard />
           <ImportPlanCard />
           <DossierCard />
+          <TunablesHistoryCard />
         </div>
       </PageWrapper>
     </main>
@@ -1378,6 +1379,99 @@ function DossierCard() {
             <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{error}</p>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+type TunableRevision = {
+  id: string;
+  hrDisciplinePct: number | null;
+  efStopThresholdPct: number | null;
+  jumpRatioCeiling: number | null;
+  safetyPattern: unknown;
+  rationale: string;
+  revisedAt: string;
+};
+
+function formatRevisedAt(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function DeltaValue({ label, value, prev }: { label: string; value: number | null; prev: number | null | undefined }) {
+  if (value === null) return null;
+  let arrow: string | null = null;
+  let arrowCls = "";
+  if (prev !== undefined && prev !== null && prev !== value) {
+    if (value > prev) {
+      arrow = "▲";
+      arrowCls = "text-emerald-600";
+    } else {
+      arrow = "▼";
+      arrowCls = "text-red-600";
+    }
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-400">{label}</span>
+      <span className="text-sm font-semibold tabular-nums leading-none text-zinc-800">
+        {value}
+        {arrow && <span className={`ml-1 text-[10px] ${arrowCls}`}>{arrow}</span>}
+      </span>
+    </div>
+  );
+}
+
+function TunablesHistoryCard() {
+  const [revisions, setRevisions] = useState<TunableRevision[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/tunables/history")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: { revisions: TunableRevision[] }) => setRevisions(data.revisions))
+      .catch(() => setLoadError("Could not load tunable review history."));
+  }, []);
+
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-100 shadow-card p-4 space-y-3">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-0.5">
+          Tunable review history
+        </p>
+        <p className="text-xs text-zinc-500">
+          How your planner&apos;s thresholds have been revised over time, and why.
+        </p>
+      </div>
+
+      {loadError ? (
+        <p className="text-xs text-red-600 rounded-xl bg-red-50 border border-red-100 px-3 py-2">{loadError}</p>
+      ) : revisions === null ? (
+        <p className="text-xs text-zinc-400">Loading tunable review history…</p>
+      ) : revisions.length === 0 ? (
+        <p className="text-xs text-zinc-400">
+          No tunable reviews yet — the first one runs after your first week rolls over.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {revisions.map((rev, i) => {
+            const prev = revisions[i + 1];
+            return (
+              <div key={rev.id} className="rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-zinc-400">{formatRevisedAt(rev.revisedAt)}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-x-4 gap-y-2">
+                  <DeltaValue label="HR discipline %" value={rev.hrDisciplinePct} prev={prev?.hrDisciplinePct} />
+                  <DeltaValue label="EF stop %" value={rev.efStopThresholdPct} prev={prev?.efStopThresholdPct} />
+                  <DeltaValue label="Jump ratio ceiling" value={rev.jumpRatioCeiling} prev={prev?.jumpRatioCeiling} />
+                </div>
+                <p className="text-xs text-zinc-600 leading-relaxed">{rev.rationale}</p>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
