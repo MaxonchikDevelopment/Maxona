@@ -60,6 +60,7 @@ Rule for Phase 2: any new write path touching TrainingPlan.status (the new gener
 /api/plans/import: no check that session dates fall inside declared week range; no DB-level guard against duplicate week import (UI-layer mitigation only — submit disabled while in-flight).
 /api/plans/export-context: AvailabilityWindow query doesn't filter by validFrom/validUntil (currently inert, no such data exists yet).
 /api/dossier PUT: accepts any JSON shape, not validated against AthleteDossierFacts. This becomes load-bearing in Phase 2 (dossier feeds the plan-generation LLM call directly) — tighten with a zod schema before building the generation endpoint on top of it, not after.
+jumpRatioCeiling → MaxWeeklyVolumeIncreaseRule enforcement gap (flagged in PHASE2_STEP5_REPORT.md §"Flagged, not fixed"): RESOLVED — TunableDefaults.jumpRatioCeiling is now wired into the deterministic volume-cap rule. Merge commit 906eb4b.
 6. Operating conventions (still valid, keep using)
 State model + effort per Claude Code prompt: Sonnet+Low for mechanical/schema tasks; Sonnet+Medium for real-logic tasks without architectural judgment; Opus reserved for genuine judgment calls or adversarial review only.
 Migration safety pattern (one shared prod DB, no dev/staging):
